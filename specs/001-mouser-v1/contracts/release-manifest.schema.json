@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mouser.local/schemas/release-manifest.v1.json",
+  "title": "Mouser release manifest (latest.json, tauri-plugin-updater static format; research R6)",
+  "description": "Published as the `latest.json` asset of each GitHub release and fetched via https://github.com/<owner>/mouser/releases/latest/download/latest.json. The downloading desk computer re-serves this document (with `url`s rewritten to its own LAN address) in `ReleaseAvailable`. Each `signature` is a minisign signature verified against the Mouser updater public key compiled into the app.",
+  "type": "object",
+  "required": ["version", "platforms"],
+  "properties": {
+    "version": { "type": "string", "pattern": "^v?\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+    "notes": { "type": "string" },
+    "pub_date": { "type": "string", "format": "date-time" },
+    "min_protocol": { "type": "integer", "minimum": 1, "description": "Mouser extension: lowest peer protocol version this release interoperates with" },
+    "platforms": {
+      "type": "object",
+      "propertyNames": { "pattern": "^(darwin|windows|linux)-(aarch64|x86_64)(-[a-z]+)?$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "signature"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "signature": { "type": "string", "description": "minisign signature (base64 .sig content)" }
+        }
+      }
+    }
+  }
+}

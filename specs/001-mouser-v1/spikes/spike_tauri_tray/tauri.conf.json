@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MouserSpike",
+  "version": "0.0.0",
+  "identifier": "org.rusek.mouser.spike",
+  "build": { "frontendDist": "dist" },
+  "app": {
+    "windows": [ { "label": "main", "title": "Mouser Spike", "visible": false, "width": 600, "height": 400 } ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.png"] }
+}

@@ -1,0 +1,12 @@
+[package]
+name = "spike_mdns"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+mdns-sd = "=0.21.6"
+if-addrs = { version = "=0.15.0", features = ["link-local"] }
+anyhow = "=1.0.104"

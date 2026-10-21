@@ -1,0 +1,11 @@
+[package]
+name = "spike_clipboard"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+arboard = "=3.7.0"
+clipboard-rs = "=0.3.5"
+
+[workspace]

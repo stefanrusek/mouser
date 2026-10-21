@@ -1,0 +1,15 @@
+[package]
+name = "spike_tauri_tray"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "=2.7.0"
+tauri-plugin-single-instance = "=2.5.4"
+
+[workspace]
