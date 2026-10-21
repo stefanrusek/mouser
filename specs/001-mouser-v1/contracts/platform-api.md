@@ -21,6 +21,7 @@ pub trait Platform: Send + Sync + 'static {
     fn interfaces(&self) -> Vec<NetInterface>;                    // with kind: PhysicalLan | Virtual | Loopback (research R3)
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle>; // fires on any address/interface change
     fn foreground_elevated(&self) -> bool;                        // Windows UIPI detection; false elsewhere
+    fn secrets(&self) -> Box<dyn SecretStore>;                    // device key + desk keys (data-model.md)
     fn autostart(&self) -> Box<dyn Autostart>;
     fn file_drag(&self) -> Option<Box<dyn FileDrag>>;            // None => limitation shown
 }
@@ -65,6 +66,14 @@ pub trait FileDrag: Send {
 }
 
 pub trait Autostart: Send { fn enabled(&self) -> bool; fn set(&mut self, on: bool) -> Result<()>; }
+
+/// macOS Keychain; Windows DPAPI machine scope (readable by mouser-service before login);
+/// Linux Secret Service, falling back to a 0600 file in the config dir; portable: file in MouserData.
+pub trait SecretStore: Send {
+    fn get(&self, name: &str) -> Result<Option<Vec<u8>>>;
+    fn set(&mut self, name: &str, value: &[u8]) -> Result<()>;
+    fn delete(&mut self, name: &str) -> Result<()>;
+}
 ```
 
 Behavioural rules each backend MUST satisfy (each is a `contract_` test case run on that OS):
@@ -76,4 +85,5 @@ Behavioural rules each backend MUST satisfy (each is a `contract_` test case run
 5. `Clipboard::write` followed by `read` returns every representation written that the OS can hold.
 6. `interfaces()` never classifies a VPN, VM, container, bridge, AWDL or loopback interface as `PhysicalLan`.
 7. Events injected by `InputInject` are never delivered back to this computer's own `InputCapture` as `LocalInput`.
-8. Unsupported capabilities return `Err(Unsupported)` and are listed in `PlatformInfo.limitations` with plain-language text (FR-001).
+8. `SecretStore::set` followed by `get` returns the same bytes after the store is re-opened.
+9. Unsupported capabilities return `Err(Unsupported)` and are listed in `PlatformInfo.limitations` with plain-language text (FR-001).
