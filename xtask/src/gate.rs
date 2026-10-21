@@ -144,6 +144,7 @@ pub fn run(args: Args) -> i32 {
             )
             .args(&pargs)
             .args([
+                "--show-missing-lines",
                 "--fail-under-lines",
                 "100",
                 "--ignore-filename-regex",
