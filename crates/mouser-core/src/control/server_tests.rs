@@ -165,7 +165,26 @@ async fn a_closed_server_ends_the_notification_stream() {
 #[test]
 fn the_default_path_is_per_user() {
     let path = crate::control::default_path();
-    assert_eq!(path.file_name().unwrap(), "mouser.sock");
+    if cfg!(windows) {
+        let name = path.to_string_lossy().into_owned();
+        assert!(name.starts_with(r"\\.\pipe\mouser-"), "{name}");
+    } else {
+        assert_eq!(path.file_name().unwrap(), "mouser.sock");
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_control_paths_become_pipe_names() {
+    use super::server::pipe_name;
+    use std::path::Path;
+    let pipe = Path::new(r"\\.\pipe\mouser-me");
+    assert_eq!(pipe_name(pipe), pipe);
+    let mapped = pipe_name(Path::new(r"C:\Temp\a b\mouser.sock"));
+    assert_eq!(
+        mapped.to_string_lossy(),
+        r"\\.\pipe\mouser-C-Temp-a-b-mouser-sock"
+    );
 }
 
 #[cfg(target_os = "macos")]

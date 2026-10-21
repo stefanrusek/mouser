@@ -3,8 +3,10 @@
 
 use std::path::Path;
 
-use mouser_proto::ids::DeskId;
-use mouser_proto::model::DeskState;
+use std::collections::BTreeMap;
+
+use mouser_proto::ids::{ComputerId, DeskId};
+use mouser_proto::model::{DeskState, Display};
 use serde::{Deserialize, Serialize};
 
 /// File name inside the config directory.
@@ -30,6 +32,10 @@ pub struct PersistedDesk {
 pub struct LocalState {
     pub membership: Membership,
     pub desk: Option<PersistedDesk>,
+    /// The last displays every desk member (this computer included) reported:
+    /// the layout stores only placements, so sizes live here.
+    #[serde(default)]
+    pub displays: BTreeMap<ComputerId, Vec<Display>>,
 }
 
 impl Default for LocalState {
@@ -37,6 +43,7 @@ impl Default for LocalState {
         Self {
             membership: Membership::Unjoined,
             desk: None,
+            displays: BTreeMap::new(),
         }
     }
 }

@@ -47,11 +47,9 @@ pub fn verify(
 
 use std::sync::Arc;
 
-use mouser_proto::model::Display;
 use mouser_proto::wire::ControlMessage;
 
 use crate::engine::{Core, Ctx, Phase};
-use crate::layout::displays::to_wire;
 
 impl Ctx {
     /// Send our `DeskAuth` proof to `peer` (we are on a desk and so is it).
@@ -92,30 +90,8 @@ impl Ctx {
         let displays = self.local_displays();
         core.peers[&peer].send(ControlMessage::DeskState(state));
         core.peers[&peer].send(ControlMessage::Displays { displays });
-        drop(core);
-        self.notify_status();
-        Ok(())
-    }
-
-    /// This computer's displays in wire form.
-    pub(crate) fn local_displays(&self) -> Vec<Display> {
-        to_wire(
-            self.me(),
-            &self.platform.displays().expect("displays readable"),
-        )
-    }
-
-    /// A peer reports its displays.
-    pub(crate) fn on_displays(
-        self: &Arc<Self>,
-        peer: ComputerId,
-        displays: Vec<Display>,
-    ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
-        if !Self::authed(&core, peer) {
-            return Err("Displays from a computer that is not on the desk".into());
-        }
-        core.peers.get_mut(&peer).expect("authed").displays = displays;
+        core.peers[&peer].send(ControlMessage::Status(self.peer_status()));
+        self.refresh_map(&core);
         drop(core);
         self.notify_status();
         Ok(())

@@ -61,6 +61,7 @@ async fn a_join_that_never_finished_is_over_after_a_restart() {
     LocalState {
         membership: Membership::Pending(desk.desk_id),
         desk: None,
+        ..LocalState::default()
     }
     .save(&dir.path().join(crate::state::FILE));
     let b = lab.boot("Beta", platform, dir).await;

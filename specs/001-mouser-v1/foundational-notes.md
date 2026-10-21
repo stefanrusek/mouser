@@ -34,3 +34,10 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Discovery is behind a `Discovery` trait (`announce`, `found`, `stop`); `MdnsDiscovery` is production, the acceptance harness uses an in-process registry over SimNet addresses.
 - Missing permissions surface as a `missing_permission` Problem with `fix = open_system_settings:<kind>`; the app calls `Platform::open_permission_settings` itself (no control method).
 - Windows control pipe: `\\.\pipe\mouser-<USERNAME>` with `reject_remote_clients`.
+
+## mouser-core (US2-core decisions, accepted by orchestrator)
+- Landing highlight and layout-review offers are in-process `EngineEvent`s (`Engine::events()` / `ControlHandle::events()`), not JSON-RPC notifications: `Topic` has no topic for them. The app hosts the engine, so it consumes them directly.
+- Panic = Escape twice within 500 ms. Buttons 4/5 as Back/Forward = Alt-Left/Right (Windows/Linux), Cmd-[ / Cmd-] (macOS), on press.
+- Modifiers held at a crossing are released locally, not carried; `LeaveControl` is unused (the controller tracks the remote pointer).
+- Input capture/injection start only once no input permission is Missing (re-checked every 250 ms).
+- **Deferred (contract change needed):** pause is per-computer. Story 2 sc. 12 says pausing applies on every computer; that needs a wire message (e.g. `Pause{paused}`) in mouser-proto. acc_us2 asserts it only on the computer where the hotkey fired.

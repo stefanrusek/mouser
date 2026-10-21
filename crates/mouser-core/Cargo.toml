@@ -39,3 +39,7 @@ tempfile = "3"
 [[test]]
 name = "acc_us1"
 harness = false
+
+[[test]]
+name = "acc_us2"
+harness = false

@@ -29,9 +29,19 @@ pub(crate) async fn open(path: &Path) -> std::io::Result<Box<dyn Duplex>> {
 
 #[cfg(windows)]
 pub(crate) async fn open(path: &Path) -> std::io::Result<Box<dyn Duplex>> {
-    Ok(Box::new(
-        tokio::net::windows::named_pipe::ClientOptions::new().open(path)?,
-    ))
+    use tokio::net::windows::named_pipe::ClientOptions;
+    /// `ERROR_PIPE_BUSY`: every instance is serving a client; one is created
+    /// again within moments, so wait and retry.
+    const PIPE_BUSY: i32 = 231;
+    let name = crate::control::server::pipe_name(path);
+    loop {
+        match ClientOptions::new().open(&name) {
+            Err(e) if e.raw_os_error() == Some(PIPE_BUSY) => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            other => return Ok(Box::new(other?)),
+        }
+    }
 }
 
 impl ControlClient {

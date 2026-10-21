@@ -61,6 +61,14 @@ async fn read_loop(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, mut reader: Fr
     }
 }
 
+/// Applies the motion datagrams of `peer` until the connection ends.
+async fn motion_loop(ctx: Arc<Ctx>, peer: ComputerId, conn: quinn::Connection) {
+    while let Ok(bytes) = conn.read_datagram().await {
+        let motion = postcard::from_bytes(&bytes).expect("well-formed datagram");
+        ctx.crossing.lock().unwrap().on_motion(peer, motion);
+    }
+}
+
 async fn watch_closed(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, conn: quinn::Connection) {
     let _guard = LinkGuard { ctx, peer, link_id };
     conn.closed().await;
@@ -134,6 +142,7 @@ impl Ctx {
                 out,
                 phase,
                 displays: Vec::new(),
+                status: None,
                 last_seen: crate::problems::now(),
             };
             if let Some(old) = core.peers.insert(peer, entry) {
@@ -154,6 +163,7 @@ impl Ctx {
             self.problems
                 .clear(ProblemKind::IncompatibleVersion, &peer.to_string());
             self.spawn(read_loop(self.clone(), peer, link_id, reader));
+            self.spawn(motion_loop(self.clone(), peer, conn.clone()));
         } else {
             let (text, mine_is_older) = incompatible_text;
             self.problems.raise(
@@ -180,12 +190,29 @@ impl Ctx {
             }
             let gone = core.peers.remove(&peer).expect("checked above");
             core.requests.drop_peer(peer);
+            self.refresh_map(&core);
             gone.phase == Phase::AwaitingDecision
         };
+        self.problems
+            .clear(ProblemKind::SecureInput, &peer.to_string());
         if waiting {
             self.fail_pending("The request to join the desk was not answered.");
         }
         self.notify_status();
+    }
+
+    /// Hand input from `peer` to the crossing state: only desk members may
+    /// send it.
+    fn input(
+        &self,
+        peer: ComputerId,
+        apply: impl FnOnce(&mut crate::crossing::Crossing),
+    ) -> Result<(), String> {
+        if !Self::authed(&self.core.lock().unwrap(), peer) {
+            return Err("input from a computer that is not on the desk".into());
+        }
+        apply(&mut self.crossing.lock().unwrap());
+        Ok(())
     }
 
     /// Route one message from an established peer to its handler.
@@ -195,6 +222,9 @@ impl Ctx {
         msg: ControlMessage,
     ) -> Result<(), String> {
         if let Some(entry) = self.core.lock().unwrap().peers.get_mut(&peer) {
+            if entry.phase == Phase::Departed {
+                return Ok(());
+            }
             entry.last_seen = crate::problems::now();
         }
         match msg {
@@ -212,6 +242,30 @@ impl Ctx {
             ControlMessage::Leave { computer_id } => self.on_leave(peer, computer_id),
             ControlMessage::Remove { computer_id } => self.on_remove(peer, computer_id),
             ControlMessage::Displays { displays } => self.on_displays(peer, displays),
+            ControlMessage::Status(status) => self.on_peer_status(peer, status),
+            ControlMessage::Enter {
+                display_id,
+                x,
+                y,
+                seq_base,
+                ..
+            } => self
+                .crossing
+                .lock()
+                .unwrap()
+                .on_enter(peer, display_id, x, y, seq_base),
+            ControlMessage::Key { usage, down, .. } => {
+                self.input(peer, |c| c.on_key(peer, usage, down))
+            }
+            ControlMessage::Button { button, down, .. } => {
+                self.input(peer, |c| c.on_button(peer, button, down))
+            }
+            ControlMessage::Scroll { dx, dy, .. } => {
+                self.input(peer, |c| c.on_scroll(peer, dx, dy))
+            }
+            ControlMessage::ReleaseAll { .. } | ControlMessage::Panic => {
+                self.input(peer, |c| c.on_release_all(peer))
+            }
             other => Err(format!("unexpected message {other:?}")),
         }
     }

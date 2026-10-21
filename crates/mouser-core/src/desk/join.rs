@@ -390,6 +390,9 @@ impl Ctx {
             self.persist(&core);
             core.peers.get_mut(&peer).expect("peer registered").phase = Phase::Greeted;
             self.send_auth(&core, peer);
+            self.sync_layout(&mut core);
+            self.persist(&core);
+            self.refresh_map(&core);
             desk_id
         };
         self.problems
@@ -404,11 +407,12 @@ impl Ctx {
         let mut core = self.core.lock().unwrap();
         let desk = core.state.desk.as_mut().expect("authed peers imply a desk");
         if sealed.state.supersedes(&desk.state) {
-            desk.state = sealed.state;
+            let old = desk.state.layout.clone();
+            desk.state = sealed.state.clone();
             let id = desk.desk_id;
             core.desk_key = Some(sealed.key);
             self.store_desk_key(&id, &sealed.key);
-            self.persist(&core);
+            self.layout_changed(&mut core, &old, &sealed.state);
             drop(core);
             self.notify_status();
         }

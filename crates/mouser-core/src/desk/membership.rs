@@ -30,6 +30,12 @@ pub fn with_member(state: &DeskState, member: Member, author: ComputerId) -> Des
 pub fn without_member(state: &DeskState, who: ComputerId, author: ComputerId) -> DeskState {
     let mut next = state.clone();
     next.members.retain(|m| m.computer_id != who);
+    next.layout
+        .placements
+        .retain(|p| p.display_id.computer != who);
+    next.layout
+        .edge_options
+        .retain(|e| e.display_id.computer != who);
     next.epoch += 1;
     next.author = author;
     next
@@ -48,11 +54,12 @@ pub fn rotator(state: &DeskState) -> ComputerId {
 impl Ctx {
     /// Tell every desk-mate we are leaving and drop their connections.
     pub(crate) fn say_goodbye(&self, core: &mut Core) {
-        for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {
+        for peer in core.peers.values_mut().filter(|p| p.phase == Phase::Authed) {
             peer.send(ControlMessage::Leave {
                 computer_id: self.me(),
             });
             peer.close();
+            peer.phase = Phase::Departed;
         }
     }
 
@@ -61,6 +68,8 @@ impl Ctx {
         let desk = core.state.desk.take().expect("on a desk");
         self.delete_desk_key(&desk.desk_id);
         core.desk_key = None;
+        core.state.displays.clear();
+        core.needs_review.clear();
         core.state.membership = Membership::Unjoined;
         core.pending = None;
         core.requests = Default::default();
@@ -99,6 +108,7 @@ impl Ctx {
             }
             self.say_goodbye(&mut core);
             self.forget_desk(&mut core);
+            self.refresh_map(&core);
         }
         self.announce();
         self.notify_status();
@@ -119,9 +129,10 @@ impl Ctx {
             }
             let state = without_member(&desk.state, who, self.me());
             self.rotate(&mut core, state, who);
-            if let Some(removed) = core.peers.get(&who) {
+            if let Some(removed) = core.peers.get_mut(&who) {
                 removed.send(ControlMessage::Remove { computer_id: who });
                 removed.close();
+                removed.phase = Phase::Departed;
             }
         }
         self.notify_status();
@@ -143,7 +154,10 @@ impl Ctx {
         if rotator(&state) == self.me() {
             self.rotate(&mut core, state, who);
         }
-        core.peers[&peer].close();
+        let leaver = core.peers.get_mut(&peer).expect("authed");
+        leaver.close();
+        leaver.phase = Phase::Departed;
+        self.refresh_map(&core);
         drop(core);
         self.notify_status();
         Ok(())
@@ -159,10 +173,12 @@ impl Ctx {
         if who != self.me() || !Self::authed(&core, peer) {
             return Err(format!("invalid Remove from {peer}"));
         }
-        for other in core.peers.values().filter(|p| p.phase == Phase::Authed) {
+        for other in core.peers.values_mut().filter(|p| p.phase == Phase::Authed) {
             other.close();
+            other.phase = Phase::Departed;
         }
         self.forget_desk(&mut core);
+        self.refresh_map(&core);
         drop(core);
         self.announce();
         self.notify_status();

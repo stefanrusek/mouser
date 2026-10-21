@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mouser_core::discovery::{Advert, Discovery, Found};
-use mouser_core::{ControlClient, Engine, EngineParams};
+use mouser_core::{ControlClient, Engine, EngineEvent, EngineParams};
 use mouser_proto::config::Config;
 use mouser_proto::control::{Method, Notification, RpcError, Status, Topic};
 use mouser_proto::ids::ComputerId;
@@ -81,6 +81,7 @@ impl Discovery for SimDiscovery {
 #[derive(Default)]
 pub struct Events {
     log: Mutex<Vec<Notification>>,
+    engine: Mutex<Vec<EngineEvent>>,
 }
 
 impl Events {
@@ -89,6 +90,11 @@ impl Events {
         log.iter()
             .find(|n| n.method == topic && pred(&n.params))
             .map(|n| n.params.clone())
+    }
+
+    /// Every engine event (landing, review offers) so far.
+    pub fn engine_events(&self) -> Vec<EngineEvent> {
+        self.engine.lock().unwrap().clone()
     }
 
     /// Every notification on `topic` so far.
@@ -138,12 +144,18 @@ pub struct Node {
 
 static PIPES: AtomicU64 = AtomicU64::new(0);
 
+/// A UDP port nobody is using. Taken from a range the operating system never
+/// hands out as an ephemeral port (the relay sockets of other computers
+/// would otherwise take it between the probe and the engine's bind), at an
+/// offset that differs per process and per call.
 fn free_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+    static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    std::iter::repeat_with(|| {
+        let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+    })
+    .find(|port| std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .expect("an endless iterator")
 }
 
 impl Node {
@@ -210,6 +222,41 @@ impl Node {
         }
     }
 
+    /// The first engine event matching `pred` from the `skip`th one on.
+    pub async fn engine_event(
+        &self,
+        what: &str,
+        skip: usize,
+        pred: impl Fn(&EngineEvent) -> bool,
+    ) -> EngineEvent {
+        let end = Instant::now() + WAIT;
+        loop {
+            let events = self.events.engine_events();
+            if let Some(found) = events.into_iter().skip(skip).find(&pred) {
+                return found;
+            }
+            assert!(
+                Instant::now() < end,
+                "{}: timed out waiting for {what}",
+                self.name
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    /// The desk layout this computer holds.
+    pub fn layout(&self) -> mouser_proto::model::Layout {
+        self.engine.as_ref().expect("node is running").layout()
+    }
+
+    /// Displays awaiting the owner's review of their placement.
+    pub fn needs_review(&self) -> Vec<mouser_proto::model::DisplayId> {
+        self.engine
+            .as_ref()
+            .expect("node is running")
+            .needs_review()
+    }
+
     async fn start(&mut self, registry: &Arc<Registry>) {
         let discovery = SimDiscovery {
             registry: registry.clone(),
@@ -241,6 +288,13 @@ impl Node {
             .expect("subscribe");
         self.events = Arc::new(Events::default());
         let events = self.events.clone();
+        let mut engine_events = self.engine.as_ref().expect("started").events();
+        let sink = events.clone();
+        tokio::spawn(async move {
+            while let Ok(event) = engine_events.recv().await {
+                sink.engine.lock().unwrap().push(event);
+            }
+        });
         tokio::spawn(async move {
             while let Some(note) = stream.next_notification().await {
                 events.log.lock().unwrap().push(note);
@@ -318,7 +372,9 @@ impl Lab {
     pub async fn restart(&mut self, name: &str) {
         let registry = self.registry.clone();
         let node = self.node(name);
-        node.stop().await;
+        if node.engine.is_some() {
+            node.stop().await;
+        }
         // The old endpoint's socket is released by its driver task a tick after
         // shutdown; a real restart is a new process and never races.
         tokio::time::sleep(Duration::from_millis(100)).await;

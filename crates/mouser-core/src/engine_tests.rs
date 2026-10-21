@@ -12,7 +12,9 @@ async fn start_serves_the_control_api_in_process_and_shutdown_removes_the_socket
     let lab = Lab::new();
     let node = lab.start("Alpha").await;
     let path = node.control_path.clone();
-    assert_eq!(path.exists(), cfg!(unix), "the socket is a file on Unix");
+    if cfg!(unix) {
+        assert!(path.exists(), "the socket is a file on Unix");
+    }
     assert_eq!(status(&node).await.computer.name, "Alpha");
     let handle = node.engine.control();
     let mut notes = handle.notifications();
@@ -57,4 +59,17 @@ async fn without_a_discovery_backend_the_engine_uses_real_mdns() {
         u16::try_from(config.advanced.port).unwrap()
     );
     engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn events_without_a_control_topic_are_available_in_process() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let mut events = node.engine.control().events();
+    assert_eq!(
+        events.try_recv(),
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+    );
+    assert!(node.engine.layout().placements.is_empty());
+    assert!(node.engine.needs_review().is_empty());
 }

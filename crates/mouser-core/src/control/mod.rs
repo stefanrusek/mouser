@@ -43,6 +43,11 @@ impl ControlHandle {
         server::call(&self.ctx, method.name(), params).await
     }
 
+    /// The events with no control-API topic (see [`crate::EngineEvent`]).
+    pub fn events(&self) -> broadcast::Receiver<crate::EngineEvent> {
+        self.ctx.events.subscribe()
+    }
+
     /// Every notification from now on (the caller filters by topic).
     pub fn notifications(&self) -> broadcast::Receiver<Notification> {
         self.ctx.notify.subscribe()

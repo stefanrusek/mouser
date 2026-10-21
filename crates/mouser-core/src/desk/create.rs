@@ -49,7 +49,15 @@ impl Ctx {
                 name: name.clone(),
                 state: state.clone(),
             });
+            self.sync_layout(&mut core);
             self.persist(&core);
+            let state = core
+                .state
+                .desk
+                .as_ref()
+                .expect("just created")
+                .state
+                .clone();
             Desk {
                 desk_id,
                 name,

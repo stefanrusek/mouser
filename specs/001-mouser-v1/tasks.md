@@ -164,33 +164,33 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us2` passes: pointer crosses between virtual computers, keys/buttons/scroll arrive on the active computer, panic returns control.
 
-- [ ] T093 [US2-core] Write the acceptance runner `crates/mouser-core/tests/acc_us2.rs` and steps `crates/mouser-core/tests/steps/us2.rs` for every scenario in `tests/features/us2.feature`
-- [ ] T094 [P] [US2-core] Write unit tests for display exchange in `crates/mouser-core/src/layout/displays_tests.rs`: on connect and on any `watch_displays` change a member sends `Displays`; a computer whose displays changed has them replaced in the layout and `needs_review` set (edge case: docked/undocked)
-- [ ] T095 [US2-core] Implement display exchange in `crates/mouser-core/src/layout/displays.rs`
-- [ ] T096 [P] [US2-core] Write unit tests for auto-placement in `crates/mouser-core/src/layout/autoplace_tests.rs`: a new computer's displays, in their local arrangement, are appended to the right of the current layout's bounding box, top-aligned, with `needs_review` set and a review offer notification (Story 2 sc. 1, data-model "Layout")
-- [ ] T097 [US2-core] Implement auto-placement in `crates/mouser-core/src/layout/autoplace.rs`
-- [ ] T098 [P] [US2-core] Write unit tests for edge mapping in `crates/mouser-core/src/layout/edges_tests.rs`: adjoining edges are derived from desk-space rectangles sharing a boundary segment of length > 0; a point leaving an edge maps to the matching position on the adjoining display; motion is scaled so physical speed is constant across scale/physical size (Story 2 sc. 2, 5, 6)
-- [ ] T099 [US2-core] Implement edge derivation and point mapping in `crates/mouser-core/src/layout/edges.rs`
-- [ ] T100 [P] [US2-core] Write unit tests for the control state machine in `crates/mouser-core/src/crossing/state_tests.rs`: `Local → Remote(c)` on crossing, `Remote(c) → Local` on crossing back or panic, `Remote(c) → Remote(d)` between remote displays; every transition releases all `pressed` keys and buttons on the computer being left; exactly one active computer per desk (data-model "ActiveSession"; edge case: held key at crossing)
-- [ ] T101 [US2-core] Implement the control state machine in `crates/mouser-core/src/crossing/state.rs`
-- [ ] T102 [P] [US2-core] Write unit tests for the controller side in `crates/mouser-core/src/crossing/controller_tests.rs`: crossing calls `set_grabbed(true)` and sends `Enter{display, x, y, seq_base, modifiers}`; while remote, motion goes as datagrams with increasing `seq` and keys/buttons/scroll on the control stream; returning calls `set_grabbed(false)`; any computer can be controller (Story 2 sc. 2–3)
-- [ ] T103 [US2-core] Implement the controller side of input forwarding in `crates/mouser-core/src/crossing/controller.rs`
-- [ ] T104 [P] [US2-core] Write unit tests for the receiver side in `crates/mouser-core/src/crossing/receiver_tests.rs`: `Enter` moves the pointer via `InputInject::motion_abs` and emits a `landing` notification (Story 2 sc. 9); stale motion datagrams (lower `seq`) are discarded; `Key`/`Button`/`Scroll` are injected in order; input from devices attached to the receiving computer itself is not blocked (edge case)
-- [ ] T105 [US2-core] Implement the receiver side in `crates/mouser-core/src/crossing/receiver.rs`
-- [ ] T106 [P] [US2-core] Write unit tests for shortcut mapping in `crates/mouser-core/src/crossing/modifiers_tests.rs`: when the controller is macOS and the active computer is Windows or Linux, Command maps to Control (⌘C copies); when the controller is Windows/Linux and the active computer is macOS, Control maps to Command; same-OS pairs pass through (Story 2 sc. 4)
-- [ ] T107 [US2-core] Implement shortcut modifier mapping in `crates/mouser-core/src/crossing/modifiers.rs`
-- [ ] T108 [P] [US2-core] Write unit tests for buttons 4/5 in `crates/mouser-core/src/crossing/buttons_tests.rs`: with `mouse.buttons_4_5 = "passthrough"` buttons 4/5 are injected unchanged; with `"back_forward"` they are injected as Back/Forward (Story 2 sc. 11)
-- [ ] T109 [US2-core] Implement the buttons 4/5 setting in `crates/mouser-core/src/crossing/buttons.rs`
-- [ ] T110 [P] [US2-core] Write unit tests for the panic key in `crates/mouser-core/src/crossing/panic_tests.rs`: two presses of the configured panic key (`"Escape*2"`) while remote send `Panic`, the receiver releases everything, and control returns locally (Story 2 sc. 8)
-- [ ] T111 [US2-core] Implement panic key detection in `crates/mouser-core/src/crossing/panic.rs`
-- [ ] T112 [P] [US2-core] Write unit tests for pause/resume in `crates/mouser-core/src/crossing/pause_tests.rs`: `active.pause` (and the enable/disable hotkey) stops crossing on every member and `status.state` becomes `paused`; `active.resume` restores it (Story 2 sc. 12)
-- [ ] T113 [US2-core] Implement pause/resume and the control-API methods `active.pause`/`active.resume` in `crates/mouser-core/src/crossing/pause.rs`
-- [ ] T114 [P] [US2-core] Write unit tests for Secure Input in `crates/mouser-core/src/problems/secure_input_tests.rs`: when `Platform::secure_input()` returns a holder, a `secure_input` Problem naming the application is raised and a notification emitted; it clears when the holder disappears; the connection stays up (Story 2 sc. 10)
-- [ ] T115 [US2-core] Implement Secure Input monitoring in `crates/mouser-core/src/problems/secure_input.rs`
-- [ ] T116 [P] [US2-core] Write unit tests for platform limitations in `crates/mouser-core/src/problems/limitations_tests.rs`: every `PlatformInfo.limitations` entry is raised as a `platform_limitation` Problem with its plain-language text and appears in `status.computers[].limitations` (FR-001; D3 item 1)
-- [ ] T117 [US2-core] Implement limitation reporting in `crates/mouser-core/src/problems/limitations.rs`
-- [ ] T118 [US2-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T119 [US2-core] Commit: phase boundary "US2-core" (5.3)
+- [X] T093 [US2-core] Write the acceptance runner `crates/mouser-core/tests/acc_us2.rs` and steps `crates/mouser-core/tests/steps/us2.rs` for every scenario in `tests/features/us2.feature`
+- [X] T094 [P] [US2-core] Write unit tests for display exchange in `crates/mouser-core/src/layout/displays_tests.rs`: on connect and on any `watch_displays` change a member sends `Displays`; a computer whose displays changed has them replaced in the layout and `needs_review` set (edge case: docked/undocked)
+- [X] T095 [US2-core] Implement display exchange in `crates/mouser-core/src/layout/displays.rs`
+- [X] T096 [P] [US2-core] Write unit tests for auto-placement in `crates/mouser-core/src/layout/autoplace_tests.rs`: a new computer's displays, in their local arrangement, are appended to the right of the current layout's bounding box, top-aligned, with `needs_review` set and a review offer notification (Story 2 sc. 1, data-model "Layout")
+- [X] T097 [US2-core] Implement auto-placement in `crates/mouser-core/src/layout/autoplace.rs`
+- [X] T098 [P] [US2-core] Write unit tests for edge mapping in `crates/mouser-core/src/layout/edges_tests.rs`: adjoining edges are derived from desk-space rectangles sharing a boundary segment of length > 0; a point leaving an edge maps to the matching position on the adjoining display; motion is scaled so physical speed is constant across scale/physical size (Story 2 sc. 2, 5, 6)
+- [X] T099 [US2-core] Implement edge derivation and point mapping in `crates/mouser-core/src/layout/edges.rs`
+- [X] T100 [P] [US2-core] Write unit tests for the control state machine in `crates/mouser-core/src/crossing/state_tests.rs`: `Local → Remote(c)` on crossing, `Remote(c) → Local` on crossing back or panic, `Remote(c) → Remote(d)` between remote displays; every transition releases all `pressed` keys and buttons on the computer being left; exactly one active computer per desk (data-model "ActiveSession"; edge case: held key at crossing)
+- [X] T101 [US2-core] Implement the control state machine in `crates/mouser-core/src/crossing/state.rs`
+- [X] T102 [P] [US2-core] Write unit tests for the controller side in `crates/mouser-core/src/crossing/controller_tests.rs`: crossing calls `set_grabbed(true)` and sends `Enter{display, x, y, seq_base, modifiers}`; while remote, motion goes as datagrams with increasing `seq` and keys/buttons/scroll on the control stream; returning calls `set_grabbed(false)`; any computer can be controller (Story 2 sc. 2–3)
+- [X] T103 [US2-core] Implement the controller side of input forwarding in `crates/mouser-core/src/crossing/controller.rs`
+- [X] T104 [P] [US2-core] Write unit tests for the receiver side in `crates/mouser-core/src/crossing/receiver_tests.rs`: `Enter` moves the pointer via `InputInject::motion_abs` and emits a `landing` notification (Story 2 sc. 9); stale motion datagrams (lower `seq`) are discarded; `Key`/`Button`/`Scroll` are injected in order; input from devices attached to the receiving computer itself is not blocked (edge case)
+- [X] T105 [US2-core] Implement the receiver side in `crates/mouser-core/src/crossing/receiver.rs`
+- [X] T106 [P] [US2-core] Write unit tests for shortcut mapping in `crates/mouser-core/src/crossing/modifiers_tests.rs`: when the controller is macOS and the active computer is Windows or Linux, Command maps to Control (⌘C copies); when the controller is Windows/Linux and the active computer is macOS, Control maps to Command; same-OS pairs pass through (Story 2 sc. 4)
+- [X] T107 [US2-core] Implement shortcut modifier mapping in `crates/mouser-core/src/crossing/modifiers.rs`
+- [X] T108 [P] [US2-core] Write unit tests for buttons 4/5 in `crates/mouser-core/src/crossing/buttons_tests.rs`: with `mouse.buttons_4_5 = "passthrough"` buttons 4/5 are injected unchanged; with `"back_forward"` they are injected as Back/Forward (Story 2 sc. 11)
+- [X] T109 [US2-core] Implement the buttons 4/5 setting in `crates/mouser-core/src/crossing/buttons.rs`
+- [X] T110 [P] [US2-core] Write unit tests for the panic key in `crates/mouser-core/src/crossing/panic_tests.rs`: two presses of the configured panic key (`"Escape*2"`) while remote send `Panic`, the receiver releases everything, and control returns locally (Story 2 sc. 8)
+- [X] T111 [US2-core] Implement panic key detection in `crates/mouser-core/src/crossing/panic.rs`
+- [X] T112 [P] [US2-core] Write unit tests for pause/resume in `crates/mouser-core/src/crossing/pause_tests.rs`: `active.pause` (and the enable/disable hotkey) stops crossing on every member and `status.state` becomes `paused`; `active.resume` restores it (Story 2 sc. 12)
+- [X] T113 [US2-core] Implement pause/resume and the control-API methods `active.pause`/`active.resume` in `crates/mouser-core/src/crossing/pause.rs`
+- [X] T114 [P] [US2-core] Write unit tests for Secure Input in `crates/mouser-core/src/problems/secure_input_tests.rs`: when `Platform::secure_input()` returns a holder, a `secure_input` Problem naming the application is raised and a notification emitted; it clears when the holder disappears; the connection stays up (Story 2 sc. 10)
+- [X] T115 [US2-core] Implement Secure Input monitoring in `crates/mouser-core/src/problems/secure_input.rs`
+- [X] T116 [P] [US2-core] Write unit tests for platform limitations in `crates/mouser-core/src/problems/limitations_tests.rs`: every `PlatformInfo.limitations` entry is raised as a `platform_limitation` Problem with its plain-language text and appears in `status.computers[].limitations` (FR-001; D3 item 1)
+- [X] T117 [US2-core] Implement limitation reporting in `crates/mouser-core/src/problems/limitations.rs`
+- [X] T118 [US2-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T119 [US2-core] Commit: phase boundary "US2-core" (5.3)
 
 #### Phase 5: US3-core — As a desk user, I want my desk to keep working through sleep, network changes, and VPNs (P1)
 

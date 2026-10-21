@@ -68,6 +68,11 @@ fn linux_dir_prefers_xdg_config_home() {
         _ => None,
     });
     assert_eq!(xdg, std::path::PathBuf::from("/xdg/mouser"));
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+#[test]
+fn linux_falls_back_to_home_dot_config() {
     let home = dir_from(|k| (k == "HOME").then(|| "/home/me".to_string()));
     assert_eq!(home, std::path::PathBuf::from("/home/me/.config/mouser"));
 }

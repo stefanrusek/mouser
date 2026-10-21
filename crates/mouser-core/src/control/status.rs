@@ -12,7 +12,7 @@ use crate::engine::{Ctx, Phase};
 use crate::problems::permission_text;
 use crate::state::Membership;
 
-fn permission_kind(kind: PlatformKind) -> PermissionKind {
+pub(crate) fn permission_kind(kind: PlatformKind) -> PermissionKind {
     match kind {
         PlatformKind::Accessibility => PermissionKind::Accessibility,
         PlatformKind::InputMonitoring => PermissionKind::InputMonitoring,
@@ -23,7 +23,7 @@ fn permission_kind(kind: PlatformKind) -> PermissionKind {
     }
 }
 
-fn permission_state(state: PlatformState) -> PermissionState {
+pub(crate) fn permission_state(state: PlatformState) -> PermissionState {
     match state {
         PlatformState::Granted => PermissionState::Granted,
         PlatformState::Missing => PermissionState::Missing,
@@ -153,7 +153,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         computer: ComputerRef { id: ctx.me(), name },
         state,
         desk,
-        active_computer: None,
+        active_computer: ctx.crossing.lock().unwrap().active(),
         computers,
         problems: ctx.problems.open(),
         logging: None,

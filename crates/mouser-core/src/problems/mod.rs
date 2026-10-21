@@ -1,6 +1,9 @@
 //! The problems registry: user-visible problems, de-duplicated by
 //! `problem_id` (kind + subject), announced to subscribers.
 
+pub mod limitations;
+pub mod secure_input;
+
 use std::sync::Mutex;
 
 use mouser_proto::control::{FixAction, Notification, Problem, ProblemKind, Topic};
@@ -128,5 +131,9 @@ impl Problems {
     }
 }
 
+#[cfg(test)]
+mod limitations_tests;
+#[cfg(test)]
+mod secure_input_tests;
 #[cfg(test)]
 mod tests;

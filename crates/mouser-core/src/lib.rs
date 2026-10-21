@@ -20,7 +20,7 @@ mod engine_tests;
 mod testing;
 
 pub use control::{ControlHandle, client::ControlClient};
-pub use engine::{Engine, EngineParams};
+pub use engine::{Engine, EngineEvent, EngineParams};
 
 /// The wire/control-API name of a platform's operating system.
 pub(crate) fn platform_os(os: mouser_platform::Os) -> mouser_proto::model::Os {

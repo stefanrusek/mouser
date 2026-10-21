@@ -28,8 +28,11 @@ impl Ctx {
             return Err("DeskState from a computer that is not on the desk".into());
         }
         let desk = core.state.desk.as_mut().expect("authed peers imply a desk");
+        let old = desk.state.layout.clone();
         if adopt(&mut desk.state, incoming) {
-            self.persist(&core);
+            let state = desk.state.clone();
+            self.layout_changed(&mut core, &old, &state);
+            self.sync_layout(&mut core);
             drop(core);
             self.notify_status();
         }

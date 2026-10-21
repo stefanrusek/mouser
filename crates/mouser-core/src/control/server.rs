@@ -157,6 +157,27 @@ impl Listener {
     }
 }
 
+/// The pipe a control path stands for: a path already in the pipe namespace is
+/// used as is, any other path (a test's temp directory) becomes a pipe name
+/// made of its alphanumerics, so every distinct path has its own pipe.
+#[cfg(windows)]
+pub(crate) fn pipe_name(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if text.starts_with(r"\\.\pipe\") {
+        return path.to_path_buf();
+    }
+    let flat: String = text
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let flat = flat
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    PathBuf::from(format!(r"\\.\pipe\mouser-{flat}"))
+}
+
 #[cfg(windows)]
 struct Listener {
     name: PathBuf,
@@ -174,9 +195,10 @@ impl Listener {
     }
 
     fn bind(path: &Path) -> Self {
+        let name = pipe_name(path);
         Self {
-            name: path.to_path_buf(),
-            next: Self::instance(path, true),
+            next: Self::instance(&name, true),
+            name,
         }
     }
 

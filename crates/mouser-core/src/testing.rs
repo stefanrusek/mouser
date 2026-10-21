@@ -79,12 +79,18 @@ pub(crate) struct TestNode {
     pub control_path: std::path::PathBuf,
 }
 
+/// A UDP port nobody is using. Taken from a range the operating system never
+/// hands out as an ephemeral port (the relay sockets of other computers
+/// would otherwise take it between the probe and the engine's bind), at an
+/// offset that differs per process and per call.
 pub(crate) fn free_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+    static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    std::iter::repeat_with(|| {
+        let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+    })
+    .find(|port| std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .expect("an endless iterator")
 }
 
 impl Lab {
@@ -343,4 +349,101 @@ fn control_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
 #[cfg(not(windows))]
 fn control_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
     dir.path().join("mouser.sock")
+}
+
+/// A 1920x1080 display of 527x296 mm called `key` at `origin`.
+pub(crate) fn screen(key: &str, origin: (f64, f64)) -> mouser_platform::LocalDisplay {
+    mouser_platform::LocalDisplay {
+        key: key.into(),
+        name: key.into(),
+        pixel_size: (1920, 1080),
+        logical_size: (1920.0, 1080.0),
+        scale: 1.0,
+        physical_size_mm: Some((527.0, 296.0)),
+        origin,
+    }
+}
+
+/// A desk of the nodes called `names`, the first creating it and admitting
+/// the others, once every node knows every display and is connected to all.
+pub(crate) async fn desk_of(lab: &Lab, names: &[&str]) -> Vec<TestNode> {
+    let mut nodes = Vec::new();
+    for name in names {
+        nodes.push(lab.start(name).await);
+    }
+    let _: mouser_proto::control::Desk = call(
+        &nodes[0],
+        Method::DeskCreate,
+        json!({"name": "Home office"}),
+    )
+    .await;
+    for joiner in 1..nodes.len() {
+        admit(&nodes[0], &nodes[joiner]).await;
+    }
+    ready(&nodes).await;
+    nodes
+}
+
+/// Wait until every node is connected to all others with the whole layout
+/// known to its input path.
+pub(crate) async fn ready(nodes: &[TestNode]) {
+    for node in nodes {
+        eventually("every computer to be connected and placed", || async {
+            connected(node).await == nodes.len() - 1
+                && node.engine.ctx.crossing.lock().unwrap().map.placed.len() == nodes.len()
+        })
+        .await;
+    }
+}
+
+/// Cross the right edge of the node's display with the shared mouse.
+pub(crate) fn push_right(node: &TestNode) {
+    node.platform
+        .send_input(mouser_platform::LocalInput::Motion {
+            dx: 1.0,
+            dy: 0.0,
+            abs: (1919.0, 540.0),
+        });
+}
+
+/// Cross the left edge of the node's display with the shared mouse.
+pub(crate) fn push_left(node: &TestNode) {
+    node.platform
+        .send_input(mouser_platform::LocalInput::Motion {
+            dx: -1.0,
+            dy: 0.0,
+            abs: (0.0, 540.0),
+        });
+}
+
+/// Wait until the platform has been asked to inject something matching `pred`.
+pub(crate) async fn injected_where(
+    platform: &VirtualPlatform,
+    what: &str,
+    pred: impl Fn(&mouser_testkit::Injected) -> bool,
+) {
+    eventually(what, || async { platform.injected().iter().any(&pred) }).await;
+}
+
+/// Send `msg` from `from` to its desk-mate `to` over the control stream.
+pub(crate) fn send_to(from: &TestNode, to: &TestNode, msg: mouser_proto::wire::ControlMessage) {
+    from.engine.ctx.core.lock().unwrap().peers[&to.engine.computer_id()].send(msg);
+}
+
+/// Send a motion datagram from `from` to `to`.
+pub(crate) fn datagram_to(
+    from: &TestNode,
+    to: &TestNode,
+    motion: &mouser_proto::wire::MotionDatagram,
+) {
+    let bytes = postcard::to_stdvec(motion).unwrap();
+    from.engine.ctx.core.lock().unwrap().peers[&to.engine.computer_id()]
+        .conn
+        .send_datagram(bytes.into())
+        .unwrap();
+}
+
+/// Let in-flight messages arrive: a round trip over the control stream.
+pub(crate) async fn settle() {
+    tokio::time::sleep(Duration::from_millis(300)).await;
 }

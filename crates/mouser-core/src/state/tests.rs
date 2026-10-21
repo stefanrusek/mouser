@@ -37,6 +37,7 @@ fn every_membership_round_trips_with_layout_and_epoch() {
         let state = LocalState {
             membership,
             desk: Some(desk(3)),
+            ..LocalState::default()
         };
         state.save(&path);
         let loaded = LocalState::load(&path);
@@ -52,6 +53,7 @@ fn the_file_holds_no_key_material() {
     LocalState {
         membership: Membership::Member(DeskId([3; 16])),
         desk: Some(desk(3)),
+        ..LocalState::default()
     }
     .save(&path);
     let text = std::fs::read_to_string(&path).unwrap();

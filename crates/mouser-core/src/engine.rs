@@ -13,14 +13,17 @@ use mouser_platform::{Platform, SecretStore};
 use mouser_proto::config::Config;
 use mouser_proto::control::Notification;
 use mouser_proto::ids::{ComputerId, DeskId};
-use mouser_proto::model::{DeskState, Layout, Member};
-use mouser_proto::wire::{ControlMessage, PROTOCOL_VERSION};
-use tokio::sync::{broadcast, mpsc};
+use mouser_proto::model::{DeskState, DisplayId, Layout, Member};
+use mouser_proto::wire::{ControlMessage, PROTOCOL_VERSION, PeerStatus};
+use tokio::sync::{Notify, broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::config;
 use crate::control::{self, ControlHandle};
+use crate::crossing::Crossing;
+use crate::crossing::buttons::Buttons45;
+use crate::crossing::panic::PanicSpec;
 use crate::desk::join::Requests;
 use crate::discovery::{Advert, Discovery, MdnsDiscovery};
 use crate::identity::Identity;
@@ -68,6 +71,23 @@ impl EngineParams {
     }
 }
 
+/// Things the app shows that the control API's topics have no place for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EngineEvent {
+    /// The pointer arrived on this computer: show where. `x`, `y` are
+    /// logical pixels of `display`; `desktop` is the same point in this
+    /// computer's desktop coordinates.
+    Landing {
+        display: DisplayId,
+        x: f32,
+        y: f32,
+        desktop: (f64, f64),
+    },
+    /// A computer's displays were placed or replaced in the layout: offer
+    /// the desk owner a review of the placement.
+    ReviewOffered { computer: ComputerId, name: String },
+}
+
 /// Where a connection to a peer is in its life.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -79,6 +99,9 @@ pub(crate) enum Phase {
     Incompatible,
     /// The peer proved desk membership.
     Authed,
+    /// One of us left the desk: the connection is closing and nothing more
+    /// is sent on it or expected from it.
+    Departed,
 }
 
 pub(crate) enum Outgoing {
@@ -94,6 +117,7 @@ pub(crate) struct Peer {
     pub out: mpsc::UnboundedSender<Outgoing>,
     pub phase: Phase,
     pub displays: Vec<mouser_proto::model::Display>,
+    pub status: Option<PeerStatus>,
     pub last_seen: String,
 }
 
@@ -122,6 +146,10 @@ pub(crate) struct Core {
     pub dialing: BTreeSet<ComputerId>,
     pub requests: Requests,
     pub paused: bool,
+    /// Displays whose placement the desk owner has not reviewed yet.
+    pub needs_review: BTreeSet<DisplayId>,
+    /// The application holding Secure Input on this computer.
+    pub secure_holder: Option<mouser_platform::SecureInputHolder>,
 }
 
 /// State shared by every task of one engine.
@@ -136,6 +164,8 @@ pub(crate) struct Ctx {
     pub discovery: Arc<dyn Discovery>,
     pub problems: Problems,
     pub notify: broadcast::Sender<Notification>,
+    pub events: broadcast::Sender<EngineEvent>,
+    pub crossing: Arc<Mutex<Crossing>>,
     pub secrets: Mutex<Box<dyn SecretStore>>,
     pub core: Mutex<Core>,
     pub next_link: AtomicU64,
@@ -208,6 +238,7 @@ impl Ctx {
             author: self.me(),
             members: vec![self.member_in(core)],
             layout: Layout {
+                placements: crate::layout::autoplace::place(&[], &self.local_displays()),
                 equalize_dimensions: core.config.crossing.equalize_dimensions,
                 block_fullscreen: core.config.crossing.block_fullscreen,
                 ..Layout::default()
@@ -273,6 +304,7 @@ impl Ctx {
 pub struct Engine {
     pub(crate) ctx: Arc<Ctx>,
     control_path: PathBuf,
+    watch: mouser_platform::WatchHandle,
 }
 
 impl Engine {
@@ -301,6 +333,17 @@ impl Engine {
             ))
         });
         let (notify, _) = broadcast::channel(256);
+        let (events, _) = broadcast::channel(256);
+        let dirty = Arc::new(Notify::new());
+        let panic = PanicSpec::parse(&config.hotkeys.panic).expect("hotkeys.panic is valid");
+        let crossing = Arc::new(Mutex::new(Crossing::new(
+            identity.computer_id(),
+            crate::platform_os(params.platform.info().os),
+            Buttons45::from_config(&config.mouse.buttons_4_5),
+            panic,
+            events.clone(),
+            dirty.clone(),
+        )));
         let ctx = Arc::new(Ctx {
             identity,
             platform: params.platform,
@@ -312,6 +355,8 @@ impl Engine {
             discovery,
             problems: Problems::new(notify.clone()),
             notify,
+            events,
+            crossing,
             secrets: Mutex::new(secrets),
             core: Mutex::new(Core {
                 config,
@@ -322,18 +367,39 @@ impl Engine {
                 dialing: BTreeSet::new(),
                 requests: Requests::default(),
                 paused: false,
+                needs_review: BTreeSet::new(),
+                secure_holder: None,
             }),
             next_link: AtomicU64::new(0),
             stop: CancellationToken::new(),
             tasks: TaskTracker::new(),
         });
         ctx.resume();
+        ctx.raise_limitations();
+        ctx.try_start_input();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let watch = ctx
+            .platform
+            .watch_displays(tx)
+            .expect("display changes can be watched");
+        let watcher = ctx.clone();
+        std::thread::Builder::new()
+            .name("mouser-displays".into())
+            .spawn(move || {
+                // Ends when the watch is dropped.
+                for _ in rx {
+                    watcher.on_local_displays();
+                }
+            })
+            .expect("display watcher starts");
         ctx.spawn(accept_loop(ctx.clone()));
         ctx.spawn(reconcile_loop(ctx.clone()));
+        ctx.spawn(status_loop(ctx.clone(), dirty));
         control::server::serve(&ctx, &params.control_path);
         Engine {
             ctx,
             control_path: params.control_path,
+            watch,
         }
     }
 
@@ -351,8 +417,32 @@ impl Engine {
         ControlHandle::new(self.ctx.clone())
     }
 
+    /// Everything the app shows that the control API has no topic for:
+    /// the pointer landing here, and layout reviews.
+    pub fn events(&self) -> broadcast::Receiver<EngineEvent> {
+        self.ctx.events.subscribe()
+    }
+
+    /// The desk's layout (empty when this computer is not on a desk).
+    pub fn layout(&self) -> Layout {
+        let core = self.ctx.core.lock().unwrap();
+        core.state
+            .desk
+            .as_ref()
+            .map(|d| d.state.layout.clone())
+            .unwrap_or_default()
+    }
+
+    /// Displays whose automatic placement has not been reviewed.
+    pub fn needs_review(&self) -> Vec<DisplayId> {
+        let core = self.ctx.core.lock().unwrap();
+        core.needs_review.iter().cloned().collect()
+    }
+
     /// Close every connection, leave the network and stop all tasks.
     pub async fn shutdown(self) {
+        drop(self.watch);
+        self.ctx.stop_input();
         for peer in self.ctx.core.lock().unwrap().peers.values() {
             peer.conn.close(0u32.into(), b"shutdown");
         }
@@ -383,6 +473,16 @@ async fn reconcile_loop(ctx: Arc<Ctx>) {
     loop {
         tick.tick().await;
         ctx.reconcile();
+        ctx.try_start_input();
+        ctx.sync_secure_input();
+    }
+}
+
+/// Tell `status` subscribers when crossing changed what it reports.
+async fn status_loop(ctx: Arc<Ctx>, dirty: Arc<Notify>) {
+    loop {
+        dirty.notified().await;
+        ctx.notify_status();
     }
 }
 

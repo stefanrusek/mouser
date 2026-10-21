@@ -679,9 +679,17 @@ async fn each_shows_a_message(w: &mut DeskWorld) {
     }
     // Only the older computer is offered the update.
     let alpha = w.lab.node("Alpha").status().await;
-    assert_eq!(alpha.problems[0].fix, Some(FixAction::OpenUpdate));
+    let version_fix = |status: &Status| {
+        status
+            .problems
+            .iter()
+            .find(|p| p.kind == ProblemKind::IncompatibleVersion)
+            .expect("a version problem")
+            .fix
+    };
+    assert_eq!(version_fix(&alpha), Some(FixAction::OpenUpdate));
     let beta = w.lab.node("Beta").status().await;
-    assert_eq!(beta.problems[0].fix, None);
+    assert_eq!(version_fix(&beta), None);
 }
 
 // ---- scenario 9: start at login ---------------------------------------------------------------

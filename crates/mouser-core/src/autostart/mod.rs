@@ -24,6 +24,12 @@ impl Ctx {
         if pending {
             self.fail_pending("The request to join the desk was interrupted when Mouser stopped.");
         }
+        {
+            let mut core = self.core.lock().unwrap();
+            self.sync_layout(&mut core);
+            self.persist(&core);
+            self.refresh_map(&core);
+        }
         self.announce();
     }
 }

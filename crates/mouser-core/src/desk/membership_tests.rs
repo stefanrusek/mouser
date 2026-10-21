@@ -48,6 +48,31 @@ fn adding_and_removing_members_bumps_the_epoch_and_sets_the_author() {
 }
 
 #[test]
+fn a_removed_member_takes_its_placements_and_edge_options_with_it() {
+    use mouser_proto::model::{DisplayId, EdgeOptions, Placement, Side};
+    let display = |n: u8| DisplayId {
+        computer: ComputerId([n; 16]),
+        key: "d".into(),
+    };
+    let mut before = state(&[1, 2]);
+    before.layout.placements = [1, 2]
+        .map(|n| Placement {
+            display_id: display(n),
+            x: 0,
+            y: 0,
+        })
+        .to_vec();
+    before.layout.edge_options = [1, 2]
+        .map(|n| EdgeOptions::new(display(n), Side::Left))
+        .to_vec();
+    let after = without_member(&before, ComputerId([2; 16]), ComputerId([1; 16]));
+    assert_eq!(after.layout.placements.len(), 1);
+    assert_eq!(after.layout.placements[0].display_id, display(1));
+    assert_eq!(after.layout.edge_options.len(), 1);
+    assert_eq!(after.layout.edge_options[0].display_id, display(1));
+}
+
+#[test]
 fn the_lowest_computer_id_rotates_the_key() {
     assert_eq!(rotator(&state(&[7, 3, 5])), ComputerId([3; 16]));
 }
@@ -312,10 +337,37 @@ async fn leave_and_remove_messages_from_the_wrong_party_are_protocol_violations(
             displays: Vec::new(),
         },
         ControlMessage::Panic,
+        ControlMessage::LeaveControl {
+            edge: mouser_proto::model::Side::Left,
+            position: 0.0,
+        },
     ] {
         let (mut link, _) = rogue.dial(&a, None).await;
         link.writer.send(&msg).await.unwrap();
         assert_eq!(link.reader.recv::<ControlMessage>().await, None, "{msg:?}");
     }
     assert_eq!(status(&a).await.computers.len(), 1);
+}
+
+#[tokio::test]
+async fn nothing_is_expected_from_a_computer_that_has_left() {
+    use crate::engine::Phase;
+    use mouser_proto::wire::ControlMessage;
+    let lab = Lab::new();
+    let a = lab.start("Alpha").await;
+    let b = lab.start("Beta").await;
+    let _: Desk = call(&a, Method::DeskCreate, json!({"name": "Home office"})).await;
+    admit(&a, &b).await;
+    let beta = b.engine.computer_id();
+    a.engine
+        .ctx
+        .core
+        .lock()
+        .unwrap()
+        .peers
+        .get_mut(&beta)
+        .unwrap()
+        .phase = Phase::Departed;
+    // Messages still in flight from it are ignored, not violations.
+    assert_eq!(a.engine.ctx.on_message(beta, ControlMessage::Panic), Ok(()));
 }

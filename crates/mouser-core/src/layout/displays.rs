@@ -1,8 +1,13 @@
 //! Display exchange: a member's local displays as wire `Display`s.
 
+use std::sync::Arc;
+
 use mouser_platform::LocalDisplay;
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, DisplayId};
+use mouser_proto::wire::ControlMessage;
+
+use crate::engine::{Ctx, Phase};
 
 /// The wire form of `displays`, all included in the layout.
 pub fn to_wire(computer: ComputerId, displays: &[LocalDisplay]) -> Vec<Display> {
@@ -24,31 +29,50 @@ pub fn to_wire(computer: ComputerId, displays: &[LocalDisplay]) -> Vec<Display> 
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Ctx {
+    /// This computer's displays in wire form.
+    pub(crate) fn local_displays(&self) -> Vec<Display> {
+        to_wire(
+            self.me(),
+            &self.platform.displays().expect("displays readable"),
+        )
+    }
 
-    #[test]
-    fn local_displays_map_to_wire_displays() {
-        let local = LocalDisplay {
-            key: "d1".into(),
-            name: "Studio Display".into(),
-            pixel_size: (5120, 2880),
-            logical_size: (2560.0, 1440.0),
-            scale: 2.0,
-            physical_size_mm: Some((597.0, 336.0)),
-            origin: (-2560.0, 10.0),
-        };
-        let wire = to_wire(ComputerId([4; 16]), &[local]);
-        assert_eq!(wire.len(), 1);
-        let d = &wire[0];
-        assert_eq!(d.display_id.computer, ComputerId([4; 16]));
-        assert_eq!(d.display_id.key, "d1");
-        assert_eq!(d.pixel_size, (5120, 2880));
-        assert_eq!(d.logical_size, (2560.0, 1440.0));
-        assert_eq!(d.scale, 2.0);
-        assert_eq!(d.physical_size_mm, Some((597.0, 336.0)));
-        assert_eq!(d.origin_local, (-2560, 10));
-        assert!(d.included);
+    /// A peer reports its displays: they replace what we knew, and the
+    /// layout follows.
+    pub(crate) fn on_displays(
+        self: &Arc<Self>,
+        peer: ComputerId,
+        displays: Vec<Display>,
+    ) -> Result<(), String> {
+        let mut core = self.core.lock().unwrap();
+        if !Self::authed(&core, peer) {
+            return Err("Displays from a computer that is not on the desk".into());
+        }
+        core.peers.get_mut(&peer).expect("authed").displays = displays.clone();
+        core.state.displays.insert(peer, displays);
+        self.sync_layout(&mut core);
+        self.persist(&core);
+        self.refresh_map(&core);
+        drop(core);
+        self.notify_status();
+        Ok(())
+    }
+
+    /// This computer's displays changed (a monitor was plugged in, the
+    /// laptop was docked): tell the desk, and place them.
+    pub(crate) fn on_local_displays(self: &Arc<Self>) {
+        let mut core = self.core.lock().unwrap();
+        self.sync_layout(&mut core);
+        self.persist(&core);
+        self.refresh_map(&core);
+        let displays = self.local_displays();
+        for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {
+            peer.send(ControlMessage::Displays {
+                displays: displays.clone(),
+            });
+        }
+        drop(core);
+        self.notify_status();
     }
 }

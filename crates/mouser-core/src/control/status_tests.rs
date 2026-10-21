@@ -9,6 +9,15 @@ use serde_json::{Value, json};
 use super::status::tray_summary;
 use crate::testing::{Lab, admit, call, connected, eventually, status};
 
+/// The permission problems of `status`; limitations are always listed.
+fn permission_problems(status: &Status) -> Vec<&mouser_proto::control::Problem> {
+    status
+        .problems
+        .iter()
+        .filter(|p| p.kind == ProblemKind::MissingPermission)
+        .collect()
+}
+
 fn validator() -> jsonschema::Validator {
     let schema: Value = serde_json::from_str(include_str!(
         "../../../mouser-proto/schemas/status.schema.json"
@@ -93,9 +102,10 @@ async fn each_missing_permission_is_a_problem_with_the_fix_that_opens_its_system
     // Granting one clears its problem.
     platform.set_permission(PlatformKind::Accessibility, PlatformState::Granted);
     let s = status(&node).await;
-    assert_eq!(s.problems.len(), 1);
+    let problems = permission_problems(&s);
+    assert_eq!(problems.len(), 1);
     assert_eq!(
-        s.problems[0].fix,
+        problems[0].fix,
         Some(FixAction::OpenSystemSettings(
             PermissionKind::InputMonitoring
         ))
@@ -202,7 +212,7 @@ async fn every_permission_kind_is_reported_by_its_wire_name() {
             PermissionKind::RemoteDesktopPortal,
         ]
     );
-    assert!(s.problems.is_empty());
+    assert!(permission_problems(&s).is_empty());
 }
 
 #[tokio::test]
