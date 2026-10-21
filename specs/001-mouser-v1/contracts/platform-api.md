@@ -2,7 +2,7 @@
 
 The seam between the platform-neutral core (`mouser-core`) and each OS backend (`mouser-platform-macos`, `-windows`, `-linux`). Defined as Rust traits in `crates/mouser-platform` (no implementation there). Both sides get `contract_` tests: the core against the in-process `VirtualPlatform` (a sanctioned test double — see plan.md, Test Doubles) and each backend against the trait's behavioural contract on its own OS.
 
-All coordinates are in the computer's own desktop logical coordinates. Keys are USB HID usages (page 0x07 keyboard, 0x0C consumer) so the core never sees OS keycodes.
+All coordinates are in the computer's own desktop logical coordinates. Keys are USB HID usages (page 0x07 keyboard, 0x0C consumer) so the core never sees OS keycodes. A usage is encoded in a `u32` as `(usage_page << 16) | usage_id` (for example keyboard A = `0x0007_0004`, consumer Volume Up = `0x000C_00E9`).
 
 ```rust
 pub trait Platform: Send + Sync + 'static {

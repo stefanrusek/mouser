@@ -7,3 +7,7 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
+tokio = { version = "1.54", features = ["rt", "net", "time", "sync", "macros"] }

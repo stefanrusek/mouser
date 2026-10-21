@@ -7,3 +7,7 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+# Behavioural-rule checks shared by every backend's contract test (T031).
+conformance = []

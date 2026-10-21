@@ -37,7 +37,7 @@ Producer and consumer: `mouser-core` on every desk computer (both sides are the 
 | `Displays` | member → members | list of Display | Sent on connect and on any local display change. |
 | `Enter` | controller → target | display_id, x, y, seq_base, modifiers_down | Pointer arrives on target (crossing / QuickJump). |
 | `Leave­Control` | target → controller | exit edge, position | Pointer left target across an edge back toward controller or a third computer. |
-| `Key` | controller → active | seq, usage code (USB HID usage page/id), down/up, platform-neutral modifiers | Keyboard (Story 2 sc. 4 mapping applied on receiver). |
+| `Key` | controller → active | seq, usage code (USB HID usage page/id, `u32` = `(page << 16) \| id`, as contracts/platform-api.md), down/up, platform-neutral modifiers | Keyboard (Story 2 sc. 4 mapping applied on receiver). |
 | `Button` | controller → active | seq, button (1–5), down/up | Mouse buttons; 4/5 behaviour per receiver setting (Story 2 sc. 11). |
 | `Scroll` | controller → active | seq, dx, dy (high-resolution units) | |
 | `ReleaseAll` | controller → active | seq | Sent before any control transfer; receiver releases everything it holds pressed. |
