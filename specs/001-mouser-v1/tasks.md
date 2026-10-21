@@ -540,28 +540,28 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 
 #### Phase 32: US2-platform-macos — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
-- [ ] T327 [P] [US2-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us2.rs` running conformance rules 1 (grab), 2 (release on drop), 3 (HID usage independent of layout), 4 (displays), 7 (no feedback of injected events)
-- [ ] T328 [P] [US2-platform-macos] Write unit tests for displays in `crates/mouser-platform-macos/src/displays_tests.rs`: scale from `CGDisplayModeGetPixelWidth / GetWidth` (not `CGDisplayPixelsWide`); `physical_size_mm` from `CGDisplayScreenSize` omitted when 0; stable id from vendor/model/serial; reconfiguration callback fires `watch_displays`
-- [ ] T329 [US2-platform-macos] Implement `displays()` and `watch_displays()` in `crates/mouser-platform-macos/src/displays.rs`
-- [ ] T330 [P] [US2-platform-macos] Write unit tests for the HID keycode table in `crates/mouser-platform-macos/src/keymap_tests.rs`: every USB HID keyboard (0x07) and consumer (0x0C) usage Mouser forwards maps to a macOS virtual keycode and back
-- [ ] T331 [US2-platform-macos] Implement the HID ↔ macOS keycode table in `crates/mouser-platform-macos/src/keymap.rs`
-- [ ] T332 [P] [US2-platform-macos] Write unit tests for capture in `crates/mouser-platform-macos/src/capture_tests.rs`: one HID-level filtering CGEventTap delivers `LocalInput`; `set_grabbed(true)` drops keys/buttons/scroll/gestures/NX_SYSDEFINED, calls `CGAssociateMouseAndMouseCursorPosition(false)`, parks the cursor and reports `kCGMouseEventDeltaX/Y`; `set_grabbed(false)` restores association; the tap re-enables itself on `TapDisabledByTimeout`; events carrying Mouser's `kCGEventSourceUserData` tag are ignored (FINDINGS-macos-input §2)
-- [ ] T333 [US2-platform-macos] Implement `InputCapture` in `crates/mouser-platform-macos/src/capture.rs`
-- [ ] T334 [P] [US2-platform-macos] Write unit tests for injection in `crates/mouser-platform-macos/src/inject_tests.rs`: `CGEventPost` from an `HIDSystemState` source at `kCGHIDEventTap`, each event tagged with Mouser's `kCGEventSourceUserData`; held keys/buttons are released on drop; `secure_attention` returns `Unsupported`
-- [ ] T335 [US2-platform-macos] Implement `InputInject` in `crates/mouser-platform-macos/src/inject.rs`
-- [ ] T336 [P] [US2-platform-macos] Write unit tests for Secure Input in `crates/mouser-platform-macos/src/secure_input_tests.rs`: `IsSecureEventInputEnabled()` plus `kCGSSessionSecureInputPID` from `CGSessionCopyCurrentDictionary` yields `{pid, app_name}` via NSRunningApplication (fallback `proc_pidpath`); key absent → generic holder name
-- [ ] T337 [US2-platform-macos] Implement `secure_input()` in `crates/mouser-platform-macos/src/secure_input.rs`
-- [ ] T338 [P] [US2-platform-macos] Write unit tests for platform info in `crates/mouser-platform-macos/src/info_tests.rs`: `PlatformInfo.limitations` includes "Some games and remote-desktop apps ignore Mouser's input on this Mac" (D3 item 1)
-- [ ] T339 [US2-platform-macos] Implement `info()` and the `MacPlatform` facade in `crates/mouser-platform-macos/src/lib.rs`
-- [ ] T340 [US2-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T341 [US2-platform-macos] Commit: phase boundary "US2-platform-macos" (5.3)
+- [X] T327 [P] [US2-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us2.rs` running conformance rules 1 (grab), 2 (release on drop), 3 (HID usage independent of layout), 4 (displays), 7 (no feedback of injected events)
+- [X] T328 [P] [US2-platform-macos] Write unit tests for displays in `crates/mouser-platform-macos/src/displays_tests.rs`: scale from `CGDisplayModeGetPixelWidth / GetWidth` (not `CGDisplayPixelsWide`); `physical_size_mm` from `CGDisplayScreenSize` omitted when 0; stable id from vendor/model/serial; reconfiguration callback fires `watch_displays`
+- [X] T329 [US2-platform-macos] Implement `displays()` and `watch_displays()` in `crates/mouser-platform-macos/src/displays.rs`
+- [X] T330 [P] [US2-platform-macos] Write unit tests for the HID keycode table in `crates/mouser-platform-macos/src/keymap_tests.rs`: every USB HID keyboard (0x07) and consumer (0x0C) usage Mouser forwards maps to a macOS virtual keycode and back
+- [X] T331 [US2-platform-macos] Implement the HID ↔ macOS keycode table in `crates/mouser-platform-macos/src/keymap.rs`
+- [X] T332 [P] [US2-platform-macos] Write unit tests for capture in `crates/mouser-platform-macos/src/capture_tests.rs`: one HID-level filtering CGEventTap delivers `LocalInput`; `set_grabbed(true)` drops keys/buttons/scroll/gestures/NX_SYSDEFINED, calls `CGAssociateMouseAndMouseCursorPosition(false)`, parks the cursor and reports `kCGMouseEventDeltaX/Y`; `set_grabbed(false)` restores association; the tap re-enables itself on `TapDisabledByTimeout`; events carrying Mouser's `kCGEventSourceUserData` tag are ignored (FINDINGS-macos-input §2)
+- [X] T333 [US2-platform-macos] Implement `InputCapture` in `crates/mouser-platform-macos/src/capture.rs`
+- [X] T334 [P] [US2-platform-macos] Write unit tests for injection in `crates/mouser-platform-macos/src/inject_tests.rs`: `CGEventPost` from an `HIDSystemState` source at `kCGHIDEventTap`, each event tagged with Mouser's `kCGEventSourceUserData`; held keys/buttons are released on drop; `secure_attention` returns `Unsupported`
+- [X] T335 [US2-platform-macos] Implement `InputInject` in `crates/mouser-platform-macos/src/inject.rs`
+- [X] T336 [P] [US2-platform-macos] Write unit tests for Secure Input in `crates/mouser-platform-macos/src/secure_input_tests.rs`: `IsSecureEventInputEnabled()` plus `kCGSSessionSecureInputPID` from `CGSessionCopyCurrentDictionary` yields `{pid, app_name}` via NSRunningApplication (fallback `proc_pidpath`); key absent → generic holder name
+- [X] T337 [US2-platform-macos] Implement `secure_input()` in `crates/mouser-platform-macos/src/secure_input.rs`
+- [X] T338 [P] [US2-platform-macos] Write unit tests for platform info in `crates/mouser-platform-macos/src/info_tests.rs`: `PlatformInfo.limitations` includes "Some games and remote-desktop apps ignore Mouser's input on this Mac" (D3 item 1)
+- [X] T339 [US2-platform-macos] Implement `info()` and the `MacPlatform` facade in `crates/mouser-platform-macos/src/lib.rs`
+- [X] T340 [US2-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T341 [US2-platform-macos] Commit: phase boundary "US2-platform-macos" (5.3)
 
 #### Phase 33: US3-platform-macos — As a desk user, I want my desk to keep working through sleep, network changes, and VPNs (P1)
 
-- [ ] T342 [P] [US3-platform-macos] Write unit tests for network watching in `crates/mouser-platform-macos/src/netwatch_tests.rs`: an SCDynamicStore notification on `State:/Network/Interface/.*/IPv4|IPv6` and on wake fires `watch_network`
-- [ ] T343 [US3-platform-macos] Implement `watch_network()` in `crates/mouser-platform-macos/src/netwatch.rs`
-- [ ] T344 [US3-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T345 [US3-platform-macos] Commit: phase boundary "US3-platform-macos" (5.3)
+- [X] T342 [P] [US3-platform-macos] Write unit tests for network watching in `crates/mouser-platform-macos/src/netwatch_tests.rs`: an SCDynamicStore notification on `State:/Network/Interface/.*/IPv4|IPv6` and on wake fires `watch_network`
+- [X] T343 [US3-platform-macos] Implement `watch_network()` in `crates/mouser-platform-macos/src/netwatch.rs`
+- [X] T344 [US3-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T345 [US3-platform-macos] Commit: phase boundary "US3-platform-macos" (5.3)
 
 #### Phase 34: US5-platform-macos — As a desk user, I want the pointer to stay put when I don't mean to cross (P2)
 

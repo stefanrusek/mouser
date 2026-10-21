@@ -1,15 +1,24 @@
 //! macOS backend for the `mouser-platform` seam.
 //!
-//! Phase US1 provides permissions, interface classification, the Keychain
-//! secret store and login-item autostart. Capture, injection, clipboard,
-//! displays and the rest arrive with their own phases; until then they report
-//! `Unsupported` and are declared as limitations (rule 9), which is the
-//! contract-conformant answer for a capability a backend does not yet have.
+//! Provides permissions, interface classification, the Keychain secret store,
+//! login-item autostart, displays, input capture and injection and Secure
+//! Input detection. Clipboard and the rest arrive with their own phases; until
+//! then they report `Unsupported` and are declared as limitations (rule 9),
+//! which is the contract-conformant answer for a capability a backend does not
+//! yet have.
 
 mod autostart;
+mod capture;
+mod displays;
+mod echo;
+mod inject;
+mod keymap;
 mod net;
+mod netwatch;
 mod permissions;
 mod secrets;
+mod secure_input;
+mod tap;
 
 use mouser_platform::{
     Autostart, Capability, Clipboard, Error, FileDrag, InputCapture, InputInject, Limitation,
@@ -18,6 +27,7 @@ use mouser_platform::{
 };
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 /// Keychain service name under which Mouser stores its secrets.
@@ -26,6 +36,7 @@ pub const KEYCHAIN_SERVICE: &str = "com.mouser.app";
 /// The macOS implementation of [`Platform`].
 pub struct MacPlatform {
     open_program: PathBuf,
+    echo: Arc<echo::Echo>,
 }
 
 impl MacPlatform {
@@ -40,6 +51,7 @@ impl MacPlatform {
     pub fn with_open_program(program: impl Into<PathBuf>) -> Self {
         MacPlatform {
             open_program: program.into(),
+            echo: Arc::default(),
         }
     }
 }
@@ -76,12 +88,8 @@ impl Platform for MacPlatform {
             session: SessionType::Native,
             limitations: vec![
                 limitation(
-                    Capability::Capture,
-                    "Sharing this Mac's keyboard and mouse is not available yet.",
-                ),
-                limitation(
                     Capability::Inject,
-                    "Controlling this Mac from another computer is not available yet.",
+                    "Some games and remote-desktop apps ignore Mouser's input on this Mac.",
                 ),
                 limitation(
                     Capability::Clipboard,
@@ -100,11 +108,11 @@ impl Platform for MacPlatform {
     }
 
     fn displays(&self) -> Result<Vec<LocalDisplay>> {
-        Err(Error::Unsupported)
+        displays::displays()
     }
 
-    fn watch_displays(&self, _tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
-        Err(Error::Unsupported)
+    fn watch_displays(&self, tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
+        displays::watch(tx)
     }
 
     fn permissions(&self) -> Vec<(PermissionKind, PermissionState)> {
@@ -116,11 +124,11 @@ impl Platform for MacPlatform {
     }
 
     fn capture(&self) -> Result<Box<dyn InputCapture>> {
-        Err(Error::Unsupported)
+        Ok(Box::new(capture::MacCapture::system(self.echo.clone())))
     }
 
     fn inject(&self) -> Result<Box<dyn InputInject>> {
-        Err(Error::Unsupported)
+        Ok(Box::new(inject::MacInject::system(self.echo.clone())))
     }
 
     fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
@@ -128,7 +136,7 @@ impl Platform for MacPlatform {
     }
 
     fn secure_input(&self) -> Option<SecureInputHolder> {
-        None
+        secure_input::holder(&secure_input::SystemProbe)
     }
 
     fn foreground_is_fullscreen(&self) -> bool {
@@ -139,8 +147,8 @@ impl Platform for MacPlatform {
         net::interfaces()
     }
 
-    fn watch_network(&self, _tx: Sender<()>) -> Result<WatchHandle> {
-        Err(Error::Unsupported)
+    fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle> {
+        netwatch::watch(tx)
     }
 
     fn foreground_elevated(&self) -> bool {
@@ -163,10 +171,28 @@ impl Platform for MacPlatform {
 #[cfg(test)]
 mod autostart_tests;
 #[cfg(test)]
+mod capture_tests;
+#[cfg(test)]
+mod displays_tests;
+#[cfg(test)]
+mod echo_tests;
+#[cfg(test)]
+mod info_tests;
+#[cfg(test)]
+mod inject_tests;
+#[cfg(test)]
+mod keymap_tests;
+#[cfg(test)]
 mod lib_tests;
 #[cfg(test)]
 mod net_tests;
 #[cfg(test)]
+mod netwatch_tests;
+#[cfg(test)]
 mod permissions_tests;
 #[cfg(test)]
 mod secrets_tests;
+#[cfg(test)]
+mod secure_input_tests;
+#[cfg(test)]
+mod tap_tests;
