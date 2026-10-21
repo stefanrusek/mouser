@@ -303,7 +303,7 @@ impl Ctx {
             core.pending = Some(PendingJoin { name });
             self.persist(&core);
         }
-        self.adopt(link, hello, Some(desk_id));
+        self.adopt(link, hello, Some(desk_id), true);
     }
 
     /// The join did not complete: back to what we were before, and say so.

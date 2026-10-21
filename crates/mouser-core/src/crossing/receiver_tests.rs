@@ -503,3 +503,56 @@ async fn buttons_4_and_5_follow_the_receivers_setting() {
             .any(|i| matches!(i, Injected::Button { .. }))
     );
 }
+
+/// Regression: input that is not newer than the last accepted (queued on a
+/// link that was replaced) is dropped, whatever kind it is.
+#[tokio::test]
+async fn stream_input_that_is_not_newer_is_dropped() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    send_to(a, b, enter(b, 1.0, 2.0, 10));
+    send_to(a, b, key(11, A, true));
+    send_to(a, b, key(11, C, true));
+    send_to(a, b, key(5, C, true));
+    send_to(
+        a,
+        b,
+        ControlMessage::Button {
+            seq: 6,
+            button: 1,
+            down: true,
+        },
+    );
+    send_to(
+        a,
+        b,
+        ControlMessage::Scroll {
+            seq: 7,
+            dx: 1,
+            dy: 1,
+        },
+    );
+    send_to(a, b, key(12, A, false));
+    injected_where(&b.platform, "the newer key", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: false,
+        }
+    })
+    .await;
+    assert_eq!(
+        b.platform.injected(),
+        [
+            Injected::MotionAbs { x: 1.0, y: 2.0 },
+            Injected::Key {
+                usage: A,
+                down: true
+            },
+            Injected::Key {
+                usage: A,
+                down: false
+            }
+        ]
+    );
+}

@@ -115,6 +115,8 @@ pub(crate) struct Peer {
     pub hello: PeerHello,
     pub conn: quinn::Connection,
     pub out: mpsc::UnboundedSender<Outgoing>,
+    /// We dialled this connection (otherwise the peer did).
+    pub dialed: bool,
     pub phase: Phase,
     pub displays: Vec<mouser_proto::model::Display>,
     pub status: Option<PeerStatus>,
@@ -143,6 +145,12 @@ pub(crate) struct Core {
     pub desk_key: Option<[u8; 32]>,
     pub pending: Option<PendingJoin>,
     pub peers: BTreeMap<ComputerId, Peer>,
+    /// Desk-mates we lost the connection to, and since when.
+    pub absent: crate::session::liveness::AbsentPeers,
+    /// Desk-mates to dial again after this computer's address changed.
+    pub redial: BTreeSet<ComputerId>,
+    /// Physical LAN addresses of this computer when last looked at.
+    pub physical: BTreeSet<std::net::IpAddr>,
     pub dialing: BTreeSet<ComputerId>,
     pub requests: Requests,
     pub paused: bool,
@@ -305,6 +313,8 @@ pub struct Engine {
     pub(crate) ctx: Arc<Ctx>,
     control_path: PathBuf,
     watch: mouser_platform::WatchHandle,
+    /// Dropping it stops watching the network.
+    _network: mouser_platform::WatchHandle,
 }
 
 impl Engine {
@@ -344,6 +354,7 @@ impl Engine {
             events.clone(),
             dirty.clone(),
         )));
+        let interfaces = params.platform.interfaces();
         let ctx = Arc::new(Ctx {
             identity,
             platform: params.platform,
@@ -364,6 +375,9 @@ impl Engine {
                 desk_key,
                 pending: None,
                 peers: BTreeMap::new(),
+                absent: BTreeMap::new(),
+                redial: BTreeSet::new(),
+                physical: crate::transport::netchange::physical_addrs(&interfaces),
                 dialing: BTreeSet::new(),
                 requests: Requests::default(),
                 paused: false,
@@ -392,6 +406,23 @@ impl Engine {
                 }
             })
             .expect("display watcher starts");
+        let (changes, changed) = tokio::sync::mpsc::unbounded_channel();
+        let (net_tx, net_rx) = std::sync::mpsc::channel();
+        let network = ctx
+            .platform
+            .watch_network(net_tx)
+            .expect("network changes can be watched");
+        std::thread::Builder::new()
+            .name("mouser-network".into())
+            .spawn(move || {
+                // Ends when the watch is dropped.
+                for () in net_rx {
+                    // The receiver outlives the watch while the engine runs.
+                    let _ = changes.send(());
+                }
+            })
+            .expect("network watcher starts");
+        ctx.spawn(network_loop(ctx.clone(), changed));
         ctx.spawn(accept_loop(ctx.clone()));
         ctx.spawn(reconcile_loop(ctx.clone()));
         ctx.spawn(status_loop(ctx.clone(), dirty));
@@ -400,6 +431,7 @@ impl Engine {
             ctx,
             control_path: params.control_path,
             watch,
+            _network: network,
         }
     }
 
@@ -468,11 +500,22 @@ async fn accept_loop(ctx: Arc<Ctx>) {
     }
 }
 
+/// Handle each network change; changes that arrive while one is being
+/// handled count as one more.
+async fn network_loop(ctx: Arc<Ctx>, mut changed: mpsc::UnboundedReceiver<()>) {
+    while changed.recv().await.is_some() {
+        while changed.try_recv().is_ok() {}
+        ctx.on_network_change();
+    }
+}
+
 async fn reconcile_loop(ctx: Arc<Ctx>) {
     let mut tick = tokio::time::interval(RECONCILE);
     loop {
         tick.tick().await;
         ctx.reconcile();
+        ctx.redial_pending();
+        ctx.check_liveness();
         ctx.try_start_input();
         ctx.sync_secure_input();
     }

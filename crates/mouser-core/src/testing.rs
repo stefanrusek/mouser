@@ -6,40 +6,79 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use mouser_platform::NetInterface;
 use mouser_proto::control::{Method, RpcError};
 use mouser_proto::ids::ComputerId;
-use mouser_testkit::VirtualPlatform;
+use mouser_testkit::{SimNet, SimNode, VirtualPlatform};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::discovery::{Advert, Discovery, Found};
 use crate::engine::{Engine, EngineParams};
 
-/// In-process stand-in for the network's mDNS.
+/// In-process stand-in for the network's mDNS. On a simulated network each
+/// advert also knows its computer's `SimNode`, so a browser hands out the
+/// route through the simulation instead of the real address.
 #[derive(Default)]
 pub(crate) struct Registry {
-    adverts: Mutex<BTreeMap<ComputerId, Advert>>,
+    adverts: Mutex<BTreeMap<ComputerId, (Advert, Option<SimNode>)>>,
 }
 
 impl Registry {
     pub fn advert_of(&self, computer: ComputerId) -> Option<Advert> {
-        self.adverts.lock().unwrap().get(&computer).cloned()
+        self.adverts
+            .lock()
+            .unwrap()
+            .get(&computer)
+            .map(|(advert, _)| advert.clone())
+    }
+
+    /// Stop `computer` being visible, as when its mDNS records expire.
+    pub fn hide(&self, computer: ComputerId) {
+        self.adverts.lock().unwrap().remove(&computer);
     }
 }
 
 pub(crate) struct Browser {
     registry: Arc<Registry>,
     own: Mutex<Option<ComputerId>>,
+    me: Option<SimNode>,
+    announced: Mutex<Vec<Advert>>,
+    interface_changes: Mutex<Vec<Vec<NetInterface>>>,
+}
+
+impl Browser {
+    /// Every advert announced, in order.
+    pub fn announcements(&self) -> Vec<Advert> {
+        self.announced.lock().unwrap().clone()
+    }
+
+    /// Every interface list the engine reported after a network change.
+    pub fn interface_changes(&self) -> Vec<Vec<NetInterface>> {
+        self.interface_changes.lock().unwrap().clone()
+    }
 }
 
 impl Discovery for Browser {
     fn announce(&self, advert: &Advert) {
         *self.own.lock().unwrap() = Some(advert.computer);
+        self.announced.lock().unwrap().push(advert.clone());
+        // The network delivers a computer's packets to wherever its endpoint
+        // is bound, also after the endpoint moved to follow a network change.
+        if let Some(me) = &self.me
+            && me.addr().port() != advert.port
+        {
+            me.change_address(SocketAddr::from(([127, 0, 0, 1], advert.port)));
+        }
         self.registry
             .adverts
             .lock()
             .unwrap()
-            .insert(advert.computer, advert.clone());
+            .insert(advert.computer, (advert.clone(), self.me.clone()));
+    }
+
+    fn interfaces_changed(&self, interfaces: Vec<NetInterface>) {
+        self.interface_changes.lock().unwrap().push(interfaces);
     }
 
     fn found(&self) -> Vec<Found> {
@@ -47,13 +86,16 @@ impl Discovery for Browser {
         let adverts = self.registry.adverts.lock().unwrap();
         adverts
             .values()
-            .filter(|a| Some(a.computer) != own)
-            .map(|a| Found {
+            .filter(|(a, _)| Some(a.computer) != own)
+            .map(|(a, node)| Found {
                 computer: a.computer,
                 display_name: a.display_name.clone(),
                 protocol: a.protocol,
                 desk: a.desk.clone(),
-                addrs: vec![SocketAddr::from(([127, 0, 0, 1], a.port))],
+                addrs: vec![match (&self.me, node) {
+                    (Some(me), Some(node)) => me.route_to(node),
+                    _ => SocketAddr::from(([127, 0, 0, 1], a.port)),
+                }],
             })
             .collect()
     }
@@ -70,6 +112,9 @@ impl Discovery for Browser {
 
 pub(crate) struct Lab {
     pub registry: Arc<Registry>,
+    /// The simulated network the computers are on, when they are not on
+    /// plain loopback.
+    pub net: Option<SimNet>,
 }
 
 pub(crate) struct TestNode {
@@ -77,6 +122,9 @@ pub(crate) struct TestNode {
     pub platform: VirtualPlatform,
     pub dir: tempfile::TempDir,
     pub control_path: std::path::PathBuf,
+    pub discovery: Arc<Browser>,
+    /// This computer on the simulated network.
+    pub sim: Option<SimNode>,
 }
 
 /// A UDP port nobody is using. Taken from a range the operating system never
@@ -97,14 +145,46 @@ impl Lab {
     pub fn new() -> Self {
         Self {
             registry: Arc::new(Registry::default()),
+            net: None,
+        }
+    }
+
+    /// Computers connected through a `SimNet`: every packet between them
+    /// can be delayed, dropped, or re-addressed.
+    pub fn simulated() -> Self {
+        Self {
+            net: Some(SimNet::new()),
+            ..Self::new()
         }
     }
 
     pub fn browser(&self) -> Arc<dyn Discovery> {
+        self.browser_for(None)
+    }
+
+    pub fn browser_for(&self, me: Option<SimNode>) -> Arc<Browser> {
         Arc::new(Browser {
             registry: self.registry.clone(),
             own: Mutex::new(None),
+            me,
+            announced: Mutex::new(Vec::new()),
+            interface_changes: Mutex::new(Vec::new()),
         })
+    }
+
+    /// Put a computer on the simulated network (if any), at the port its
+    /// config says it will listen on.
+    fn sim_node(
+        &self,
+        name: &str,
+        platform: &VirtualPlatform,
+        dir: &tempfile::TempDir,
+    ) -> Option<SimNode> {
+        let net = self.net.as_ref()?;
+        let port = crate::config::load_or_create(dir.path()).advanced.port;
+        let sim = net.add_node(name, SocketAddr::from(([127, 0, 0, 1], port as u16)));
+        sim.bind_platform(platform);
+        Some(sim)
     }
 
     /// Start a node with default settings.
@@ -118,22 +198,37 @@ impl Lab {
         let mut config = mouser_proto::config::Config::default();
         config.advanced.port = u32::from(free_port());
         crate::config::save(dir.path(), &config);
-        let platform = VirtualPlatform::new();
+        self.launch(name, VirtualPlatform::new(), dir, protocol, "9.9.9")
+            .await
+    }
+
+    async fn launch(
+        &self,
+        name: &str,
+        platform: VirtualPlatform,
+        dir: tempfile::TempDir,
+        protocol: u16,
+        version: &str,
+    ) -> TestNode {
         let control_path = control_path(&dir);
+        let sim = self.sim_node(name, &platform, &dir);
+        let discovery = self.browser_for(sim.clone());
         let mut params = EngineParams::new(
             Arc::new(platform.clone()),
             dir.path().to_path_buf(),
             control_path.clone(),
             name.to_string(),
-            "9.9.9".to_string(),
+            version.to_string(),
         );
         params.protocol_version = protocol;
-        params.discovery = Some(self.browser());
+        params.discovery = Some(discovery.clone());
         TestNode {
             engine: Engine::start(params).await,
             platform,
             dir,
             control_path,
+            discovery,
+            sim,
         }
     }
 
@@ -174,22 +269,7 @@ impl Lab {
         // The previous endpoint's socket is released by its driver task a tick
         // after shutdown; a real restart is a new process and never races.
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let control_path = control_path(&dir);
-        let mut params = EngineParams::new(
-            Arc::new(platform.clone()),
-            dir.path().to_path_buf(),
-            control_path.clone(),
-            name.to_string(),
-            "0.1.0".to_string(),
-        );
-        params.protocol_version = protocol;
-        params.discovery = Some(self.browser());
-        TestNode {
-            engine: Engine::start(params).await,
-            platform,
-            dir,
-            control_path,
-        }
+        self.launch(name, platform, dir, protocol, "0.1.0").await
     }
 }
 
@@ -263,7 +343,10 @@ pub(crate) async fn connected(node: &TestNode) -> usize {
 pub(crate) async fn admit(member: &TestNode, joiner: &TestNode) {
     use mouser_proto::control::{Empty, JoinPending, PendingJoin, Topic};
     let mut notes = member.engine.control().notifications();
-    let address = format!("127.0.0.1:{}", member.engine.local_addr().port());
+    let address = match (&joiner.sim, &member.sim) {
+        (Some(from), Some(to)) => from.route_to(to).to_string(),
+        _ => format!("127.0.0.1:{}", member.engine.local_addr().port()),
+    };
     let _: JoinPending = call(joiner, Method::DeskJoin, json!({ "address": address })).await;
     let item: PendingJoin =
         serde_json::from_value(recv_topic(&mut notes, Topic::JoinRequest).await).unwrap();
@@ -446,4 +529,83 @@ pub(crate) fn datagram_to(
 /// Let in-flight messages arrive: a round trip over the control stream.
 pub(crate) async fn settle() {
     tokio::time::sleep(Duration::from_millis(300)).await;
+}
+
+/// An interface called `name` of `kind` holding `addr`.
+pub(crate) fn interface(
+    name: &str,
+    kind: mouser_platform::InterfaceKind,
+    addr: [u8; 4],
+) -> NetInterface {
+    NetInterface {
+        name: name.into(),
+        kind,
+        addrs: vec![std::net::IpAddr::from(addr)],
+    }
+}
+
+/// How `node` holds its connection to `other`: its link id, whether `node`
+/// dialled it, and its phase.
+pub(crate) fn link_of(
+    node: &TestNode,
+    other: &TestNode,
+) -> Option<(u64, bool, crate::engine::Phase)> {
+    node.engine
+        .ctx
+        .core
+        .lock()
+        .unwrap()
+        .peers
+        .get(&other.engine.computer_id())
+        .map(|p| (p.link_id, p.dialed, p.phase))
+}
+
+/// `(dialler, acceptor)` indexes of the two-computer desk `nodes`: the
+/// computer that dialled the connection and the one that accepted it.
+pub(crate) fn roles(nodes: &[TestNode]) -> (usize, usize) {
+    let first_dialled = link_of(&nodes[0], &nodes[1]).expect("connected").1;
+    let dialler = usize::from(!first_dialled);
+    (dialler, 1 - dialler)
+}
+
+/// Push the shared mouse of `from` toward `to` (Alpha is left of Beta).
+pub(crate) fn push_toward(nodes: &[TestNode], from: usize) {
+    if from == 0 {
+        push_right(&nodes[0]);
+    } else {
+        push_left(&nodes[1]);
+    }
+}
+
+/// Wait until `node` shows `other` as `state`.
+pub(crate) async fn wait_connection(
+    node: &TestNode,
+    other: &TestNode,
+    state: mouser_proto::control::ConnectionState,
+) -> mouser_proto::control::StatusComputer {
+    let id = other.engine.computer_id();
+    let seen = Mutex::new(None);
+    eventually(&format!("{state:?}"), || async {
+        let computer = status(node)
+            .await
+            .computers
+            .into_iter()
+            .find(|c| c.id == id)
+            .expect("a desk member");
+        let done = computer.connection == state;
+        *seen.lock().unwrap() = Some(computer);
+        done
+    })
+    .await;
+    seen.into_inner().unwrap().expect("polled at least once")
+}
+
+/// Move the shared mouse of `controller`, which has the pointer on the
+/// other computer, back across the edge it came through.
+pub(crate) fn push_back(nodes: &[TestNode], controller: usize) {
+    if controller == 0 {
+        push_left(&nodes[0]);
+    } else {
+        push_right(&nodes[1]);
+    }
 }

@@ -196,20 +196,20 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us3` passes under SimNet: continuous typing loses nothing; after sleep/wake, re-addressing and virtual-interface churn the next crossing works within 5 s; loss returns control locally.
 
-- [ ] T120 [US3-core] Write the acceptance runner `crates/mouser-core/tests/acc_us3.rs` and steps `crates/mouser-core/tests/steps/us3.rs` for every scenario in `tests/features/us3.feature`, using SimNet sleep/wake, re-address, virtual-interface and black-hole controls
-- [ ] T121 [P] [US3-core] Write unit tests for ordered delivery in `crates/mouser-core/src/crossing/ordering_tests.rs`: 10 000 keystrokes sent while SimNet delays and reorders datagrams arrive in `seq` order with none missing (Story 3 sc. 1, SC-002)
-- [ ] T122 [US3-core] Implement per-session input sequencing over the control stream in `crates/mouser-core/src/crossing/ordering.rs`
-- [ ] T123 [P] [US3-core] Write unit tests for network-change handling in `crates/mouser-core/src/transport/netchange_tests.rs`: a `watch_network` event reclassifies interfaces, re-announces discovery on physical LAN only, and calls `Endpoint::rebind` on the new local address when this computer dialled the connection (research R2)
-- [ ] T124 [US3-core] Implement network-change handling and rebind in `crates/mouser-core/src/transport/netchange.rs`
-- [ ] T125 [P] [US3-core] Write unit tests for re-dial in `crates/mouser-core/src/session/redial_tests.rs`: when this computer accepted the connection and its own address changed, it re-dials the peer, repeats `Hello` + `DeskAuth`, and resumes the session; the peer's `connection` returns to `connected` (Story 3 sc. 3)
-- [ ] T126 [US3-core] Implement re-dial and session resume in `crates/mouser-core/src/session/redial.rs`
-- [ ] T127 [P] [US3-core] Write unit tests for connection states in `crates/mouser-core/src/session/liveness_tests.rs`: no packets for the 3 s idle timeout moves a peer to `reconnecting`; rediscovery or reconnection returns it to `connected`; longer absence becomes `offline` with `last_seen` and a `peer_offline` Problem; crossing toward an unreachable computer leaves the pointer where it is (edge case)
-- [ ] T128 [US3-core] Implement peer liveness states in `crates/mouser-core/src/session/liveness.rs`
-- [ ] T129 [P] [US3-core] Write unit tests for loss of the active computer in `crates/mouser-core/src/crossing/loss_tests.rs`: when the active computer becomes `reconnecting`, the controller calls `set_grabbed(false)`, synthesizes releases for every pressed key/button, and control returns locally; keys typed afterwards go to the local computer (Story 3 sc. 5; edge case: no stuck keys)
-- [ ] T130 [US3-core] Implement control return on loss of the active computer in `crates/mouser-core/src/crossing/loss.rs`
-- [ ] T131 [P] [US3-core] Write regression tests in `crates/mouser-core/tests/regression_us3.rs` reproducing each hypothesis from research.md "Plan-Phase Handoff disposition": advertising over a virtual interface, a 2 s path flap while typing, and Secure Input on the receiver — each must not end the session (constitution VI)
-- [ ] T132 [US3-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T133 [US3-core] Commit: phase boundary "US3-core" (5.3)
+- [X] T120 [US3-core] Write the acceptance runner `crates/mouser-core/tests/acc_us3.rs` and steps `crates/mouser-core/tests/steps/us3.rs` for every scenario in `tests/features/us3.feature`, using SimNet sleep/wake, re-address, virtual-interface and black-hole controls
+- [X] T121 [P] [US3-core] Write unit tests for ordered delivery in `crates/mouser-core/src/crossing/ordering_tests.rs`: 10 000 keystrokes sent while SimNet delays and reorders datagrams arrive in `seq` order with none missing (Story 3 sc. 1, SC-002)
+- [X] T122 [US3-core] Implement per-session input sequencing over the control stream in `crates/mouser-core/src/crossing/ordering.rs`
+- [X] T123 [P] [US3-core] Write unit tests for network-change handling in `crates/mouser-core/src/transport/netchange_tests.rs`: a `watch_network` event reclassifies interfaces, re-announces discovery on physical LAN only, and calls `Endpoint::rebind` on the new local address when this computer dialled the connection (research R2)
+- [X] T124 [US3-core] Implement network-change handling and rebind in `crates/mouser-core/src/transport/netchange.rs`
+- [X] T125 [P] [US3-core] Write unit tests for re-dial in `crates/mouser-core/src/session/redial_tests.rs`: when this computer accepted the connection and its own address changed, it re-dials the peer, repeats `Hello` + `DeskAuth`, and resumes the session; the peer's `connection` returns to `connected` (Story 3 sc. 3)
+- [X] T126 [US3-core] Implement re-dial and session resume in `crates/mouser-core/src/session/redial.rs`
+- [X] T127 [P] [US3-core] Write unit tests for connection states in `crates/mouser-core/src/session/liveness_tests.rs`: no packets for the 3 s idle timeout moves a peer to `reconnecting`; rediscovery or reconnection returns it to `connected`; longer absence becomes `offline` with `last_seen` and a `peer_offline` Problem; crossing toward an unreachable computer leaves the pointer where it is (edge case)
+- [X] T128 [US3-core] Implement peer liveness states in `crates/mouser-core/src/session/liveness.rs`
+- [X] T129 [P] [US3-core] Write unit tests for loss of the active computer in `crates/mouser-core/src/crossing/loss_tests.rs`: when the active computer becomes `reconnecting`, the controller calls `set_grabbed(false)`, synthesizes releases for every pressed key/button, and control returns locally; keys typed afterwards go to the local computer (Story 3 sc. 5; edge case: no stuck keys)
+- [X] T130 [US3-core] Implement control return on loss of the active computer in `crates/mouser-core/src/crossing/loss.rs`
+- [X] T131 [P] [US3-core] Write regression tests in `crates/mouser-core/tests/regression_us3.rs` reproducing each hypothesis from research.md "Plan-Phase Handoff disposition": advertising over a virtual interface, a 2 s path flap while typing, and Secure Input on the receiver — each must not end the session (constitution VI)
+- [X] T132 [US3-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T133 [US3-core] Commit: phase boundary "US3-core" (5.3)
 
 #### Phase 6: US4-core — As a desk owner, I want to arrange displays to match my physical desk (P2)
 

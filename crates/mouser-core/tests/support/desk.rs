@@ -43,6 +43,14 @@ struct SimDiscovery {
 
 impl Discovery for SimDiscovery {
     fn announce(&self, advert: &Advert) {
+        // The advert carries the port the endpoint listens on now. The
+        // network delivers a computer's packets to wherever its endpoint is
+        // bound, also after the endpoint moved to follow a network change.
+        let port = advert.port;
+        if self.me.addr().port() != port {
+            self.me
+                .change_address(SocketAddr::from(([127, 0, 0, 1], port)));
+        }
         *self.own.lock().unwrap() = Some(advert.computer);
         self.registry
             .adverts
@@ -273,7 +281,8 @@ impl Node {
         );
         params.protocol_version = self.setup.protocol_version;
         params.discovery = Some(Arc::new(discovery));
-        self.engine = Some(Engine::start(params).await);
+        let engine = Engine::start(params).await;
+        self.engine = Some(engine);
         self.client = Some(
             ControlClient::connect(&self.control_path)
                 .await

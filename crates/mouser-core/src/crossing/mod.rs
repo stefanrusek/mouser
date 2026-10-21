@@ -10,7 +10,9 @@
 
 pub mod buttons;
 pub mod controller;
+pub mod loss;
 pub mod modifiers;
+pub mod ordering;
 pub mod panic;
 pub mod pause;
 pub mod receiver;
@@ -21,7 +23,11 @@ mod buttons_tests;
 #[cfg(test)]
 mod controller_tests;
 #[cfg(test)]
+mod loss_tests;
+#[cfg(test)]
 mod modifiers_tests;
+#[cfg(test)]
+mod ordering_tests;
 #[cfg(test)]
 mod panic_tests;
 #[cfg(test)]
@@ -136,23 +142,7 @@ impl Crossing {
     /// went away releases whatever it had pressed.
     pub fn set_map(&mut self, map: DeskMap) {
         self.map = map;
-        let gone = match &self.session.control {
-            state::Control::Remote(r) => {
-                !self.map.wires.contains_key(&r.computer)
-                    || edges::index_of(&self.map.placed, &r.display).is_none()
-            }
-            state::Control::Local => false,
-        };
-        if gone {
-            self.return_local(controller::Return::Lost, None);
-        }
-        if self
-            .receiving
-            .as_ref()
-            .is_some_and(|r| !self.map.wires.contains_key(&r.from))
-        {
-            self.end_receiving();
-        }
+        self.drop_lost();
     }
 
     /// The computer input currently acts on, as far as this computer knows.

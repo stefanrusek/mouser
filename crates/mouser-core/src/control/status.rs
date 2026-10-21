@@ -8,7 +8,7 @@ use mouser_proto::control::{
 };
 use mouser_proto::model::{PermissionKind, PermissionState};
 
-use crate::engine::{Ctx, Phase};
+use crate::engine::Ctx;
 use crate::problems::permission_text;
 use crate::state::Membership;
 
@@ -83,6 +83,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         .collect();
     let my_displays = ctx.platform.displays().expect("displays readable").len() as u32;
     let core = ctx.core.lock().unwrap();
+    let now = std::time::Instant::now();
     let name = ctx.display_name_in(&core);
     let mut computers = vec![StatusComputer {
         id: ctx.me(),
@@ -104,11 +105,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
             .filter(|m| m.computer_id != ctx.me())
         {
             let peer = core.peers.get(&member.computer_id);
-            let connection = match peer.map(|p| p.phase) {
-                Some(Phase::Authed) => ConnectionState::Connected,
-                Some(Phase::Incompatible) => ConnectionState::Incompatible,
-                _ => ConnectionState::Offline,
-            };
+            let connection = core.connection_of(member.computer_id, now);
             computers.push(StatusComputer {
                 id: member.computer_id,
                 name: member.display_name.clone(),
@@ -118,7 +115,11 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
                 rtt_ms: peer
                     .filter(|_| connection == ConnectionState::Connected)
                     .map(|p| p.conn.rtt().as_secs_f64() * 1000.0),
-                last_seen: peer.map(|p| p.last_seen.clone()),
+                last_seen: peer.map(|p| p.last_seen.clone()).or_else(|| {
+                    core.absent
+                        .get(&member.computer_id)
+                        .map(|a| a.last_seen.clone())
+                }),
                 permissions: BTreeMap::new(),
                 limitations: Vec::new(),
                 displays: peer.map_or(0, |p| p.displays.len() as u32),

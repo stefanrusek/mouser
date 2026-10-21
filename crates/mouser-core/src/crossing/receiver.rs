@@ -8,6 +8,7 @@ use mouser_proto::wire::{MotionDatagram, display_id_hash};
 
 use super::buttons::{self, Action};
 use super::modifiers::map_usage;
+use super::ordering::Sequencer;
 use super::state::Pressed;
 use super::{Crossing, Io};
 use crate::engine::EngineEvent;
@@ -17,8 +18,12 @@ use crate::engine::EngineEvent;
 pub struct Receiving {
     pub from: ComputerId,
     pub os: Os,
-    /// `seq` of the newest motion applied; older ones are stale.
-    pub last_motion: u64,
+    /// Motion datagrams: only the newest position matters, so older ones
+    /// that arrive late are dropped.
+    pub motion: Sequencer,
+    /// Keys, buttons and scroll on the control stream: each must be newer
+    /// than the one before.
+    pub stream: Sequencer,
     /// Injected and not yet released.
     pub injected: Pressed,
 }
@@ -71,7 +76,8 @@ impl Crossing {
         self.receiving = Some(Receiving {
             from,
             os,
-            last_motion: seq_base,
+            motion: Sequencer::after(seq_base),
+            stream: Sequencer::after(seq_base),
             injected: Pressed::default(),
         });
         // No subscribers is fine.
@@ -100,10 +106,9 @@ impl Crossing {
         let Some((rx, io)) = self.receiver(from) else {
             return;
         };
-        if motion.seq <= rx.last_motion {
+        if !rx.motion.admit(motion.seq) {
             return;
         }
-        rx.last_motion = motion.seq;
         io.inject
             .motion_abs(
                 f64::from(origin.0) + f64::from(motion.x),
@@ -113,30 +118,39 @@ impl Crossing {
     }
 
     /// A key, translated for this computer's keyboard shortcuts.
-    pub fn on_key(&mut self, from: ComputerId, usage: u32, down: bool) {
+    pub fn on_key(&mut self, from: ComputerId, seq: u64, usage: u32, down: bool) {
         let me = self.os;
         let Some((rx, io)) = self.receiver(from) else {
             return;
         };
+        if !rx.stream.admit(seq) {
+            return;
+        }
         let usage = map_usage(rx.os, me, usage);
         press(&mut rx.injected, io, Action::Key(usage, down));
     }
 
     /// A mouse button, with buttons 4 and 5 as configured.
-    pub fn on_button(&mut self, from: ComputerId, button: u8, down: bool) {
+    pub fn on_button(&mut self, from: ComputerId, seq: u64, button: u8, down: bool) {
         let (setting, os) = (self.buttons, self.os);
         let Some((rx, io)) = self.receiver(from) else {
             return;
         };
+        if !rx.stream.admit(seq) {
+            return;
+        }
         for action in buttons::actions(setting, os, button, down) {
             press(&mut rx.injected, io, action);
         }
     }
 
-    pub fn on_scroll(&mut self, from: ComputerId, dx: i32, dy: i32) {
-        let Some((_, io)) = self.receiver(from) else {
+    pub fn on_scroll(&mut self, from: ComputerId, seq: u64, dx: i32, dy: i32) {
+        let Some((rx, io)) = self.receiver(from) else {
             return;
         };
+        if !rx.stream.admit(seq) {
+            return;
+        }
         io.inject
             .scroll(f64::from(dx), f64::from(dy))
             .expect("scroll can be injected");

@@ -30,6 +30,10 @@ pub const SERVICE_TYPE: &str = "_mouser._udp.local.";
 /// How long to wait for the confirmation of an unregister or shutdown.
 const CONFIRM: Duration = Duration::from_secs(3);
 
+/// How often (seconds) mDNS re-reads the computer's interfaces: a change
+/// the platform did not report is still noticed within a second (research R2).
+const IP_CHECK_SECS: u32 = 1;
+
 /// What this computer announces about itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Advert {
@@ -56,6 +60,11 @@ pub struct Found {
 pub trait Discovery: Send + Sync + 'static {
     /// Start announcing, replacing any earlier announcement.
     fn announce(&self, advert: &Advert);
+    /// The computer's network interfaces changed (a VPN or virtual machine
+    /// network started or stopped, the connection switched, the computer
+    /// woke): announce from now on on its physical LAN interfaces only. The
+    /// caller announces again afterwards.
+    fn interfaces_changed(&self, _interfaces: Vec<NetInterface>) {}
     /// The other computers currently visible.
     fn found(&self) -> Vec<Found>;
     /// Stop announcing and wait until the network has been told.
@@ -151,7 +160,7 @@ pub fn group_by_desk(found: &[Found], except: Option<DeskId>) -> Vec<DiscoveredD
 /// The real mDNS implementation, restricted to physical LAN interfaces.
 pub struct MdnsDiscovery {
     daemon: ServiceDaemon,
-    interfaces: Vec<NetInterface>,
+    interfaces: Arc<Mutex<Vec<NetInterface>>>,
     registered: Mutex<Option<String>>,
     found: Arc<Mutex<BTreeMap<String, Found>>>,
 }
@@ -161,10 +170,15 @@ impl MdnsDiscovery {
     pub fn new(own: ComputerId, interfaces: Vec<NetInterface>) -> Self {
         let daemon = ServiceDaemon::new().expect("mDNS daemon starts");
         daemon
+            .set_ip_check_interval(IP_CHECK_SECS)
+            .expect("mDNS daemon alive");
+        daemon
             .disable_interface(IfKind::All)
             .expect("mDNS daemon alive");
+        let interfaces = Arc::new(Mutex::new(interfaces));
         let allowed = interfaces.clone();
-        let predicate = IfPredicate::new(move |i| is_enabled(&allowed, &i.name, i.ip()));
+        let predicate =
+            IfPredicate::new(move |i| is_enabled(&allowed.lock().unwrap(), &i.name, i.ip()));
         daemon
             .enable_interface(IfKind::Predicate(predicate))
             .expect("mDNS daemon alive");
@@ -194,6 +208,11 @@ impl MdnsDiscovery {
         }
     }
 
+    /// Addresses announced now: those of physical LAN interfaces.
+    fn announced_addrs(&self) -> Vec<IpAddr> {
+        advertised_addrs(&self.interfaces.lock().unwrap())
+    }
+
     fn unregister(&self) {
         if let Some(fullname) = self.registered.lock().unwrap().take() {
             self.daemon
@@ -208,9 +227,13 @@ impl MdnsDiscovery {
 impl Discovery for MdnsDiscovery {
     fn announce(&self, advert: &Advert) {
         self.unregister();
-        let info = service_info(advert, &advertised_addrs(&self.interfaces));
+        let info = service_info(advert, &self.announced_addrs());
         *self.registered.lock().unwrap() = Some(info.get_fullname().to_string());
         self.daemon.register(info).expect("mDNS daemon alive");
+    }
+
+    fn interfaces_changed(&self, interfaces: Vec<NetInterface>) {
+        *self.interfaces.lock().unwrap() = interfaces;
     }
 
     fn found(&self) -> Vec<Found> {

@@ -213,3 +213,60 @@ fn the_verifiers_accept_only_the_expected_computer() {
     assert!(ClientCertVerifier::verify_client_cert(&matching, &cert, &[], now).is_ok());
     assert!(ClientCertVerifier::root_hint_subjects(&matching).is_empty());
 }
+
+/// A failure to bind says which addresses were tried and what the operating
+/// system answered for each.
+#[test]
+fn a_bind_failure_names_every_address_tried_and_the_os_error() {
+    let held = super::udp_socket(std::net::SocketAddr::from((
+        std::net::Ipv6Addr::UNSPECIFIED,
+        0,
+    )))
+    .unwrap();
+    let port = held.local_addr().unwrap().port();
+    let candidates = [
+        std::net::Ipv6Addr::UNSPECIFIED.into(),
+        std::net::Ipv4Addr::UNSPECIFIED.into(),
+    ];
+    let error = super::bind_any(&candidates, port).unwrap_err();
+    assert!(error.contains(&format!("[::]:{port}")), "{error}");
+    assert!(error.contains(&format!("0.0.0.0:{port}")), "{error}");
+    assert!(error.matches(": ").count() >= 2, "{error}");
+}
+
+#[tokio::test]
+#[should_panic(expected = "a UDP socket can be bound: ")]
+async fn binding_a_port_that_is_taken_panics_with_the_reason() {
+    let held = super::udp_socket(std::net::SocketAddr::from((
+        std::net::Ipv6Addr::UNSPECIFIED,
+        0,
+    )))
+    .unwrap();
+    let id = crate::identity::Identity::from_seed([4; 32]);
+    super::Transport::bind(&id, held.local_addr().unwrap().port());
+}
+
+/// Regression: an endpoint that is closed and dropped gives its port back
+/// within a scheduler tick, so the same port binds again at once, every
+/// time (a restart on the fixed port must not fail spuriously).
+#[tokio::test]
+async fn a_port_binds_again_right_after_its_endpoint_is_closed() {
+    let id = crate::identity::Identity::from_seed([3; 32]);
+    let probe = std::net::UdpSocket::bind(("::", 0)).unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    for _ in 0..200 {
+        let endpoint = super::Transport::bind(&id, port);
+        assert_eq!(endpoint.local_addr().port(), port);
+        endpoint.close();
+        endpoint.wait_idle().await;
+        drop(endpoint);
+        // The endpoint's driver lets go of the socket on its next turn.
+        let mut turns = 0;
+        while super::bind_any(&[std::net::Ipv6Addr::UNSPECIFIED.into()], port).is_err() {
+            turns += 1;
+            assert!(turns < 100, "the port was never released");
+            tokio::task::yield_now().await;
+        }
+    }
+}

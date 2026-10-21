@@ -177,8 +177,22 @@ impl ClientCertVerifier for Pin {
     }
 }
 
+/// How much may be unacknowledged on a path before sending waits (bytes).
+/// Pointer motion and keystrokes are tiny packets sent for as long as the
+/// user types; with the default window of a dozen packets a path that is
+/// silent for two seconds fills it, and nothing more is sent until the
+/// exponentially backed-off probe timer fires, which is later than the 3 s
+/// idle timeout: the session would end though the path was back after 2 s.
+/// With room for everything typed in the idle timeout, the first packet
+/// sent after the path returns is acknowledged at once.
+const WINDOW: u64 = 1 << 20;
+
 fn transport_config() -> Arc<TransportConfig> {
     let mut config = TransportConfig::default();
+    let mut cubic = quinn::congestion::CubicConfig::default();
+    cubic.initial_window(WINDOW);
+    config.congestion_controller_factory(Arc::new(cubic));
+
     config.keep_alive_interval(Some(KEEP_ALIVE));
     config.max_idle_timeout(Some(MAX_IDLE.try_into().expect("idle timeout fits")));
     Arc::new(config)
@@ -193,9 +207,31 @@ fn udp_socket(addr: SocketAddr) -> std::io::Result<std::net::UdpSocket> {
     Ok(socket.into())
 }
 
+/// The first socket that binds on `port` at one of `candidates`; if none
+/// does, every address tried with the operating system's reason.
+fn bind_any(candidates: &[IpAddr], port: u16) -> Result<std::net::UdpSocket, String> {
+    let mut errors = Vec::new();
+    for ip in candidates {
+        let addr = SocketAddr::new(*ip, port);
+        match udp_socket(addr) {
+            Ok(socket) => return Ok(socket),
+            Err(e) => errors.push(format!("{addr}: {e}")),
+        }
+    }
+    Err(errors.join("; "))
+}
+
+/// [`bind_any`], and a panic that says why if nothing binds.
+fn bind_or_panic(candidates: &[IpAddr], port: u16) -> std::net::UdpSocket {
+    bind_any(candidates, port)
+        .unwrap_or_else(|errors| panic!("a UDP socket can be bound: {errors}"))
+}
+
 /// One computer's QUIC endpoint.
 pub struct Transport {
     endpoint: Endpoint,
+    /// Addresses the endpoint's sockets may be bound to, in order of preference.
+    candidates: Vec<IpAddr>,
     certificate: CertificateDer<'static>,
     pkcs8: Vec<u8>,
 }
@@ -212,10 +248,7 @@ impl Transport {
 
     /// Bind the first of `candidates` that can be bound.
     pub fn bind_first(identity: &Identity, candidates: &[IpAddr], port: u16) -> Self {
-        let socket = candidates
-            .iter()
-            .find_map(|ip| udp_socket(SocketAddr::new(*ip, port)).ok())
-            .expect("a UDP socket can be bound");
+        let socket = bind_or_panic(candidates, port);
         let (certificate, pkcs8) = certificate(identity);
         let mut tls = ServerConfig::builder_with_provider(provider())
             .with_protocol_versions(&[&quinn::rustls::version::TLS13])
@@ -237,6 +270,7 @@ impl Transport {
         .expect("QUIC endpoint");
         Self {
             endpoint,
+            candidates: candidates.to_vec(),
             certificate,
             pkcs8,
         }
@@ -395,5 +429,9 @@ impl Link {
     }
 }
 
+pub mod netchange;
+
+#[cfg(test)]
+mod netchange_tests;
 #[cfg(test)]
 mod tests;

@@ -3,24 +3,37 @@
 
 pub mod auth;
 pub mod handshake;
+pub mod liveness;
+pub mod redial;
 
 #[cfg(test)]
 mod auth_tests;
 #[cfg(test)]
 mod handshake_tests;
+#[cfg(test)]
+mod liveness_tests;
+#[cfg(test)]
+mod redial_tests;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use mouser_proto::control::{FixAction, ProblemKind};
 use mouser_proto::ids::{ComputerId, DeskId};
 use mouser_proto::wire::ControlMessage;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use crate::discovery::Found;
 use crate::engine::{Ctx, Outgoing, Peer, Phase};
 use crate::transport::{FrameReader, FrameWriter, Link, Transport};
 use handshake::{PeerHello, exchange, incompatibility};
+
+/// The longest one attempt to reach a computer may take (research R2: a
+/// re-dial is at most a second); a failed attempt is followed by another on
+/// the next reconcile tick.
+pub const DIAL_ATTEMPT: Duration = Duration::from_secs(1);
 
 /// Drains queued messages to the wire, then closes the connection.
 async fn write_loop(
@@ -45,7 +58,15 @@ struct LinkGuard {
 
 impl Drop for LinkGuard {
     fn drop(&mut self) {
-        self.ctx.on_link_closed(self.peer, self.link_id);
+        let close = || self.ctx.on_link_closed(self.peer, self.link_id);
+        if std::thread::panicking() {
+            // Unwinding from a panic: the engine's state may be poisoned by
+            // it, and a second panic out of this destructor would abort the
+            // process and hide the first. Clean up if that can be done.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(close));
+        } else {
+            close();
+        }
     }
 }
 
@@ -56,6 +77,11 @@ async fn read_loop(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, mut reader: Fr
         link_id,
     };
     while let Some(msg) = reader.recv::<ControlMessage>().await {
+        // A link that was replaced by a newer connection to the same
+        // computer no longer speaks for it.
+        if !ctx.is_current(peer, link_id) {
+            break;
+        }
         ctx.on_message(peer, msg)
             .expect("peer followed the protocol");
     }
@@ -88,12 +114,38 @@ impl Ctx {
         Some((link, hello))
     }
 
+    /// Dial every address a computer is found at at once, so one that is
+    /// gone (an unplugged cable, a stopped VPN) does not hold up the others;
+    /// the first computer to answer wins. Gives up after [`DIAL_ATTEMPT`].
+    pub(crate) async fn dial_any(
+        self: &Arc<Self>,
+        addrs: &[SocketAddr],
+        expected: ComputerId,
+    ) -> Option<(Link, PeerHello)> {
+        let mut attempts = JoinSet::new();
+        for addr in addrs {
+            let (ctx, addr) = (self.clone(), *addr);
+            attempts.spawn(async move { ctx.dial(addr, Some(expected)).await });
+        }
+        tokio::time::timeout(DIAL_ATTEMPT, async {
+            while let Some(done) = attempts.join_next().await {
+                if let Some(answered) = done.expect("dial attempts do not panic") {
+                    return Some(answered);
+                }
+            }
+            None
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
     /// Dial a discovered computer and take over the connection.
     pub(crate) async fn dial_found(self: Arc<Self>, found: Found) {
-        let dialled = self.dial(found.addrs[0], Some(found.computer)).await;
+        let dialled = self.dial_any(&found.addrs, found.computer).await;
         self.core.lock().unwrap().dialing.remove(&found.computer);
         if let Some((link, hello)) = dialled {
-            self.adopt(link, hello, None);
+            self.adopt(link, hello, None, true);
         }
     }
 
@@ -102,13 +154,20 @@ impl Ctx {
         let conn = Transport::complete(incoming).await.ok()?;
         let mut link = Link::accepted(conn).await?;
         let hello = exchange(&mut link, self.hello()).await?;
-        self.adopt(link, hello, None);
+        self.adopt(link, hello, None, false);
         Some(())
     }
 
-    /// Register a greeted connection. With `join`, we are the joiner and ask
-    /// that desk's member to admit us; otherwise desk-mates prove membership.
-    pub(crate) fn adopt(self: &Arc<Self>, link: Link, hello: PeerHello, join: Option<DeskId>) {
+    /// Register a greeted connection, which we `dialed` or accepted. With
+    /// `join`, we are the joiner and ask that desk's member to admit us;
+    /// otherwise desk-mates prove membership.
+    pub(crate) fn adopt(
+        self: &Arc<Self>,
+        link: Link,
+        hello: PeerHello,
+        join: Option<DeskId>,
+        dialed: bool,
+    ) {
         let Link {
             conn,
             peer,
@@ -140,6 +199,7 @@ impl Ctx {
                 hello: hello.clone(),
                 conn: conn.clone(),
                 out,
+                dialed,
                 phase,
                 displays: Vec::new(),
                 status: None,
@@ -147,6 +207,14 @@ impl Ctx {
             };
             if let Some(old) = core.peers.insert(peer, entry) {
                 old.conn.close(0u32.into(), b"replaced");
+                // The old connection's session is over: whatever it held
+                // down is released and control comes back here, and until
+                // the new connection proves membership the computer is
+                // reconnecting, not offline.
+                if old.phase == Phase::Authed {
+                    core.mark_absent(peer, old.last_seen, Instant::now());
+                }
+                self.refresh_map(&core);
             }
             if let Some(desk_id) = join.filter(|_| compatible) {
                 core.peers[&peer].send(ControlMessage::JoinRequest {
@@ -181,6 +249,16 @@ impl Ctx {
         self.notify_status();
     }
 
+    /// Whether `link_id` is the current connection to `peer`.
+    pub(crate) fn is_current(&self, peer: ComputerId, link_id: u64) -> bool {
+        self.core
+            .lock()
+            .unwrap()
+            .peers
+            .get(&peer)
+            .is_some_and(|p| p.link_id == link_id)
+    }
+
     /// Forget a peer whose link ended (unless a newer link replaced it).
     pub(crate) fn on_link_closed(&self, peer: ComputerId, link_id: u64) {
         let waiting = {
@@ -189,6 +267,9 @@ impl Ctx {
                 return;
             }
             let gone = core.peers.remove(&peer).expect("checked above");
+            if gone.phase != Phase::Departed && core.is_member(peer) {
+                core.mark_absent(peer, gone.last_seen, Instant::now());
+            }
             core.requests.drop_peer(peer);
             self.refresh_map(&core);
             gone.phase == Phase::AwaitingDecision
@@ -254,14 +335,14 @@ impl Ctx {
                 .lock()
                 .unwrap()
                 .on_enter(peer, display_id, x, y, seq_base),
-            ControlMessage::Key { usage, down, .. } => {
-                self.input(peer, |c| c.on_key(peer, usage, down))
-            }
-            ControlMessage::Button { button, down, .. } => {
-                self.input(peer, |c| c.on_button(peer, button, down))
-            }
-            ControlMessage::Scroll { dx, dy, .. } => {
-                self.input(peer, |c| c.on_scroll(peer, dx, dy))
+            ControlMessage::Key {
+                seq, usage, down, ..
+            } => self.input(peer, |c| c.on_key(peer, seq, usage, down)),
+            ControlMessage::Button {
+                seq, button, down, ..
+            } => self.input(peer, |c| c.on_button(peer, seq, button, down)),
+            ControlMessage::Scroll { seq, dx, dy } => {
+                self.input(peer, |c| c.on_scroll(peer, seq, dx, dy))
             }
             ControlMessage::ReleaseAll { .. } | ControlMessage::Panic => {
                 self.input(peer, |c| c.on_release_all(peer))

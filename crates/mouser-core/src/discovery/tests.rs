@@ -226,3 +226,32 @@ fn real_mdns_announces_browses_and_unregisters_on_stop() {
     assert!(gone, "A never disappeared from B's list after stopping");
     b.stop();
 }
+
+#[test]
+fn announcements_follow_the_interfaces_the_computer_has_now() {
+    let physical = |name: &str, addr: [u8; 4]| NetInterface {
+        name: name.into(),
+        kind: InterfaceKind::PhysicalLan,
+        addrs: vec![std::net::IpAddr::from(addr)],
+    };
+    let vpn = NetInterface {
+        name: "utun3".into(),
+        kind: InterfaceKind::Virtual,
+        addrs: vec![std::net::IpAddr::from([10, 8, 0, 2])],
+    };
+    let discovery = MdnsDiscovery::new(
+        ComputerId([0xc3; 16]),
+        vec![physical("en0", [192, 168, 1, 5])],
+    );
+    assert_eq!(
+        discovery.announced_addrs(),
+        [std::net::IpAddr::from([192, 168, 1, 5])]
+    );
+    // A VPN starts and the computer moves from Wi-Fi to Ethernet.
+    discovery.interfaces_changed(vec![vpn, physical("en7", [192, 168, 7, 9])]);
+    assert_eq!(
+        discovery.announced_addrs(),
+        [std::net::IpAddr::from([192, 168, 7, 9])]
+    );
+    discovery.stop();
+}

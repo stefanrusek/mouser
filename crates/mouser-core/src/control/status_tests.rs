@@ -164,9 +164,10 @@ async fn status_lists_every_member_with_connection_displays_and_validates_agains
     let s = status(&a).await;
     assert_valid(&s);
     let beta = s.computers.iter().find(|c| c.name == "Beta").unwrap();
-    assert_eq!(
-        (beta.rtt_ms, beta.last_seen.clone(), beta.displays),
-        (None, None, 0)
+    assert_eq!((beta.rtt_ms, beta.displays), (None, 0));
+    assert!(
+        beta.last_seen.is_some(),
+        "an offline member says when it was last seen"
     );
     assert_eq!(connected(&a).await, 0);
 }
