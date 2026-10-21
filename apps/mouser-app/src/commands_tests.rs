@@ -55,7 +55,7 @@ async fn every_permission_opens_its_own_system_screen() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn fixes_open_settings_or_the_join_prompt_and_the_rest_are_not_available() {
+async fn fixes_open_settings_the_join_prompt_or_the_arranger_and_the_rest_are_not_available() {
     let f = fixture().await;
     let platform = f.platform.clone();
     let app = app_with(f.host);
@@ -74,6 +74,9 @@ async fn fixes_open_settings_or_the_join_prompt_and_the_rest_are_not_available()
     assert!(!has_window(&handle, "join"));
     run_fix(&handle, &host, FixAction::ApproveJoin).unwrap();
     assert!(has_window(&handle, "join"));
+    assert!(!has_window(&handle, "arranger"));
+    run_fix(&handle, &host, FixAction::OpenArrangerEdge).unwrap();
+    assert!(has_window(&handle, "arranger"));
     assert_eq!(
         run_fix(&handle, &host, FixAction::OpenUpdate),
         Err("The fix \"open_update\" is not available yet.".to_string())

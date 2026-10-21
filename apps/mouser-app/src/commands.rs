@@ -71,6 +71,10 @@ pub fn run_fix<R: Runtime>(app: &AppHandle<R>, host: &Host, fix: FixAction) -> R
             windows::show(app, Which::Join);
             Ok(())
         }
+        FixAction::OpenArrangerEdge => {
+            windows::show(app, Which::Arranger);
+            Ok(())
+        }
         other => Err(format!("The fix \"{other}\" is not available yet.")),
     }
 }

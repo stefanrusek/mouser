@@ -33,3 +33,5 @@ main.wide { max-width: 640px; }
 .details p { margin: 0 0 2px; }
 .check { display: flex; gap: 8px; align-items: center; }
 .check input { width: auto; margin: 0; }
+.edge { position: absolute; background: var(--accent); opacity: 0.35; border-radius: 4px; cursor: pointer; }
+.edge:hover, .edge.selected, .edge:focus-visible { opacity: 0.9; }

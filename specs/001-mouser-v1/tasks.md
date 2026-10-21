@@ -411,10 +411,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: arranger edge-option UI tests pass.
 
-- [ ] T261 [P] [US5-app] Write UI tests `apps/mouser-app/ui/arranger_edges.test.js`: clicking an edge between two displays opens its options with "Block crossing in corners" (default on) writing `edge_options` via `layout.set`; the desk-wide "Don't cross while an app is full screen" toggles `crossing.block_fullscreen`; the `crossing_blocked` notification's fix opens this edge (Story 5 sc. 4–5)
-- [ ] T262 [US5-app] Implement edge options in `apps/mouser-app/ui/arranger_edges.js`
-- [ ] T263 [US5-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T264 [US5-app] Commit: phase boundary "US5-app" (5.3)
+- [X] T261 [P] [US5-app] Write UI tests `apps/mouser-app/ui/arranger_edges.test.js`: clicking an edge between two displays opens its options with "Block crossing in corners" (default on) writing `edge_options` via `layout.set`; the desk-wide "Don't cross while an app is full screen" toggles `crossing.block_fullscreen`; the `crossing_blocked` notification's fix opens this edge (Story 5 sc. 4–5)
+- [X] T262 [US5-app] Implement edge options in `apps/mouser-app/ui/arranger_edges.js`
+- [X] T263 [US5-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T264 [US5-app] Commit: phase boundary "US5-app" (5.3)
 
 #### Phase 20: US7-app — As a desk user, I want to drag files from one computer to another (P2)
 

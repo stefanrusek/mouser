@@ -67,3 +67,4 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Corner size 8 logical px (`crossing/corners.rs`); double-bump window 600 ms (`crossing/override.rs`); a bump is one continuous contact, re-armed by backing off.
 - Corner blocking applies to every crossing (also on remote displays); full-screen blocking only when leaving this computer, from replicated `Layout.block_fullscreen`.
 - A block raises a `crossing_blocked` Problem with `fix = open_arranger_edge`; it stays open for the session (no clear method yet).
+- app US5: `open_arranger_edge` carries no edge identity, so the arranger opens the first shared edge's options; open item for core to include display+side in the fix. Edge options are written for both sides of an edge.

@@ -2,6 +2,7 @@
 // the shape of the physical desk. Desk space is in millimetres.
 
 import { button, el, guarded, show } from './dom.js';
+import { mountEdges } from './arranger_edges.js';
 
 const CANVAS_WIDTH = 560;
 const MAX_SCALE = 0.5;
@@ -97,6 +98,12 @@ export async function init({ doc, api, every, onFocus }) {
   const details = doc.getElementById('details');
   const state = { layout: null, view: null, selected: null, undo: null, drag: null };
 
+  const edges = mountEdges({
+    doc,
+    canvas,
+    change: guarded(errorLine, (edits) => save(layoutParams(state.layout, edits))),
+    named: (displayId) => state.layout.displays.find((d) => keyOf(d.display_id) === keyOf(displayId)).name,
+  });
   const includedDisplays = () => state.layout.displays.filter((d) => d.included);
   const shown = () => includedDisplays().find((d) => keyOf(d.display_id) === state.selected);
   const rectOf = (display) => {
@@ -187,6 +194,7 @@ export async function init({ doc, api, every, onFocus }) {
     show(doc.getElementById('undo-bar'), state.undo !== null);
     renderReview(displays.filter((d) => d.needs_review));
     doc.getElementById('equalize').checked = state.layout.equalize_dimensions;
+    doc.getElementById('block-fullscreen').checked = state.layout.block_fullscreen;
     if (displays.length === 0) {
       canvas.replaceChildren();
       showDetails(null);
@@ -196,6 +204,11 @@ export async function init({ doc, api, every, onFocus }) {
     canvas.style.width = `${state.view.width}px`;
     canvas.style.height = `${state.view.height}px`;
     canvas.replaceChildren(...displays.map(renderTile));
+    edges.draw(
+      displays.map((d) => ({ display_id: d.display_id, ...rectOf(d) })),
+      state.view,
+      state.layout.edge_options,
+    );
     showDetails(shown());
   }
 
@@ -243,6 +256,11 @@ export async function init({ doc, api, every, onFocus }) {
   doc.getElementById('equalize').addEventListener(
     'change',
     guarded(errorLine, (event) => save(layoutParams(state.layout, { equalize_dimensions: event.target.checked }))),
+  );
+
+  doc.getElementById('block-fullscreen').addEventListener(
+    'change',
+    guarded(errorLine, (event) => save(layoutParams(state.layout, { block_fullscreen: event.target.checked }))),
   );
 
   const drop = guarded(errorLine, async (display, rect) => {
@@ -301,6 +319,10 @@ export async function init({ doc, api, every, onFocus }) {
   });
   every(3000, tick);
   onFocus(tick);
-  await guarded(errorLine, load)();
+  await guarded(errorLine, async () => {
+    await load();
+    const { problems } = await api.call('status');
+    if (problems.some((p) => p.kind === 'crossing_blocked' && !p.cleared_at)) edges.openFirst();
+  })();
   return { tick };
 }

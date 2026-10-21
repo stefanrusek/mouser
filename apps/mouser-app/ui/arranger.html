@@ -26,6 +26,17 @@
 
   <section id="details" class="details" aria-live="polite"></section>
 
+  <section id="edge-options" class="details" hidden>
+    <h3 id="edge-title"></h3>
+    <label class="check"><input id="block-corners" type="checkbox"> Block crossing in corners</label>
+    <p class="hint">The pointer stays put when it reaches the edge in a screen corner. Push the same edge twice in a row to cross anyway.</p>
+  </section>
+
+  <section>
+    <label class="check"><input id="block-fullscreen" type="checkbox"> Don't cross while an app is full screen</label>
+    <p class="hint">Applies to the whole desk. Handy for games and video.</p>
+  </section>
+
   <section>
     <label class="check"><input id="equalize" type="checkbox"> Equalize display dimensions</label>
     <p class="hint">When displays are different sizes, the pointer lines up with the same spot on the display it enters instead of the same distance from the corner.</p>
