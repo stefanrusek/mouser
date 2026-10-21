@@ -3110,7 +3110,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gethostname",
  "mouser-core",
@@ -3131,7 +3131,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "cucumber",
@@ -3148,7 +3148,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -3178,15 +3178,15 @@ dependencies = [
 
 [[package]]
 name = "mouser-platform"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "mouser-platform-linux"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "mouser-platform-macos"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "core-foundation 0.10.1",
  "core-foundation 0.9.4",
@@ -3203,11 +3203,11 @@ dependencies = [
 
 [[package]]
 name = "mouser-platform-windows"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "mouser-proto"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
  "ipnet",
@@ -3221,11 +3221,11 @@ dependencies = [
 
 [[package]]
 name = "mouser-service-win"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "mouser-testkit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "mouser-platform",
  "tokio",
@@ -6802,7 +6802,7 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "clap",

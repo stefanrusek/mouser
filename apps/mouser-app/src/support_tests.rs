@@ -24,12 +24,18 @@ pub struct Fixture {
     pub _dir: tempfile::TempDir,
 }
 
+/// A UDP port nobody is using. Taken from a range the operating system never
+/// hands out as an ephemeral port (another test's sockets would otherwise
+/// take it between the probe and the host's bind), at an offset that differs
+/// per process and per call; as `mouser_core::testing::free_port` does.
 fn free_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+    static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    std::iter::repeat_with(|| {
+        let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+    })
+    .find(|port| std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .expect("an endless iterator")
 }
 
 #[cfg(unix)]

@@ -1,37 +1,133 @@
 //! Auto-placement: a computer's displays, in their local arrangement, go to
-//! the right of everything already placed, top-aligned (Story 2 scenario 1).
+//! the right of the rightmost display already placed, top-aligned with it
+//! (Story 2 scenario 1), so that the two computers share an edge.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, Layout, Placement};
 
-use super::edges::{Placed, desk_size};
+use super::edges::{self, Placed, desk_size};
 
-/// Placements for `new` (one computer's displays) to the right of `kept`'s
-/// bounding box and aligned with its top; at the origin when nothing is kept.
+/// Placements for `new` (one computer's displays): its leftmost display
+/// adjoins the right side of `kept`'s rightmost display, tops aligned; with
+/// nothing kept, the displays start at the origin.
 pub fn place(kept: &[Placed], new: &[Display]) -> Vec<Placement> {
-    let right = kept.iter().map(|p| p.rect.right()).max().unwrap_or(0);
-    let top = kept.iter().map(|p| p.rect.y).min().unwrap_or(0);
-    let Some(anchor) = new.iter().min_by_key(|d| d.origin_local) else {
+    let arranged = arrange(new);
+    let Some(contact) = arranged.iter().min_by_key(|(_, x, y)| (*x, *y)) else {
         return Vec::new();
     };
-    // The local arrangement is in logical pixels; the anchor's density turns
-    // distances between displays into desk units.
-    let (aw, ah) = desk_size(anchor);
-    let (sx, sy) = (
-        f64::from(aw) / f64::from(anchor.logical_size.0),
-        f64::from(ah) / f64::from(anchor.logical_size.1),
-    );
-    let min_x = new.iter().map(|d| d.origin_local.0).min().unwrap_or(0);
-    let min_y = new.iter().map(|d| d.origin_local.1).min().unwrap_or(0);
-    new.iter()
-        .map(|d| Placement {
+    let (dx, dy) = match kept.iter().max_by_key(|p| (p.rect.right(), -p.rect.y)) {
+        Some(target) => (target.rect.right() - contact.1, target.rect.y - contact.2),
+        None => (
+            -arranged.iter().map(|a| a.1).min().unwrap_or(0),
+            -arranged.iter().map(|a| a.2).min().unwrap_or(0),
+        ),
+    };
+    arranged
+        .into_iter()
+        .map(|(d, x, y)| Placement {
             display_id: d.display_id.clone(),
-            x: right + (f64::from(d.origin_local.0 - min_x) * sx).round() as i32,
-            y: top + (f64::from(d.origin_local.1 - min_y) * sy).round() as i32,
+            x: x + dx,
+            y: y + dy,
         })
         .collect()
+}
+
+/// A display's rectangle in its computer's own coordinates (points).
+fn local_rect(d: &Display) -> (i32, i32, i32, i32) {
+    let (x, y) = d.origin_local;
+    (
+        x,
+        y,
+        x + d.logical_size.0.round() as i32,
+        y + d.logical_size.1.round() as i32,
+    )
+}
+
+/// Desk millimetres per point of `d`, across and down.
+fn density(d: &Display) -> (f64, f64) {
+    let (w, h) = desk_size(d);
+    (
+        f64::from(w) / f64::from(d.logical_size.0),
+        f64::from(h) / f64::from(d.logical_size.1),
+    )
+}
+
+/// `new` laid out in desk units, relative to an arbitrary origin. Displays
+/// that share an edge locally share it in desk space too: each is placed
+/// against a neighbour already placed, offset along the edge at that
+/// neighbour's density, since one density for all of them would open gaps
+/// between displays of different densities. A display touching none keeps
+/// its offset from the first, at the first's density.
+fn arrange(new: &[Display]) -> Vec<(&Display, i32, i32)> {
+    let Some(first) = (0..new.len()).min_by_key(|&i| new[i].origin_local) else {
+        return Vec::new();
+    };
+    let mut at: Vec<Option<(i32, i32)>> = vec![None; new.len()];
+    at[first] = Some((0, 0));
+    let mut queue = VecDeque::from([first]);
+    while let Some(i) = queue.pop_front() {
+        let (a, (ax, ay)) = (&new[i], at[i].expect("queued displays are placed"));
+        let (al, at_, ar, ab) = local_rect(a);
+        let (aw, ah) = desk_size(a);
+        let (sx, sy) = density(a);
+        let along = |delta: i32, s: f64| (f64::from(delta) * s).round() as i32;
+        for j in 0..new.len() {
+            if at[j].is_some() {
+                continue;
+            }
+            let b = &new[j];
+            let (bl, bt, br, bb) = local_rect(b);
+            let (bw, bh) = desk_size(b);
+            let rows = at_.max(bt) < ab.min(bb);
+            let columns = al.max(bl) < ar.min(br);
+            let pos = if rows && bl == ar {
+                Some((ax + aw, ay + along(bt - at_, sy)))
+            } else if rows && br == al {
+                Some((ax - bw, ay + along(bt - at_, sy)))
+            } else if columns && bt == ab {
+                Some((ax + along(bl - al, sx), ay + ah))
+            } else if columns && bb == at_ {
+                Some((ax + along(bl - al, sx), ay - bh))
+            } else {
+                None
+            };
+            if pos.is_some() {
+                at[j] = pos;
+                queue.push_back(j);
+            }
+        }
+    }
+    let (fx, fy) = new[first].origin_local;
+    let (sx, sy) = density(&new[first]);
+    new.iter()
+        .zip(at)
+        .map(|(d, pos)| {
+            let (x, y) = pos.unwrap_or((
+                (f64::from(d.origin_local.0 - fx) * sx).round() as i32,
+                (f64::from(d.origin_local.1 - fy) * sy).round() as i32,
+            ));
+            (d, x, y)
+        })
+        .collect()
+}
+
+/// The computers none of whose displays adjoin another computer's display:
+/// the pointer cannot reach or leave them. Empty when fewer than two
+/// computers are placed.
+pub fn isolated(placed: &[Placed]) -> BTreeSet<ComputerId> {
+    let computer = |i: usize| placed[i].display.display_id.computer;
+    let all: BTreeSet<ComputerId> = (0..placed.len()).map(computer).collect();
+    if all.len() < 2 {
+        return BTreeSet::new();
+    }
+    let reached: BTreeSet<ComputerId> = edges::edges(placed)
+        .into_iter()
+        .filter(|e| computer(e.from) != computer(e.to))
+        .map(|e| computer(e.from))
+        .collect();
+    all.difference(&reached).copied().collect()
 }
 
 fn keys_by_computer(layout: &Layout) -> BTreeMap<ComputerId, BTreeSet<&str>> {
@@ -61,7 +157,6 @@ pub fn review_candidates(old: &Layout, new: &Layout) -> Vec<ComputerId> {
 
 use mouser_proto::wire::ControlMessage;
 
-use super::edges;
 use crate::engine::{Core, Ctx, EngineEvent, Phase};
 
 impl Ctx {
@@ -90,13 +185,23 @@ impl Ctx {
                 .map(|d| d.display_id.key.as_str())
                 .collect()
         };
+        let unknown = placed_keys.keys().any(|c| !known.contains_key(c));
+        if unknown {
+            return;
+        }
+        // A computer with no edge to the others (an earlier version could
+        // place one so) is placed again, as if new.
+        let all_displays: Vec<_> = known.values().flatten().cloned().collect();
+        let cut_off = isolated(&edges::placed(&all_displays, &old));
         let stale: BTreeSet<ComputerId> = known
             .keys()
-            .filter(|c| placed_keys.get(*c).cloned().unwrap_or_default() != wanted(c))
+            .filter(|c| {
+                placed_keys.get(*c).cloned().unwrap_or_default() != wanted(c)
+                    || cut_off.contains(*c)
+            })
             .copied()
             .collect();
-        let unknown = placed_keys.keys().any(|c| !known.contains_key(c));
-        if stale.is_empty() || unknown {
+        if stale.is_empty() {
             return;
         }
         let mut layout = old.clone();

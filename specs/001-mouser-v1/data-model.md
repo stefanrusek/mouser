@@ -76,7 +76,7 @@ While Reconnecting/Offline and the peer was the active computer: control returns
 - `equalize_dimensions`: bool (default false).
 - `block_fullscreen`: bool (default true).
 - Validation: placements of included displays MUST NOT overlap; every included display MUST be reachable (graph connected) — the arranger refuses a drop that would disconnect a display.
-- Auto-placement (Story 2 sc. 1): a new computer's displays, in their local arrangement, are appended to the right of the current bounding box, top-aligned; a `needs_review` flag is set and surfaced to the owner.
+- Auto-placement (Story 2 sc. 1): a new computer's displays, in their local arrangement, are appended to the right of the layout: its leftmost display adjoins the right side of the rightmost placed display, top-aligned with it, so the two computers always share an edge. Displays that share an edge locally share it in desk space, whatever their densities. A computer whose displays share no edge with any other computer's is placed again the same way. A `needs_review` flag is set and surfaced to the owner.
 
 ## ActiveSession (who has control)
 
