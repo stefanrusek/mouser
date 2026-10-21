@@ -5,8 +5,13 @@ fn capabilities_of_later_phases_are_unsupported_not_panicking() {
     let p = MacPlatform::new();
     assert!(matches!(p.clipboard(), Err(Error::Unsupported)));
     assert!(p.file_drag().is_none());
-    assert!(!p.foreground_is_fullscreen());
     assert!(!p.foreground_elevated());
+}
+
+#[test]
+fn delegates_the_fullscreen_query() {
+    // The answer depends on what is on screen; the call must just complete.
+    let _ = MacPlatform::new().foreground_is_fullscreen();
 }
 
 #[test]

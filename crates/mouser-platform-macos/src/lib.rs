@@ -11,6 +11,7 @@ mod autostart;
 mod capture;
 mod displays;
 mod echo;
+mod fullscreen;
 mod inject;
 mod keymap;
 mod net;
@@ -140,7 +141,7 @@ impl Platform for MacPlatform {
     }
 
     fn foreground_is_fullscreen(&self) -> bool {
-        false
+        fullscreen::foreground_is_fullscreen(&fullscreen::SystemProbe)
     }
 
     fn interfaces(&self) -> Vec<NetInterface> {
@@ -176,6 +177,8 @@ mod capture_tests;
 mod displays_tests;
 #[cfg(test)]
 mod echo_tests;
+#[cfg(test)]
+mod fullscreen_tests;
 #[cfg(test)]
 mod info_tests;
 #[cfg(test)]

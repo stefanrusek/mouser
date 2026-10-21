@@ -565,8 +565,8 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 
 #### Phase 34: US5-platform-macos — As a desk user, I want the pointer to stay put when I don't mean to cross (P2)
 
-- [ ] T346 [P] [US5-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/fullscreen_tests.rs`: frontmost app's first layer-0 window on the cursor's display with bounds equal to the display bounds (±1 pt), or any window at or above the shielding level covering the display, means full-screen
-- [ ] T347 [US5-platform-macos] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-macos/src/fullscreen.rs`
+- [X] T346 [P] [US5-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/fullscreen_tests.rs`: frontmost app's first layer-0 window on the cursor's display with bounds equal to the display bounds (±1 pt), or any window at or above the shielding level covering the display, means full-screen
+- [X] T347 [US5-platform-macos] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-macos/src/fullscreen.rs`
 - [ ] T348 [US5-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
 - [ ] T349 [US5-platform-macos] Commit: phase boundary "US5-platform-macos" (5.3)
 
