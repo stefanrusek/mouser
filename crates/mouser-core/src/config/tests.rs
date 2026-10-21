@@ -43,7 +43,7 @@ fn default_dir_is_the_per_os_mouser_directory() {
 #[cfg(target_os = "macos")]
 #[test]
 fn macos_dir_is_under_application_support() {
-    let dir = dir_from(|k| (k == "HOME").then(|| "/Users/me".to_string()));
+    let dir = dir_from(&|k| (k == "HOME").then(|| "/Users/me".to_string()));
     assert_eq!(
         dir,
         std::path::PathBuf::from("/Users/me/Library/Application Support/Mouser")
@@ -53,7 +53,7 @@ fn macos_dir_is_under_application_support() {
 #[cfg(target_os = "windows")]
 #[test]
 fn windows_dir_is_under_appdata() {
-    let dir = dir_from(|k| (k == "APPDATA").then(|| r"C:\Users\me\AppData\Roaming".to_string()));
+    let dir = dir_from(&|k| (k == "APPDATA").then(|| r"C:\Users\me\AppData\Roaming".to_string()));
     assert_eq!(
         dir,
         std::path::PathBuf::from(r"C:\Users\me\AppData\Roaming").join("Mouser")
@@ -63,7 +63,7 @@ fn windows_dir_is_under_appdata() {
 #[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn linux_dir_prefers_xdg_config_home() {
-    let xdg = dir_from(|k| match k {
+    let xdg = dir_from(&|k| match k {
         "XDG_CONFIG_HOME" => Some("/xdg".to_string()),
         _ => None,
     });
@@ -73,7 +73,7 @@ fn linux_dir_prefers_xdg_config_home() {
 #[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn linux_falls_back_to_home_dot_config() {
-    let home = dir_from(|k| (k == "HOME").then(|| "/home/me".to_string()));
+    let home = dir_from(&|k| (k == "HOME").then(|| "/home/me".to_string()));
     assert_eq!(home, std::path::PathBuf::from("/home/me/.config/mouser"));
 }
 

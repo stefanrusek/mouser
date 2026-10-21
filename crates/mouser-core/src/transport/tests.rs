@@ -214,16 +214,32 @@ fn the_verifiers_accept_only_the_expected_computer() {
     assert!(ClientCertVerifier::root_hint_subjects(&matching).is_empty());
 }
 
-/// A failure to bind says which addresses were tried and what the operating
-/// system answered for each.
-#[test]
-fn a_bind_failure_names_every_address_tried_and_the_os_error() {
-    let held = super::udp_socket(std::net::SocketAddr::from((
+/// Take a free port on both wildcard addresses. Whether `[::]:p` also blocks
+/// `0.0.0.0:p` is per-OS (it does on Linux and macOS, not on Windows), so the
+/// IPv4 wildcard is bound explicitly; where the IPv6 socket already covers
+/// it, that bind failing is the conflict itself. Either way every wildcard
+/// candidate for the port is taken once this returns.
+fn hold_wildcard_port() -> (std::net::UdpSocket, Option<std::net::UdpSocket>) {
+    let v6 = super::udp_socket(std::net::SocketAddr::from((
         std::net::Ipv6Addr::UNSPECIFIED,
         0,
     )))
     .unwrap();
-    let port = held.local_addr().unwrap().port();
+    let port = v6.local_addr().unwrap().port();
+    let v4 = super::udp_socket(std::net::SocketAddr::from((
+        std::net::Ipv4Addr::UNSPECIFIED,
+        port,
+    )))
+    .ok();
+    (v6, v4)
+}
+
+/// A failure to bind says which addresses were tried and what the operating
+/// system answered for each.
+#[test]
+fn a_bind_failure_names_every_address_tried_and_the_os_error() {
+    let held = hold_wildcard_port();
+    let port = held.0.local_addr().unwrap().port();
     let candidates = [
         std::net::Ipv6Addr::UNSPECIFIED.into(),
         std::net::Ipv4Addr::UNSPECIFIED.into(),
@@ -237,13 +253,9 @@ fn a_bind_failure_names_every_address_tried_and_the_os_error() {
 #[tokio::test]
 #[should_panic(expected = "a UDP socket can be bound: ")]
 async fn binding_a_port_that_is_taken_panics_with_the_reason() {
-    let held = super::udp_socket(std::net::SocketAddr::from((
-        std::net::Ipv6Addr::UNSPECIFIED,
-        0,
-    )))
-    .unwrap();
+    let held = hold_wildcard_port();
     let id = crate::identity::Identity::from_seed([4; 32]);
-    super::Transport::bind(&id, held.local_addr().unwrap().port());
+    super::Transport::bind(&id, held.0.local_addr().unwrap().port());
 }
 
 /// Regression: an endpoint that is closed and dropped gives its port back

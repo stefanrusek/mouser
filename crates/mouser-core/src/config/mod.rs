@@ -34,22 +34,22 @@ pub fn save(dir: &Path, config: &Config) {
 
 /// The per-OS configuration directory of this user.
 pub fn default_dir() -> PathBuf {
-    dir_from(|key| std::env::var(key).ok())
+    dir_from(&|key| std::env::var(key).ok())
 }
 
 #[cfg(target_os = "macos")]
-fn dir_from(env: impl Fn(&str) -> Option<String>) -> PathBuf {
+fn dir_from(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     let home = env("HOME").expect("HOME is set");
     PathBuf::from(home).join("Library/Application Support/Mouser")
 }
 
 #[cfg(target_os = "windows")]
-fn dir_from(env: impl Fn(&str) -> Option<String>) -> PathBuf {
+fn dir_from(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     PathBuf::from(env("APPDATA").expect("APPDATA is set")).join("Mouser")
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn dir_from(env: impl Fn(&str) -> Option<String>) -> PathBuf {
+fn dir_from(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     match env("XDG_CONFIG_HOME") {
         Some(xdg) => PathBuf::from(xdg).join("mouser"),
         None => PathBuf::from(env("HOME").expect("HOME is set")).join(".config/mouser"),
