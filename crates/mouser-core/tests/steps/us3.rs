@@ -191,6 +191,11 @@ impl Typing {
         Self { stop, sent, task }
     }
 
+    /// How many keystrokes have been typed so far.
+    pub fn typed(&self) -> u32 {
+        self.sent.load(Ordering::Relaxed)
+    }
+
     /// Stop typing; how many keystrokes (a press and a release each) were typed.
     pub async fn finish(self) -> u32 {
         self.stop.store(true, Ordering::Relaxed);
@@ -406,10 +411,14 @@ async fn typing_continuously(w: &mut LinkWorld) {
 }
 
 #[when("they keep typing")]
-async fn keep_typing(_w: &mut LinkWorld) {
+async fn keep_typing(w: &mut LinkWorld) {
     // Longer than the 3 s idle timeout: nothing that merely ends a quiet
     // connection may end this one.
     tokio::time::sleep(Duration::from_secs(5)).await;
+    // And enough keystrokes to span many delay changes: a coarse OS timer
+    // (Windows rounds the typist's 2 ms pause up to ~16 ms) types fewer in 5 s.
+    let typing = w.typing.as_ref().expect("typing");
+    until("enough keystrokes typed", || typing.typed() > 500).await;
 }
 
 #[then("every keystroke arrives in order with none dropped and the session does not end")]
