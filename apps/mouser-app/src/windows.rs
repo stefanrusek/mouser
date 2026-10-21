@@ -12,6 +12,7 @@ pub enum Which {
     FirstRun,
     Settings,
     Join,
+    Arranger,
 }
 
 impl Which {
@@ -20,6 +21,7 @@ impl Which {
             Self::FirstRun => "main",
             Self::Settings => "settings",
             Self::Join => "join",
+            Self::Arranger => "arranger",
         }
     }
 
@@ -28,6 +30,7 @@ impl Which {
             Self::FirstRun => "first_run.html",
             Self::Settings => "desk_settings.html",
             Self::Join => "join_prompt.html",
+            Self::Arranger => "arranger.html",
         }
     }
 
@@ -36,6 +39,7 @@ impl Which {
             Self::FirstRun => "Welcome to Mouser",
             Self::Settings => "Mouser",
             Self::Join => "A computer wants to join",
+            Self::Arranger => "Arrange displays",
         }
     }
 
@@ -44,6 +48,7 @@ impl Which {
             Self::FirstRun => (560.0, 640.0),
             Self::Settings => (620.0, 720.0),
             Self::Join => (460.0, 320.0),
+            Self::Arranger => (700.0, 760.0),
         }
     }
 }

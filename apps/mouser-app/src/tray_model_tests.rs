@@ -4,8 +4,8 @@ use tauri::Manager;
 
 use crate::support_tests::{FakeTray, app_with, eventually, fixture, has_window, status_of};
 use crate::tray::{
-    Action, Appearance, Icon, OPEN_ID, PAUSE_ID, QUIT_ID, RESUME_ID, TrayController, Variant,
-    action, appearance_of, current_status, open, run_pause, system_appearance, view,
+    ARRANGE_ID, Action, Appearance, Icon, OPEN_ID, PAUSE_ID, QUIT_ID, RESUME_ID, TrayController,
+    Variant, action, appearance_of, current_status, open, run_pause, system_appearance, view,
 };
 
 fn is_png(bytes: &[u8]) -> bool {
@@ -69,8 +69,10 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     assert_eq!(active.entries[1].label, "Open Mouser");
     assert_eq!(active.entries[2].id, Some(PAUSE_ID));
     assert_eq!(active.entries[2].label, "Pause Mouser");
-    assert_eq!(active.entries[3].id, Some(QUIT_ID));
-    assert_eq!(active.entries[3].label, "Quit Mouser");
+    assert_eq!(active.entries[3].id, Some(ARRANGE_ID));
+    assert_eq!(active.entries[3].label, "Arrange displays");
+    assert_eq!(active.entries[4].id, Some(QUIT_ID));
+    assert_eq!(active.entries[4].label, "Quit Mouser");
 
     status.state = EngineState::Paused;
     status.computers.pop();
@@ -120,6 +122,7 @@ async fn the_system_appearance_comes_from_the_main_window() {
 #[test]
 fn menu_lines_map_to_their_actions() {
     assert_eq!(action(OPEN_ID), Action::Open);
+    assert_eq!(action(ARRANGE_ID), Action::Arrange);
     assert_eq!(action(QUIT_ID), Action::Quit);
     assert_eq!(action(PAUSE_ID), Action::Pause);
     assert_eq!(action(RESUME_ID), Action::Resume);

@@ -150,6 +150,9 @@ pub fn run() {
                             tray::run_pause(&control, action).await;
                         });
                     }
+                    tray::Action::Arrange => {
+                        crate::windows::show(app, crate::windows::Which::Arranger)
+                    }
                     tray::Action::Quit => app.exit(0),
                 })
                 .build(app)?;

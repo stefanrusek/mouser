@@ -1,0 +1,35 @@
+main.wide { max-width: 640px; }
+.canvas {
+  position: relative;
+  margin: 0 auto 12px;
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  touch-action: none;
+  user-select: none;
+}
+.tile {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  text-align: center;
+  font-size: 12px;
+  background: var(--card);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  cursor: grab;
+}
+.tile:active { cursor: grabbing; }
+.tile strong { font-size: 13px; }
+.tile.selected, .tile:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.tile.review { border-color: var(--warn-line); background: var(--warn-bg); }
+.tile em { font-style: normal; font-weight: 600; color: var(--bad); }
+.review-list { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 12px; padding: 4px 16px; }
+.undo-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.details h3 { margin: 0 0 4px; font-size: 16px; }
+.details p { margin: 0 0 2px; }
+.check { display: flex; gap: 8px; align-items: center; }
+.check input { width: auto; margin: 0; }

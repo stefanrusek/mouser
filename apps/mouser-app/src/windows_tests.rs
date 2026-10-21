@@ -23,6 +23,12 @@ fn each_window_has_its_own_page_label_and_title() {
             "join_prompt.html",
             "A computer wants to join",
         ),
+        (
+            Which::Arranger,
+            "arranger",
+            "arranger.html",
+            "Arrange displays",
+        ),
     ] {
         assert_eq!(which.label(), label);
         assert_eq!(which.page(), page);

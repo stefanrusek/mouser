@@ -55,12 +55,15 @@ pub async fn pump<R: Runtime>(
 pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, event: EngineEvent) {
     match event {
         EngineEvent::Landing { desktop, .. } => overlay::show_landing(app, desktop),
-        EngineEvent::ReviewOffered { name, .. } => notifier.show(
-            &format!("Check where {name}'s screens sit"),
-            &format!(
-                "{name} joined your desk. Open Mouser to review where its displays are placed."
-            ),
-        ),
+        EngineEvent::ReviewOffered { name, .. } => {
+            notifier.show(
+                &format!("Check where {name}'s screens sit"),
+                &format!(
+                    "{name} joined your desk. Open Mouser to review where its displays are placed."
+                ),
+            );
+            windows::show(app, Which::Arranger);
+        }
     }
 }
 

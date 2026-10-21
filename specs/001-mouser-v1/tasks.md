@@ -402,10 +402,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: arranger UI tests pass: dragging, details, removal with undo and equalize call `layout.set` correctly.
 
-- [ ] T257 [P] [US4-app] Write UI tests `apps/mouser-app/ui/arranger.test.js`: every display renders to scale in desk space labelled with its computer; dragging snaps to adjoining edges and calls `layout.set`; an overlapping or disconnected drop is refused visibly; hovering shows resolution, scale, computer and online state or last seen; Remove hides a display with an Undo action; "Equalize display dimensions" toggles `crossing.equalize_dimensions`; displays flagged `needs_review` are highlighted with "Review placement" (Story 4 sc. 1–4; Story 2 sc. 1)
-- [ ] T258 [US4-app] Implement the arranger `apps/mouser-app/ui/arranger.html` and `apps/mouser-app/ui/arranger.js`, opened from the tray and from the review notification
-- [ ] T259 [US4-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T260 [US4-app] Commit: phase boundary "US4-app" (5.3)
+- [X] T257 [P] [US4-app] Write UI tests `apps/mouser-app/ui/arranger.test.js`: every display renders to scale in desk space labelled with its computer; dragging snaps to adjoining edges and calls `layout.set`; an overlapping or disconnected drop is refused visibly; hovering shows resolution, scale, computer and online state or last seen; Remove hides a display with an Undo action; "Equalize display dimensions" toggles `crossing.equalize_dimensions`; displays flagged `needs_review` are highlighted with "Review placement" (Story 4 sc. 1–4; Story 2 sc. 1)
+- [X] T258 [US4-app] Implement the arranger `apps/mouser-app/ui/arranger.html` and `apps/mouser-app/ui/arranger.js`, opened from the tray and from the review notification
+- [X] T259 [US4-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T260 [US4-app] Commit: phase boundary "US4-app" (5.3)
 
 #### Phase 19: US5-app — As a desk user, I want the pointer to stay put when I don't mean to cross (P2)
 

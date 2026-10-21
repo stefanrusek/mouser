@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arrange displays</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="arranger.css">
+</head>
+<body>
+<main class="wide">
+  <h1>Arrange your displays</h1>
+  <p class="lead">Drag each display to match where it sits on your desk. Displays snap edge to edge.</p>
+
+  <ul id="review" class="review-list" hidden></ul>
+
+  <section>
+    <div id="canvas" class="canvas" hidden></div>
+    <p id="empty" class="hint" hidden>No displays to arrange yet. Join a desk first.</p>
+    <p id="refusal" class="error" role="alert"></p>
+    <div id="undo-bar" class="undo-bar" hidden>
+      <span id="undo-text"></span>
+      <button id="undo" type="button">Undo</button>
+    </div>
+  </section>
+
+  <section id="details" class="details" aria-live="polite"></section>
+
+  <section>
+    <label class="check"><input id="equalize" type="checkbox"> Equalize display dimensions</label>
+    <p class="hint">When displays are different sizes, the pointer lines up with the same spot on the display it enters instead of the same distance from the corner.</p>
+  </section>
+
+  <p id="error" class="error" role="alert"></p>
+</main>
+<script type="module">
+  import { boot } from './boot.js';
+  import { init } from './arranger.js';
+  boot(init);
+</script>
+</body>
+</html>

@@ -165,6 +165,7 @@ async fn a_landing_flashes_the_overlay_and_a_review_offer_is_a_notification() {
                 .to_string()
         )]
     );
+    assert!(has_window(&handle_, "arranger"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -55,3 +55,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - `layout.set` also writes `crossing.equalize_dimensions` and `crossing.block_fullscreen` into each member's config. Equalize maps one edge's full length onto the adjoining edge's.
 - A removal changes placed keys, so peers get `ReviewOffered` (same as docking).
 - Open item for US6: the "all displays removed still receives clipboard" edge case is only half-tested (membership + no crossing).
+
+## app US4 decisions
+
+- The arranger reads `display.needs_review` per display from `layout.get`; core does not emit it yet and has no way to clear it (open item for core: add the boolean, clear on any `layout.set` touching that display).
+- Equalize is set through `layout.set` (`equalize_dimensions`), not `config.set`.
+- A ReviewOffered event opens the arranger window (notifications have no click callback). Revisit if the owner finds it intrusive.
