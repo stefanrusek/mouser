@@ -1,0 +1,11 @@
+{
+  "name": "mouser-app-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=100"
+  },
+  "devDependencies": {
+    "happy-dom": "21.0.4"
+  }
+}

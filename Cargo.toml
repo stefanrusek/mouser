@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/mouser-proto",
+    "crates/mouser-platform",
+    "crates/mouser-testkit",
+    "crates/mouser-core",
+    "crates/mouser-platform-macos",
+    "crates/mouser-platform-windows",
+    "crates/mouser-platform-linux",
+    "apps/mouser-app",
+    "apps/mouser-cli",
+    "apps/mouser-service-win",
+    "xtask",
+]
+exclude = ["specs"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+version = "0.1.0"
+publish = false
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = "deny"

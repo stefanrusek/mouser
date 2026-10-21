@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            lane: macos
+            packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-macos,mouser-app,mouser-cli,xtask
+          - os: windows-2025
+            lane: windows
+            packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-windows,mouser-app,mouser-cli,mouser-service-win,xtask
+          - os: ubuntu-24.04
+            lane: linux
+            packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-linux,mouser-app,mouser-cli,xtask
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ubuntu system packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libssl-dev libdbus-1-dev
+      - name: Install toolchain from rust-toolchain.toml
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch and bootstrap
+        shell: bash
+        run: cargo fetch --locked && cargo xtask bootstrap
+      - name: Gate
+        shell: bash
+        run: cargo xtask gate --packages ${{ matrix.packages }} --lane ci-${{ matrix.lane }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-${{ matrix.lane }}
+          path: specs/001-mouser-v1/evidence/
