@@ -99,6 +99,7 @@ impl Cursor for SystemCursor {
             .expect("CGAssociateMouseAndMouseCursorPosition");
     }
     fn hide(&self) {
+        allow_hiding_in_background();
         CGDisplay::main()
             .hide_cursor()
             .expect("CGDisplayHideCursor");
@@ -108,6 +109,40 @@ impl Cursor for SystemCursor {
             .show_cursor()
             .expect("CGDisplayShowCursor");
     }
+}
+
+// Private CoreGraphics (SkyLight) calls, as Synergy/Barrier use: without
+// `SetsCursorInBackground`, CGDisplayHideCursor does nothing unless the
+// caller is the frontmost app, and Mouser (a menu-bar app) never is.
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn _CGSDefaultConnection() -> i32;
+    fn CGSSetConnectionProperty(
+        connection: i32,
+        target: i32,
+        key: core_foundation::string::CFStringRef,
+        value: core_foundation::base::CFTypeRef,
+    ) -> i32;
+}
+
+/// Let this process hide the cursor while another app is frontmost.
+pub(crate) fn allow_hiding_in_background() {
+    use core_foundation::base::TCFType;
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::string::CFString;
+    let key = CFString::from_static_string("SetsCursorInBackground");
+    let value = CFBoolean::true_value();
+    // SAFETY: plain C calls with valid, retained CF objects.
+    let error = unsafe {
+        let connection = _CGSDefaultConnection();
+        CGSSetConnectionProperty(
+            connection,
+            connection,
+            key.as_concrete_TypeRef(),
+            value.as_CFTypeRef(),
+        )
+    };
+    assert_eq!(error, 0, "CGSSetConnectionProperty(SetsCursorInBackground)");
 }
 
 /// State shared with the tap callback.

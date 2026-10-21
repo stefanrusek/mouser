@@ -357,3 +357,12 @@ fn injecting_and_warping_record_the_position_for_echo_detection() {
     capture.warp(3.0, 4.0).unwrap();
     assert!(echo.is_echo(3.0, 4.0, Instant::now()));
 }
+
+#[test]
+fn the_window_server_lets_mouser_hide_the_cursor_from_the_background() {
+    // Without this, a grab leaves the cursor showing on the computer the
+    // user left (Mouser is never the frontmost app). It changes no state
+    // other than this process's permission to hide the cursor.
+    crate::capture::allow_hiding_in_background();
+    crate::capture::allow_hiding_in_background();
+}
