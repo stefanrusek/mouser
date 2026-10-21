@@ -1,6 +1,8 @@
 <!--
 Sync Impact Report
-Version change: 1.0.0 -> 1.1.0
+Version change: 1.1.0 -> 1.2.0 (2026-10-21): Development Workflow gains the rule that every
+  tasks.md Polish phase updates docs/ to prevent drift.
+Previous: 1.0.0 -> 1.1.0
 Modified principles: none (project principles I-VII preserved unchanged)
 Added sections: Spec-Driven Development Methodology Amendment v6.2.0 (Purpose, 1 Process
   Discipline, 2 Specification, 3 Planning, 4 Testing, 5 Implementation, Applicability Map,
@@ -90,6 +92,10 @@ Added complexity MUST be justified in the plan's complexity-tracking section.
   docs/technical-decisions.md; specs and plans MUST stay consistent with them or amend them.
 - Every plan MUST include a Constitution Check against the principles above.
 - Changes MUST pass formatting, linting and the test suite before merge.
+- Every tasks.md MUST include tasks in its Polish phase that update the `docs/` directory to
+  match what the feature actually delivered (requirements, technical decisions, and any user or
+  operator documentation affected), so `docs/` never drifts from the code. A feature that changes
+  nothing under `docs/` MUST still carry a task that verifies this and records it.
 
 ## Spec-Driven Development Methodology Amendment
 
@@ -1599,4 +1605,4 @@ own versioning is tracked by the stamp line below and MUST be preserved by any l
 
 Spec-Driven Development Amendment (v6.2.0)
 
-**Version**: 1.1.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-21
+**Version**: 1.2.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-21
