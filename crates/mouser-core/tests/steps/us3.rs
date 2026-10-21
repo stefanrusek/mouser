@@ -345,8 +345,12 @@ impl LinkWorld {
     /// none missing, Alpha's mouse and keyboard still drive Beta, and no
     /// session ended meanwhile.
     pub async fn finish_typing_and_check(&mut self) {
-        let typed = self.typing.take().expect("typing").finish().await;
-        assert!(typed > 500, "only {typed} keystrokes were typed");
+        // Enough keystrokes to span many delay changes: a coarse OS timer
+        // (Windows rounds the typist's 2 ms pause up to ~16 ms) types fewer
+        // in the same time, so keep typing until there are.
+        let typing = self.typing.take().expect("typing");
+        until("more than 500 keystrokes typed", || typing.typed() > 500).await;
+        let typed = typing.finish().await;
         let beta = self.platform("Beta");
         let keys = |platform: &VirtualPlatform| -> Vec<Injected> {
             platform
@@ -411,14 +415,10 @@ async fn typing_continuously(w: &mut LinkWorld) {
 }
 
 #[when("they keep typing")]
-async fn keep_typing(w: &mut LinkWorld) {
+async fn keep_typing(_w: &mut LinkWorld) {
     // Longer than the 3 s idle timeout: nothing that merely ends a quiet
     // connection may end this one.
     tokio::time::sleep(Duration::from_secs(5)).await;
-    // And enough keystrokes to span many delay changes: a coarse OS timer
-    // (Windows rounds the typist's 2 ms pause up to ~16 ms) types fewer in 5 s.
-    let typing = w.typing.as_ref().expect("typing");
-    until("enough keystrokes typed", || typing.typed() > 500).await;
 }
 
 #[then("every keystroke arrives in order with none dropped and the session does not end")]
