@@ -88,7 +88,7 @@ impl Ctx {
         entry.phase = Phase::Authed;
         self.mark_present(&mut core, peer);
         let state = core.state.desk.as_ref().expect("on a desk").state.clone();
-        let displays = self.local_displays();
+        let displays = self.local_displays(&core);
         core.peers[&peer].send(ControlMessage::DeskState(state));
         core.peers[&peer].send(ControlMessage::Displays { displays });
         core.peers[&peer].send(ControlMessage::Status(self.peer_status()));

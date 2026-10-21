@@ -70,3 +70,22 @@ fn unreadable_state_is_fatal() {
     let dir = tempfile::tempdir().unwrap();
     LocalState::load(dir.path());
 }
+
+#[test]
+fn removed_displays_survive_a_restart_and_default_to_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(FILE);
+    let state = LocalState {
+        removed: std::collections::BTreeSet::from(["b2".to_string()]),
+        ..LocalState::default()
+    };
+    state.save(&path);
+    assert_eq!(LocalState::load(&path), state);
+    // A file from before displays could be removed has none.
+    std::fs::write(
+        &path,
+        r#"{"membership":"Unjoined","desk":null,"displays":{}}"#,
+    )
+    .unwrap();
+    assert!(LocalState::load(&path).removed.is_empty());
+}

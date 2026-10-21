@@ -3,11 +3,14 @@
 
 pub mod client;
 pub mod config_api;
+pub mod layout;
 pub mod server;
 pub mod status;
 
 #[cfg(test)]
 mod config_api_tests;
+#[cfg(test)]
+mod layout_tests;
 #[cfg(test)]
 mod server_tests;
 #[cfg(test)]

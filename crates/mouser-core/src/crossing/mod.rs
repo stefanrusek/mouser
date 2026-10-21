@@ -88,6 +88,8 @@ pub(crate) struct DeskMap {
     pub placed: Vec<Placed>,
     /// This computer's displays, placed or not.
     pub mine: Vec<Display>,
+    /// Crossing maps whole edges onto whole edges (`equalize_dimensions`).
+    pub equalize: bool,
     /// Authenticated peers.
     pub wires: BTreeMap<ComputerId, Wire>,
 }
@@ -187,7 +189,7 @@ fn supported<T>(result: mouser_platform::Result<T>) -> Option<T> {
 impl Ctx {
     /// Rebuild the input path's view of the layout and peers.
     pub(crate) fn refresh_map(&self, core: &Core) {
-        let mine = self.local_displays();
+        let mine = self.local_displays(core);
         let mut displays = mine.clone();
         let mut wires = BTreeMap::new();
         for (id, peer) in core.peers.iter().filter(|(_, p)| p.phase == Phase::Authed) {
@@ -209,6 +211,7 @@ impl Ctx {
             .unwrap_or_default();
         let map = DeskMap {
             placed: edges::placed(&displays, &layout),
+            equalize: layout.equalize_dimensions,
             mine,
             wires,
         };

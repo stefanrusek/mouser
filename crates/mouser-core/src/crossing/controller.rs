@@ -12,6 +12,7 @@ use super::modifiers::held_modifiers;
 use super::motion;
 use super::state::{Control, Leave, Pressed, Remote};
 use crate::layout::edges::{self, Step};
+use crate::layout::equalize;
 
 /// How control comes back to this computer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +58,8 @@ impl Crossing {
             (abs.0 + dx - f64::from(ox), abs.1 + dy - f64::from(oy)),
         );
         let (mx, my) = edges::mm_per_px(source);
-        if let Step::Cross { to, at } = edges::step(&self.map.placed, here, wanted)
+        if let Step::Cross { to, at } =
+            equalize::step(&self.map.placed, here, wanted, self.map.equalize)
             && self.map.placed[to].display.display_id.computer != self.me
         {
             self.release_current();
@@ -220,7 +222,7 @@ impl Crossing {
         let (computer, speed, back) = (r.computer, r.speed, r.back);
         let from = edges::index_of(&self.map.placed, &r.display).expect("display is on the map");
         let wanted = (r.at.0 + dx * speed.0, r.at.1 + dy * speed.1);
-        match edges::step(&self.map.placed, from, wanted) {
+        match equalize::step(&self.map.placed, from, wanted, self.map.equalize) {
             Step::Stay => self.point_at(from, wanted),
             Step::Clamp { at } => self.point_at(from, at),
             Step::Cross { to, at } => {

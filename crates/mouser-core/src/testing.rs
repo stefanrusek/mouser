@@ -602,3 +602,65 @@ pub(crate) fn push_back(nodes: &[TestNode], controller: usize) {
         push_right(&nodes[1]);
     }
 }
+
+/// A desk of Alpha (one display) and Beta (displays `b1` and `b2`, side by
+/// side), with both computers connected and knowing all three placed.
+pub(crate) async fn docked_desk(lab: &Lab) -> Vec<TestNode> {
+    let beta = VirtualPlatform::new();
+    beta.set_displays(vec![screen("b1", (0.0, 0.0)), screen("b2", (1920.0, 0.0))]);
+    let nodes = vec![
+        lab.start("Alpha").await,
+        lab.start_with("Beta", beta, |_| {}).await,
+    ];
+    let _: mouser_proto::control::Desk = call(
+        &nodes[0],
+        Method::DeskCreate,
+        json!({"name": "Home office"}),
+    )
+    .await;
+    admit(&nodes[0], &nodes[1]).await;
+    for node in &nodes {
+        eventually("all three displays placed", || async {
+            mapped(node).len() == 3
+        })
+        .await;
+    }
+    nodes
+}
+
+/// The keys of the displays on `node`'s input map, sorted.
+pub(crate) fn mapped(node: &TestNode) -> Vec<String> {
+    let mut keys: Vec<_> = node
+        .engine
+        .ctx
+        .crossing
+        .lock()
+        .unwrap()
+        .map
+        .placed
+        .iter()
+        .map(|p| p.display.display_id.key.clone())
+        .collect();
+    keys.sort();
+    keys
+}
+
+/// `layout.get` of `node`.
+pub(crate) async fn layout_of(node: &TestNode) -> Value {
+    call(node, Method::LayoutGet, json!({})).await
+}
+
+/// The desk epoch `node` holds.
+pub(crate) fn epoch_of(node: &TestNode) -> u64 {
+    node.engine
+        .ctx
+        .core
+        .lock()
+        .unwrap()
+        .state
+        .desk
+        .as_ref()
+        .expect("on a desk")
+        .state
+        .epoch
+}

@@ -1,5 +1,6 @@
 //! Display exchange: a member's local displays as wire `Display`s.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use mouser_platform::LocalDisplay;
@@ -7,10 +8,15 @@ use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, DisplayId};
 use mouser_proto::wire::ControlMessage;
 
-use crate::engine::{Ctx, Phase};
+use crate::engine::{Core, Ctx, Phase};
 
-/// The wire form of `displays`, all included in the layout.
-pub fn to_wire(computer: ComputerId, displays: &[LocalDisplay]) -> Vec<Display> {
+/// The wire form of `displays`, included in the layout unless their key is
+/// in `removed`.
+pub fn to_wire(
+    computer: ComputerId,
+    displays: &[LocalDisplay],
+    removed: &BTreeSet<String>,
+) -> Vec<Display> {
     displays
         .iter()
         .map(|d| Display {
@@ -24,17 +30,24 @@ pub fn to_wire(computer: ComputerId, displays: &[LocalDisplay]) -> Vec<Display> 
             scale: d.scale,
             physical_size_mm: d.physical_size_mm.map(|(w, h)| (w as f32, h as f32)),
             origin_local: (d.origin.0 as i32, d.origin.1 as i32),
-            included: true,
+            included: !removed.contains(&d.key),
         })
         .collect()
 }
 
 impl Ctx {
     /// This computer's displays in wire form.
-    pub(crate) fn local_displays(&self) -> Vec<Display> {
+    pub(crate) fn local_displays(&self, core: &Core) -> Vec<Display> {
+        self.local_displays_without(&core.state.removed)
+    }
+
+    /// This computer's displays in wire form, those in `removed` taken out
+    /// of the layout.
+    pub(crate) fn local_displays_without(&self, removed: &BTreeSet<String>) -> Vec<Display> {
         to_wire(
             self.me(),
             &self.platform.displays().expect("displays readable"),
+            removed,
         )
     }
 
@@ -66,7 +79,7 @@ impl Ctx {
         self.sync_layout(&mut core);
         self.persist(&core);
         self.refresh_map(&core);
-        let displays = self.local_displays();
+        let displays = self.local_displays(&core);
         for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {
             peer.send(ControlMessage::Displays {
                 displays: displays.clone(),

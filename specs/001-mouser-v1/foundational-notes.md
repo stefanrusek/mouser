@@ -47,3 +47,11 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - macOS pre-login agent: `mouser_platform_macos::login_agent::LoginAgent::system(exe).install()` writes `/Library/LaunchAgents/com.mouser.login-window.plist` (LimitLoadToSessionType=LoginWindow, RunAtLoad, KeepAlive) with `ProgramArguments = [exe, "--headless"]`. The app binary must accept `--headless` (run the engine with no window/tray); the installer/app must call `install()` as root (owner-approved privileged step). It never calls launchctl.
 - At the login window there is no user Keychain: core's headless mode needs a machine-scope secret source (open item for US12-core).
 - Portable mode: `MacPlatform::portable(data_dir)` (data_dir = `MouserData/` beside the executable) stores secrets as 0600 files under `<data_dir>/secrets/` and adds the limitation "macOS permissions must be granted again on each computer you run Mouser from this drive on." (filed under `Capability::Capture`). Detection of `MouserData/` and skipping `Autostart::set` are core/app (T226-T229).
+
+## core US4 decisions (for app US4, cli US9)
+
+- `layout.get` returns the `Layout` JSON plus an extra `displays` array: each `Display` field plus `computer_name`, `online`, `last_seen`. `layout.set` takes a `Layout` plus optional `displays: [{display_id, included}]`; unchanged entries are ignored, so `layout.get` output can be edited and sent back. (Contract gap: `LayoutResult` = `Layout`; formalize in proto later.)
+- Only the owning computer can remove/restore its own displays; a remote member's display is refused with "<display> belongs to another computer; remove it on that computer". Open item: replicate `included` (a `removed` list in `Layout` or a wire message) so any member can remove any display.
+- `layout.set` also writes `crossing.equalize_dimensions` and `crossing.block_fullscreen` into each member's config. Equalize maps one edge's full length onto the adjoining edge's.
+- A removal changes placed keys, so peers get `ReviewOffered` (same as docking).
+- Open item for US6: the "all displays removed still receives clipboard" edge case is only half-tested (membership + no crossing).

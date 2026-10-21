@@ -168,7 +168,8 @@ impl Ctx {
     /// placed display is not known.
     pub(crate) fn sync_layout(&self, core: &mut Core) {
         let me = self.me();
-        core.state.displays.insert(me, self.local_displays());
+        let mine = self.local_displays(core);
+        core.state.displays.insert(me, mine);
         let Some(desk) = core.state.desk.as_mut() else {
             return;
         };
@@ -185,6 +186,23 @@ impl Ctx {
                 .map(|d| d.display_id.key.as_str())
                 .collect()
         };
+        // Placements of displays their owner removed from the layout are
+        // the desk owner's doing (the placement follows with the layout, and
+        // the two can arrive in either order): they are no reason to place
+        // a computer again.
+        let placed_for = |c: &ComputerId| -> BTreeSet<&str> {
+            placed_keys
+                .get(c)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|k| {
+                    !known[c]
+                        .iter()
+                        .any(|d| !d.included && d.display_id.key == *k)
+                })
+                .collect()
+        };
         let unknown = placed_keys.keys().any(|c| !known.contains_key(c));
         if unknown {
             return;
@@ -195,10 +213,7 @@ impl Ctx {
         let cut_off = isolated(&edges::placed(&all_displays, &old));
         let stale: BTreeSet<ComputerId> = known
             .keys()
-            .filter(|c| {
-                placed_keys.get(*c).cloned().unwrap_or_default() != wanted(c)
-                    || cut_off.contains(*c)
-            })
+            .filter(|c| placed_for(c) != wanted(c) || cut_off.contains(*c))
             .copied()
             .collect();
         if stale.is_empty() {

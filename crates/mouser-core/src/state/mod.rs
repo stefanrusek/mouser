@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use mouser_proto::ids::{ComputerId, DeskId};
 use mouser_proto::model::{DeskState, Display};
@@ -36,6 +36,9 @@ pub struct LocalState {
     /// the layout stores only placements, so sizes live here.
     #[serde(default)]
     pub displays: BTreeMap<ComputerId, Vec<Display>>,
+    /// Keys of this computer's displays the owner removed from the layout.
+    #[serde(default)]
+    pub removed: BTreeSet<String>,
 }
 
 impl Default for LocalState {
@@ -44,6 +47,7 @@ impl Default for LocalState {
             membership: Membership::Unjoined,
             desk: None,
             displays: BTreeMap::new(),
+            removed: BTreeSet::new(),
         }
     }
 }

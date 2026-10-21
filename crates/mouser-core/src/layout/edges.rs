@@ -176,11 +176,25 @@ pub enum Step {
     Clamp { at: (f64, f64) },
 }
 
-fn clamp_into(rect: Rect, at: (f64, f64)) -> (f64, f64) {
+pub(super) fn clamp_into(rect: Rect, at: (f64, f64)) -> (f64, f64) {
     (
         at.0.clamp(f64::from(rect.x), f64::from(rect.right()) - INSET),
         at.1.clamp(f64::from(rect.y), f64::from(rect.bottom()) - INSET),
     )
+}
+
+/// The side of `rect` that a point outside it left through, and where along
+/// that side (desk coordinate on the axis along it).
+pub(super) fn exit(rect: Rect, at: (f64, f64)) -> (Side, f64) {
+    if at.0 >= f64::from(rect.right()) {
+        (Side::Right, at.1)
+    } else if at.0 < f64::from(rect.x) {
+        (Side::Left, at.1)
+    } else if at.1 >= f64::from(rect.bottom()) {
+        (Side::Bottom, at.0)
+    } else {
+        (Side::Top, at.0)
+    }
 }
 
 /// Move the pointer of display `from` to desk point `at`.
@@ -189,15 +203,7 @@ pub fn step(placed: &[Placed], from: usize, at: (f64, f64)) -> Step {
     if rect.contains(at.0, at.1) {
         return Step::Stay;
     }
-    let (side, along) = if at.0 >= f64::from(rect.right()) {
-        (Side::Right, at.1)
-    } else if at.0 < f64::from(rect.x) {
-        (Side::Left, at.1)
-    } else if at.1 >= f64::from(rect.bottom()) {
-        (Side::Bottom, at.0)
-    } else {
-        (Side::Top, at.0)
-    };
+    let (side, along) = exit(rect, at);
     let edge = edges(placed).into_iter().find(|e| {
         e.from == from && e.side == side && f64::from(e.lo) <= along && along < f64::from(e.hi)
     });

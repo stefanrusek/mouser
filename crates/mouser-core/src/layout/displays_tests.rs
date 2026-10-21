@@ -13,7 +13,11 @@ fn local_displays_map_to_wire_displays() {
         physical_size_mm: Some((597.0, 336.0)),
         origin: (-2560.0, 10.0),
     };
-    let wire = to_wire(ComputerId([4; 16]), &[local]);
+    let wire = to_wire(
+        ComputerId([4; 16]),
+        std::slice::from_ref(&local),
+        &Default::default(),
+    );
     assert_eq!(wire.len(), 1);
     let d = &wire[0];
     assert_eq!(d.display_id.computer, ComputerId([4; 16]));
@@ -24,6 +28,8 @@ fn local_displays_map_to_wire_displays() {
     assert_eq!(d.physical_size_mm, Some((597.0, 336.0)));
     assert_eq!(d.origin_local, (-2560, 10));
     assert!(d.included);
+    let removed = std::collections::BTreeSet::from(["d1".to_string()]);
+    assert!(!to_wire(ComputerId([4; 16]), &[local], &removed)[0].included);
 }
 
 mod on_the_wire {

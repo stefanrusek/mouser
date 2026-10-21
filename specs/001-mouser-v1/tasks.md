@@ -215,19 +215,19 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us4` passes: `layout.set` moves edges on every member; display details, removal with undo and equalized dimensions behave as specified.
 
-- [ ] T134 [US4-core] Write the acceptance runner `crates/mouser-core/tests/acc_us4.rs` and steps `crates/mouser-core/tests/steps/us4.rs` for every scenario in `tests/features/us4.feature`
-- [ ] T135 [P] [US4-core] Write unit tests for layout validation in `crates/mouser-core/src/layout/validate_tests.rs`: "placements of included displays MUST NOT overlap; every included display MUST be reachable (graph connected)"; an invalid `layout.set` is refused and the previous layout stays
-- [ ] T136 [US4-core] Implement layout validation in `crates/mouser-core/src/layout/validate.rs`
-- [ ] T137 [P] [US4-core] Write unit tests for `layout.get`/`layout.set` in `crates/mouser-core/src/control/layout_tests.rs`: `layout.set` bumps the desk epoch, replicates via DeskState, and every member derives the new edges (Story 4 sc. 1)
-- [ ] T138 [US4-core] Implement `layout.get`/`layout.set` in `crates/mouser-core/src/control/layout.rs`
-- [ ] T139 [P] [US4-core] Write unit tests for display details in `crates/mouser-core/src/layout/details_tests.rs`: each display in `layout.get` carries resolution, scale, owning computer name and online state or `last_seen` (Story 4 sc. 2)
-- [ ] T140 [US4-core] Implement display details in `crates/mouser-core/src/layout/details.rs`
-- [ ] T141 [P] [US4-core] Write unit tests for display removal in `crates/mouser-core/src/layout/remove_tests.rs`: setting `included = false` stops all crossing onto it and restoring `included = true` undoes it; a computer with every display removed stays a member and still receives clipboard offers (Story 4 sc. 3; edge case)
-- [ ] T142 [US4-core] Implement display removal and undo in `crates/mouser-core/src/layout/remove.rs`
-- [ ] T143 [P] [US4-core] Write unit tests for equalized dimensions in `crates/mouser-core/src/layout/equalize_tests.rs`: with `crossing.equalize_dimensions = true` the full length of one edge maps onto the full length of the adjoining edge (Story 4 sc. 4)
-- [ ] T144 [US4-core] Implement equalized-dimension mapping in `crates/mouser-core/src/layout/equalize.rs`
-- [ ] T145 [US4-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T146 [US4-core] Commit: phase boundary "US4-core" (5.3)
+- [X] T134 [US4-core] Write the acceptance runner `crates/mouser-core/tests/acc_us4.rs` and steps `crates/mouser-core/tests/steps/us4.rs` for every scenario in `tests/features/us4.feature`
+- [X] T135 [P] [US4-core] Write unit tests for layout validation in `crates/mouser-core/src/layout/validate_tests.rs`: "placements of included displays MUST NOT overlap; every included display MUST be reachable (graph connected)"; an invalid `layout.set` is refused and the previous layout stays
+- [X] T136 [US4-core] Implement layout validation in `crates/mouser-core/src/layout/validate.rs`
+- [X] T137 [P] [US4-core] Write unit tests for `layout.get`/`layout.set` in `crates/mouser-core/src/control/layout_tests.rs`: `layout.set` bumps the desk epoch, replicates via DeskState, and every member derives the new edges (Story 4 sc. 1)
+- [X] T138 [US4-core] Implement `layout.get`/`layout.set` in `crates/mouser-core/src/control/layout.rs`
+- [X] T139 [P] [US4-core] Write unit tests for display details in `crates/mouser-core/src/layout/details_tests.rs`: each display in `layout.get` carries resolution, scale, owning computer name and online state or `last_seen` (Story 4 sc. 2)
+- [X] T140 [US4-core] Implement display details in `crates/mouser-core/src/layout/details.rs`
+- [X] T141 [P] [US4-core] Write unit tests for display removal in `crates/mouser-core/src/layout/remove_tests.rs`: setting `included = false` stops all crossing onto it and restoring `included = true` undoes it; a computer with every display removed stays a member and still receives clipboard offers (Story 4 sc. 3; edge case)
+- [X] T142 [US4-core] Implement display removal and undo in `crates/mouser-core/src/layout/remove.rs`
+- [X] T143 [P] [US4-core] Write unit tests for equalized dimensions in `crates/mouser-core/src/layout/equalize_tests.rs`: with `crossing.equalize_dimensions = true` the full length of one edge maps onto the full length of the adjoining edge (Story 4 sc. 4)
+- [X] T144 [US4-core] Implement equalized-dimension mapping in `crates/mouser-core/src/layout/equalize.rs`
+- [X] T145 [US4-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T146 [US4-core] Commit: phase boundary "US4-core" (5.3)
 
 #### Phase 7: US5-core — As a desk user, I want the pointer to stay put when I don't mean to cross (P2)
 

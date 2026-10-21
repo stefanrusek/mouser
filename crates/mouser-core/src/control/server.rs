@@ -91,6 +91,8 @@ pub(crate) async fn call(
             ctx.set_paused(method == Method::ActivePause);
             json(Empty {})
         }
+        Method::LayoutGet => Ok(ctx.get_layout()),
+        Method::LayoutSet => ctx.set_layout(parse(params)?),
         Method::ConfigGet => {
             let p: ConfigGetParams = parse(Some(params.unwrap_or_else(|| json!({}))))?;
             ctx.get_config(p.key.as_deref())

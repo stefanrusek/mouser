@@ -246,7 +246,7 @@ impl Ctx {
             author: self.me(),
             members: vec![self.member_in(core)],
             layout: Layout {
-                placements: crate::layout::autoplace::place(&[], &self.local_displays()),
+                placements: crate::layout::autoplace::place(&[], &self.local_displays(core)),
                 equalize_dimensions: core.config.crossing.equalize_dimensions,
                 block_fullscreen: core.config.crossing.block_fullscreen,
                 ..Layout::default()
