@@ -17,7 +17,7 @@ env:
 jobs:
   bundle:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           # One universal (arm64 + x86_64) app and dmg: a single download and a

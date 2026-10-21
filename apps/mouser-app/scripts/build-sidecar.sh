@@ -15,6 +15,10 @@ build() { (cd "$root" && cargo build --release --locked -p mouser-cli --target "
 if [ "$triple" = "universal-apple-darwin" ]; then
   build aarch64-apple-darwin
   build x86_64-apple-darwin
+  # Tauri builds each architecture's app separately before merging, and each
+  # of those builds looks up its own per-arch sidecar.
+  cp "$root/target/aarch64-apple-darwin/release/mouser" "$out/mouser-aarch64-apple-darwin"
+  cp "$root/target/x86_64-apple-darwin/release/mouser" "$out/mouser-x86_64-apple-darwin"
   lipo -create -output "$out/mouser-universal-apple-darwin" \
     "$root/target/aarch64-apple-darwin/release/mouser" \
     "$root/target/x86_64-apple-darwin/release/mouser"
