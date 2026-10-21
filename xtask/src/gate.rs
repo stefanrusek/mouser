@@ -99,7 +99,7 @@ pub fn run(args: Args) -> i32 {
     for p in &pkgs {
         pargs.extend(["-p", p]);
     }
-    ok &= record(lane, &mut cargo(&["fmt", "--check"]), "fmt");
+    ok &= record(lane, cargo(&["fmt"]).args(&pargs).arg("--check"), "fmt");
     ok &= record(
         lane,
         cargo(&["clippy"])
