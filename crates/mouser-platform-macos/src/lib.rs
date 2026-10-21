@@ -1,1 +1,172 @@
+//! macOS backend for the `mouser-platform` seam.
+//!
+//! Phase US1 provides permissions, interface classification, the Keychain
+//! secret store and login-item autostart. Capture, injection, clipboard,
+//! displays and the rest arrive with their own phases; until then they report
+//! `Unsupported` and are declared as limitations (rule 9), which is the
+//! contract-conformant answer for a capability a backend does not yet have.
 
+mod autostart;
+mod net;
+mod permissions;
+mod secrets;
+
+use mouser_platform::{
+    Autostart, Capability, Clipboard, Error, FileDrag, InputCapture, InputInject, Limitation,
+    LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
+    Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
+};
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::mpsc::Sender;
+
+/// Keychain service name under which Mouser stores its secrets.
+pub const KEYCHAIN_SERVICE: &str = "com.mouser.app";
+
+/// The macOS implementation of [`Platform`].
+pub struct MacPlatform {
+    open_program: PathBuf,
+}
+
+impl MacPlatform {
+    /// Production platform: System Settings panes open through `/usr/bin/open`.
+    pub fn new() -> Self {
+        Self::with_open_program("/usr/bin/open")
+    }
+
+    /// Platform whose settings URLs are handed to `program` (called as
+    /// `program <url>`) instead of `/usr/bin/open`; tests pass a harmless
+    /// program so no System Settings window appears.
+    pub fn with_open_program(program: impl Into<PathBuf>) -> Self {
+        MacPlatform {
+            open_program: program.into(),
+        }
+    }
+}
+
+impl Default for MacPlatform {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn limitation(capability: Capability, text: &str) -> Limitation {
+    Limitation {
+        capability,
+        text: text.into(),
+    }
+}
+
+fn product_version() -> String {
+    let out = Command::new("/usr/bin/sw_vers")
+        .arg("-productVersion")
+        .output()
+        .expect("sw_vers");
+    String::from_utf8(out.stdout)
+        .expect("sw_vers output")
+        .trim()
+        .to_string()
+}
+
+impl Platform for MacPlatform {
+    fn info(&self) -> PlatformInfo {
+        PlatformInfo {
+            os: Os::MacOs,
+            version: product_version(),
+            session: SessionType::Native,
+            limitations: vec![
+                limitation(
+                    Capability::Capture,
+                    "Sharing this Mac's keyboard and mouse is not available yet.",
+                ),
+                limitation(
+                    Capability::Inject,
+                    "Controlling this Mac from another computer is not available yet.",
+                ),
+                limitation(
+                    Capability::Clipboard,
+                    "Clipboard sharing is not available yet.",
+                ),
+                limitation(
+                    Capability::FileDrag,
+                    "Dragging files between computers is not available yet.",
+                ),
+                limitation(
+                    Capability::SecureAttention,
+                    "Ctrl-Alt-Del can only be sent to Windows computers.",
+                ),
+            ],
+        }
+    }
+
+    fn displays(&self) -> Result<Vec<LocalDisplay>> {
+        Err(Error::Unsupported)
+    }
+
+    fn watch_displays(&self, _tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
+        Err(Error::Unsupported)
+    }
+
+    fn permissions(&self) -> Vec<(PermissionKind, PermissionState)> {
+        permissions::report(&permissions::SystemProbe)
+    }
+
+    fn open_permission_settings(&self, kind: PermissionKind) -> Result<()> {
+        permissions::open_settings(&self.open_program, kind)
+    }
+
+    fn capture(&self) -> Result<Box<dyn InputCapture>> {
+        Err(Error::Unsupported)
+    }
+
+    fn inject(&self) -> Result<Box<dyn InputInject>> {
+        Err(Error::Unsupported)
+    }
+
+    fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
+        Err(Error::Unsupported)
+    }
+
+    fn secure_input(&self) -> Option<SecureInputHolder> {
+        None
+    }
+
+    fn foreground_is_fullscreen(&self) -> bool {
+        false
+    }
+
+    fn interfaces(&self) -> Vec<NetInterface> {
+        net::interfaces()
+    }
+
+    fn watch_network(&self, _tx: Sender<()>) -> Result<WatchHandle> {
+        Err(Error::Unsupported)
+    }
+
+    fn foreground_elevated(&self) -> bool {
+        false
+    }
+
+    fn secrets(&self) -> Box<dyn SecretStore> {
+        Box::new(secrets::KeychainStore::new(KEYCHAIN_SERVICE))
+    }
+
+    fn autostart(&self) -> Box<dyn Autostart> {
+        Box::new(autostart::LoginItem::new(autostart::SystemService(None)))
+    }
+
+    fn file_drag(&self) -> Option<Box<dyn FileDrag>> {
+        None
+    }
+}
+
+#[cfg(test)]
+mod autostart_tests;
+#[cfg(test)]
+mod lib_tests;
+#[cfg(test)]
+mod net_tests;
+#[cfg(test)]
+mod permissions_tests;
+#[cfg(test)]
+mod secrets_tests;

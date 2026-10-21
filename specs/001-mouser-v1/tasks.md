@@ -526,17 +526,17 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 
 #### Phase 31: US1-platform-macos — As a desk owner, I want to put my computers on a desk (P1)
 
-- [ ] T316 [P] [US1-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us1.rs` running conformance rules 6 (interfaces), 8 (secrets) and 9 (unsupported) against `MacPlatform`
-- [ ] T317 [P] [US1-platform-macos] Write unit tests for permissions in `crates/mouser-platform-macos/src/permissions_tests.rs`: `permissions()` reports accessibility (AXIsProcessTrusted), input_monitoring (CGPreflightListenEventAccess), screen_recording (CGPreflightScreenCaptureAccess), full_disk_access without prompting; `open_permission_settings(kind)` opens the matching System Settings pane
-- [ ] T318 [US1-platform-macos] Implement permissions in `crates/mouser-platform-macos/src/permissions.rs`
-- [ ] T319 [P] [US1-platform-macos] Write unit tests for interface classification in `crates/mouser-platform-macos/src/net_tests.rs`: `SCNetworkInterfaceGetInterfaceType` Ethernet/IEEE80211 → `PhysicalLan`; utun, bridge (incl. Thunderbolt-bridge members), awdl, llw, anpi, ap, vmnet, docker → `Virtual`; lo0 incl. `fe80::1` → `Loopback` (research R3)
-- [ ] T320 [US1-platform-macos] Implement `interfaces()` in `crates/mouser-platform-macos/src/net.rs`
-- [ ] T321 [P] [US1-platform-macos] Write unit tests for the Keychain secret store in `crates/mouser-platform-macos/src/secrets_tests.rs`: set/get/delete round-trip under service `com.mouser.app`
-- [ ] T322 [US1-platform-macos] Implement `SecretStore` on the macOS Keychain in `crates/mouser-platform-macos/src/secrets.rs`
-- [ ] T323 [P] [US1-platform-macos] Write unit tests for autostart in `crates/mouser-platform-macos/src/autostart_tests.rs`: `set(true)` registers the app as a login item via SMAppService (auto-launch 0.6.0 SMAppService mode); `enabled()` reflects it (FR-011)
-- [ ] T324 [US1-platform-macos] Implement `Autostart` in `crates/mouser-platform-macos/src/autostart.rs`
-- [ ] T325 [US1-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T326 [US1-platform-macos] Commit: phase boundary "US1-platform-macos" (5.3)
+- [X] T316 [P] [US1-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us1.rs` running conformance rules 6 (interfaces), 8 (secrets) and 9 (unsupported) against `MacPlatform`
+- [X] T317 [P] [US1-platform-macos] Write unit tests for permissions in `crates/mouser-platform-macos/src/permissions_tests.rs`: `permissions()` reports accessibility (AXIsProcessTrusted), input_monitoring (CGPreflightListenEventAccess), screen_recording (CGPreflightScreenCaptureAccess), full_disk_access without prompting; `open_permission_settings(kind)` opens the matching System Settings pane
+- [X] T318 [US1-platform-macos] Implement permissions in `crates/mouser-platform-macos/src/permissions.rs`
+- [X] T319 [P] [US1-platform-macos] Write unit tests for interface classification in `crates/mouser-platform-macos/src/net_tests.rs`: `SCNetworkInterfaceGetInterfaceType` Ethernet/IEEE80211 → `PhysicalLan`; utun, bridge (incl. Thunderbolt-bridge members), awdl, llw, anpi, ap, vmnet, docker → `Virtual`; lo0 incl. `fe80::1` → `Loopback` (research R3)
+- [X] T320 [US1-platform-macos] Implement `interfaces()` in `crates/mouser-platform-macos/src/net.rs`
+- [X] T321 [P] [US1-platform-macos] Write unit tests for the Keychain secret store in `crates/mouser-platform-macos/src/secrets_tests.rs`: set/get/delete round-trip under service `com.mouser.app`
+- [X] T322 [US1-platform-macos] Implement `SecretStore` on the macOS Keychain in `crates/mouser-platform-macos/src/secrets.rs`
+- [X] T323 [P] [US1-platform-macos] Write unit tests for autostart in `crates/mouser-platform-macos/src/autostart_tests.rs`: `set(true)` registers the app as a login item via SMAppService (auto-launch 0.6.0 SMAppService mode); `enabled()` reflects it (FR-011)
+- [X] T324 [US1-platform-macos] Implement `Autostart` in `crates/mouser-platform-macos/src/autostart.rs`
+- [X] T325 [US1-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T326 [US1-platform-macos] Commit: phase boundary "US1-platform-macos" (5.3)
 
 #### Phase 32: US2-platform-macos — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
