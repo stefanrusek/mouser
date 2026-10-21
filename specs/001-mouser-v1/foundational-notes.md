@@ -41,3 +41,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Modifiers held at a crossing are released locally, not carried; `LeaveControl` is unused (the controller tracks the remote pointer).
 - Input capture/injection start only once no input permission is Missing (re-checked every 250 ms).
 - **Deferred (contract change needed):** pause is per-computer. Story 2 sc. 12 says pausing applies on every computer; that needs a wire message (e.g. `Pause{paused}`) in mouser-proto. acc_us2 asserts it only on the computer where the hotkey fired.
+
+## platform-macos US12/US13 decisions (for core/app US12, US13)
+
+- macOS pre-login agent: `mouser_platform_macos::login_agent::LoginAgent::system(exe).install()` writes `/Library/LaunchAgents/com.mouser.login-window.plist` (LimitLoadToSessionType=LoginWindow, RunAtLoad, KeepAlive) with `ProgramArguments = [exe, "--headless"]`. The app binary must accept `--headless` (run the engine with no window/tray); the installer/app must call `install()` as root (owner-approved privileged step). It never calls launchctl.
+- At the login window there is no user Keychain: core's headless mode needs a machine-scope secret source (open item for US12-core).
+- Portable mode: `MacPlatform::portable(data_dir)` (data_dir = `MouserData/` beside the executable) stores secrets as 0600 files under `<data_dir>/secrets/` and adds the limitation "macOS permissions must be granted again on each computer you run Mouser from this drive on." (filed under `Capability::Capture`). Detection of `MouserData/` and skipping `Autostart::set` are core/app (T226-T229).

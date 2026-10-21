@@ -15,9 +15,11 @@ mod echo;
 mod fullscreen;
 mod inject;
 mod keymap;
+pub mod login_agent;
 mod net;
 mod netwatch;
 mod permissions;
+mod portable;
 mod secrets;
 mod secure_input;
 mod tap;
@@ -39,6 +41,8 @@ pub const KEYCHAIN_SERVICE: &str = "com.mouser.app";
 pub struct MacPlatform {
     open_program: PathBuf,
     echo: Arc<echo::Echo>,
+    /// `MouserData/` of a portable run; `None` when installed.
+    data_dir: Option<PathBuf>,
 }
 
 impl MacPlatform {
@@ -54,6 +58,7 @@ impl MacPlatform {
         MacPlatform {
             open_program: program.into(),
             echo: Arc::default(),
+            data_dir: None,
         }
     }
 }
@@ -88,7 +93,7 @@ impl Platform for MacPlatform {
             os: Os::MacOs,
             version: product_version(),
             session: SessionType::Native,
-            limitations: vec![
+            limitations: [
                 limitation(
                     Capability::Inject,
                     "Some games and remote-desktop apps ignore Mouser's input on this Mac.",
@@ -97,7 +102,10 @@ impl Platform for MacPlatform {
                     Capability::SecureAttention,
                     "Ctrl-Alt-Del can only be sent to Windows computers.",
                 ),
-            ],
+            ]
+            .into_iter()
+            .chain(self.data_dir.iter().flat_map(|_| portable::limitations()))
+            .collect(),
         }
     }
 
@@ -152,7 +160,10 @@ impl Platform for MacPlatform {
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
-        Box::new(secrets::KeychainStore::new(KEYCHAIN_SERVICE))
+        match &self.data_dir {
+            Some(dir) => Box::new(portable::FileSecrets::new(dir)),
+            None => Box::new(secrets::KeychainStore::new(KEYCHAIN_SERVICE)),
+        }
     }
 
     fn autostart(&self) -> Box<dyn Autostart> {
@@ -190,11 +201,15 @@ mod keymap_tests;
 #[cfg(test)]
 mod lib_tests;
 #[cfg(test)]
+mod login_agent_tests;
+#[cfg(test)]
 mod net_tests;
 #[cfg(test)]
 mod netwatch_tests;
 #[cfg(test)]
 mod permissions_tests;
+#[cfg(test)]
+mod portable_tests;
 #[cfg(test)]
 mod secrets_tests;
 #[cfg(test)]

@@ -586,15 +586,15 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 
 #### Phase 37: US12-platform-macos — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 
-- [ ] T358 [P] [US12-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/login_agent_tests.rs`: installing the pre-login agent writes a LaunchAgent plist with `LimitLoadToSessionType = LoginWindow` that starts Mouser in headless mode; uninstall removes it (Story 12 sc. 1)
-- [ ] T359 [US12-platform-macos] Implement the login-window agent installer in `crates/mouser-platform-macos/src/login_agent.rs`
+- [X] T358 [P] [US12-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/login_agent_tests.rs`: installing the pre-login agent writes a LaunchAgent plist with `LimitLoadToSessionType = LoginWindow` that starts Mouser in headless mode; uninstall removes it (Story 12 sc. 1)
+- [X] T359 [US12-platform-macos] Implement the login-window agent installer in `crates/mouser-platform-macos/src/login_agent.rs`
 - [ ] T360 [US12-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
 - [ ] T361 [US12-platform-macos] Commit: phase boundary "US12-platform-macos" (5.3)
 
 #### Phase 38: US13-platform-macos — As a desk owner, I want to run Mouser without installing it (P3)
 
-- [ ] T362 [P] [US13-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/portable_tests.rs`: in portable mode `secrets()` is file-backed under `MouserData/` and `limitations` states that macOS permissions must be granted again on each computer the drive is used on
-- [ ] T363 [US13-platform-macos] Implement portable mode in `crates/mouser-platform-macos/src/portable.rs`
+- [X] T362 [P] [US13-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/portable_tests.rs`: in portable mode `secrets()` is file-backed under `MouserData/` and `limitations` states that macOS permissions must be granted again on each computer the drive is used on
+- [X] T363 [US13-platform-macos] Implement portable mode in `crates/mouser-platform-macos/src/portable.rs`
 - [ ] T364 [US13-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
 - [ ] T365 [US13-platform-macos] Commit: phase boundary "US13-platform-macos" (5.3)
 
