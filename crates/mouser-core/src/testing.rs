@@ -63,13 +63,6 @@ impl Discovery for Browser {
     fn announce(&self, advert: &Advert) {
         *self.own.lock().unwrap() = Some(advert.computer);
         self.announced.lock().unwrap().push(advert.clone());
-        // The network delivers a computer's packets to wherever its endpoint
-        // is bound, also after the endpoint moved to follow a network change.
-        if let Some(me) = &self.me
-            && me.addr().port() != advert.port
-        {
-            me.change_address(SocketAddr::from(([127, 0, 0, 1], advert.port)));
-        }
         self.registry
             .adverts
             .lock()

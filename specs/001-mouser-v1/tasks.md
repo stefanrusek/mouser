@@ -302,8 +302,8 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 **Independent test**: `cargo test -p mouser-core --test acc_us9` passes against the control socket: status in JSON, settings changed by API or file edit take effect, logs readable.
 
 - [ ] T195 [US9-core] Write the acceptance runner `crates/mouser-core/tests/acc_us9.rs` and steps `crates/mouser-core/tests/steps/us9.rs` for every scenario in `tests/features/us9.feature`, driving the control socket directly
-- [ ] T196 [P] [US9-core] Write unit tests for `config.get`/`config.set` in `crates/mouser-core/src/control/config_api_tests.rs`: every key of contracts/config.md is readable and writable; `set` validates with `Config::validate` and returns `key: reason` on invalid input leaving the previous value; desk-shared keys propagate with a new epoch; a `status` notification reports the change to the UI (Story 9 sc. 2, FR-005)
-- [ ] T197 [US9-core] Implement `config.get`/`config.set` in `crates/mouser-core/src/control/config_api.rs`
+- [X] T196 [P] [US9-core] Write unit tests for `config.get`/`config.set` in `crates/mouser-core/src/control/config_api_tests.rs`: every key of contracts/config.md is readable and writable; `set` validates with `Config::validate` and returns `key: reason` on invalid input leaving the previous value; desk-shared keys propagate with a new epoch; a `status` notification reports the change to the UI (Story 9 sc. 2, FR-005)
+- [X] T197 [US9-core] Implement `config.get`/`config.set` in `crates/mouser-core/src/control/config_api.rs`
 - [ ] T198 [P] [US9-core] Write unit tests for config file watching in `crates/mouser-core/src/config/watch_tests.rs`: editing `config.toml` while running applies the new values without restart (edge case)
 - [ ] T199 [US9-core] Implement config file watching in `crates/mouser-core/src/config/watch.rs`
 - [ ] T200 [US9-core] Gate: `cargo xtask gate --packages mouser-core --lane core`

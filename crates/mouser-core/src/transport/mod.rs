@@ -230,8 +230,9 @@ fn bind_or_panic(candidates: &[IpAddr], port: u16) -> std::net::UdpSocket {
 /// One computer's QUIC endpoint.
 pub struct Transport {
     endpoint: Endpoint,
-    /// Addresses the endpoint's sockets may be bound to, in order of preference.
-    candidates: Vec<IpAddr>,
+    /// The bound socket, kept so the endpoint can be moved onto another handle of
+    /// it: the configured port never changes.
+    socket: std::net::UdpSocket,
     certificate: CertificateDer<'static>,
     pkcs8: Vec<u8>,
 }
@@ -249,6 +250,7 @@ impl Transport {
     /// Bind the first of `candidates` that can be bound.
     pub fn bind_first(identity: &Identity, candidates: &[IpAddr], port: u16) -> Self {
         let socket = bind_or_panic(candidates, port);
+        let kept = socket.try_clone().expect("socket handle can be duplicated");
         let (certificate, pkcs8) = certificate(identity);
         let mut tls = ServerConfig::builder_with_provider(provider())
             .with_protocol_versions(&[&quinn::rustls::version::TLS13])
@@ -270,7 +272,7 @@ impl Transport {
         .expect("QUIC endpoint");
         Self {
             endpoint,
-            candidates: candidates.to_vec(),
+            socket: kept,
             certificate,
             pkcs8,
         }

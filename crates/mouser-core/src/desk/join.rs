@@ -387,6 +387,7 @@ impl Ctx {
                 state: sealed.state,
             });
             core.pending = None;
+            self.adopt_shared_config(&mut core);
             self.persist(&core);
             core.peers.get_mut(&peer).expect("peer registered").phase = Phase::Greeted;
             self.send_auth(&core, peer);

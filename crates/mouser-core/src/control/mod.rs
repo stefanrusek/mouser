@@ -2,9 +2,12 @@
 //! same methods in-process for the app's UI.
 
 pub mod client;
+pub mod config_api;
 pub mod server;
 pub mod status;
 
+#[cfg(test)]
+mod config_api_tests;
 #[cfg(test)]
 mod server_tests;
 #[cfg(test)]

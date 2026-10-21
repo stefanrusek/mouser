@@ -73,6 +73,11 @@ impl PanicDetector {
         }
     }
 
+    /// The gesture being watched for.
+    pub fn spec(&self) -> PanicSpec {
+        self.spec
+    }
+
     /// A key went down at `now`; true when this press completes the panic
     /// gesture. Any other key, or a pause, starts the count over.
     pub fn pressed(&mut self, usage: u32, now: Instant) -> bool {

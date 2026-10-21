@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mouser_proto::control::{
-    DeskCreateParams, DeskJoinParams, DeskMoveParams, Empty, JoinDecideParams, Method,
-    RemoveMemberParams, Request, Response, RpcError, SubscribeParams, Topic,
+    ConfigGetParams, ConfigSetParams, DeskCreateParams, DeskJoinParams, DeskMoveParams, Empty,
+    JoinDecideParams, Method, RemoveMemberParams, Request, Response, RpcError, SubscribeParams,
+    Topic,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -88,6 +89,15 @@ pub(crate) async fn call(
         }
         Method::ActivePause | Method::ActiveResume => {
             ctx.set_paused(method == Method::ActivePause);
+            json(Empty {})
+        }
+        Method::ConfigGet => {
+            let p: ConfigGetParams = parse(Some(params.unwrap_or_else(|| json!({}))))?;
+            ctx.get_config(p.key.as_deref())
+        }
+        Method::ConfigSet => {
+            let p: ConfigSetParams = parse(params)?;
+            ctx.set_config(&p.key, p.value)?;
             json(Empty {})
         }
         _ => Err(unknown(format!("{name} is not available yet"))),

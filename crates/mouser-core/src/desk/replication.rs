@@ -32,6 +32,7 @@ impl Ctx {
         if adopt(&mut desk.state, incoming) {
             let state = desk.state.clone();
             self.layout_changed(&mut core, &old, &state);
+            self.adopt_shared_config(&mut core);
             self.sync_layout(&mut core);
             drop(core);
             self.notify_status();

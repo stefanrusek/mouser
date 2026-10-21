@@ -9,13 +9,46 @@ use mouser_testkit::Injected;
 use crate::testing::*;
 
 #[tokio::test]
-async fn rebinding_moves_the_endpoint_to_a_new_socket() {
+async fn rebinding_keeps_the_configured_port_and_the_wildcard_address() {
     let lab = Lab::new();
     let node = lab.start("Alpha").await;
     let before = node.engine.local_addr();
+    assert!(before.ip().is_unspecified());
     let after = node.engine.ctx.transport.rebind();
-    assert_ne!(after, before);
-    assert_eq!(node.engine.local_addr(), after);
+    assert_eq!(after, before);
+    assert_eq!(node.engine.local_addr(), before);
+}
+
+/// Regression: an address change used to move the endpoint to an OS-chosen
+/// port, which broke join-by-address and firewall rules on `advanced.port`.
+#[tokio::test]
+async fn an_address_change_keeps_the_configured_port() {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    for node in &nodes {
+        let configured =
+            u16::try_from(node.engine.ctx.core.lock().unwrap().config.advanced.port).unwrap();
+        assert_eq!(node.engine.local_addr().port(), configured);
+        let announced = node.discovery.announcements().len();
+        node.sim.as_ref().unwrap().add_interface(interface(
+            "en6",
+            InterfaceKind::PhysicalLan,
+            [192, 168, 6, 6],
+        ));
+        eventually("the change to be handled", || async {
+            node.discovery.announcements().len() > announced
+        })
+        .await;
+        assert_eq!(node.engine.local_addr().port(), configured);
+        assert_eq!(
+            node.discovery.announcements().last().unwrap().port,
+            configured
+        );
+    }
+    eventually("both sides connected", || async {
+        connected(&nodes[0]).await == 1 && connected(&nodes[1]).await == 1
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -70,7 +103,7 @@ async fn the_dialling_side_keeps_its_connection_through_an_address_change() {
     let stable = d.engine.ctx.core.lock().unwrap().peers[&a.engine.computer_id()]
         .conn
         .stable_id();
-    let port = d.engine.local_addr().port();
+    let announced = d.discovery.announcements().len();
 
     // The dialler moves from Wi-Fi to Ethernet.
     let sim = d.sim.as_ref().unwrap();
@@ -79,8 +112,8 @@ async fn the_dialling_side_keeps_its_connection_through_an_address_change() {
         InterfaceKind::PhysicalLan,
         [192, 168, 7, 9],
     ));
-    eventually("the endpoint to move", || async {
-        d.engine.local_addr().port() != port
+    eventually("the endpoint to be rebound", || async {
+        d.discovery.announcements().len() > announced
     })
     .await;
 
@@ -107,14 +140,14 @@ async fn crossing_works_within_five_seconds_of_an_address_change() {
     let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
     for (mover, other) in [(0, 1), (1, 0)] {
         let started = std::time::Instant::now();
-        let port = nodes[mover].engine.local_addr().port();
+        let announced = nodes[mover].discovery.announcements().len();
         nodes[mover].sim.as_ref().unwrap().add_interface(interface(
             "en8",
             InterfaceKind::PhysicalLan,
             [172, 16, 0, 9 + mover as u8],
         ));
-        eventually("the endpoint to move", || async {
-            nodes[mover].engine.local_addr().port() != port
+        eventually("the endpoint to be rebound", || async {
+            nodes[mover].discovery.announcements().len() > announced
         })
         .await;
         // Whichever side holds the connection after the change, the pointer
