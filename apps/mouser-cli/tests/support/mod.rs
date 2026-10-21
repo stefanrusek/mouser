@@ -1,0 +1,279 @@
+//! Shared test harness: in-process engines over `VirtualPlatform` + `SimNet`
+//! serving their control socket in a temp dir, and the real `mouser` binary
+//! pointed at that socket the way a user's shell would reach it: through the
+//! per-OS default path (contracts/control-api.md), which the child derives from
+//! its environment (`HOME`, `XDG_RUNTIME_DIR` or `USERNAME`).
+
+use std::collections::BTreeMap;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use mouser_core::discovery::{Advert, Discovery, Found};
+use mouser_core::{ControlClient, Engine, EngineParams};
+use mouser_proto::config::Config;
+use mouser_proto::control::{Method, Status};
+use mouser_proto::ids::ComputerId;
+use mouser_testkit::{SimNet, SimNode, VirtualPlatform};
+use serde_json::{Value, json};
+use tokio::process::{Child, Command};
+
+const WAIT: Duration = Duration::from_secs(20);
+
+/// In-process stand-in for the network's mDNS (as in mouser-core's harness).
+#[derive(Default)]
+struct Registry {
+    adverts: Mutex<BTreeMap<ComputerId, (Advert, SimNode)>>,
+}
+
+struct SimDiscovery {
+    registry: Arc<Registry>,
+    me: SimNode,
+    own: Mutex<Option<ComputerId>>,
+}
+
+impl Discovery for SimDiscovery {
+    fn announce(&self, advert: &Advert) {
+        *self.own.lock().unwrap() = Some(advert.computer);
+        self.registry
+            .adverts
+            .lock()
+            .unwrap()
+            .insert(advert.computer, (advert.clone(), self.me.clone()));
+    }
+
+    fn found(&self) -> Vec<Found> {
+        let own = *self.own.lock().unwrap();
+        let adverts = self.registry.adverts.lock().unwrap();
+        adverts
+            .values()
+            .filter(|(ad, _)| Some(ad.computer) != own)
+            .map(|(ad, node)| Found {
+                computer: ad.computer,
+                display_name: ad.display_name.clone(),
+                protocol: ad.protocol,
+                desk: ad.desk.clone(),
+                addrs: vec![self.me.route_to(node)],
+            })
+            .collect()
+    }
+
+    fn stop(&self) {
+        if let Some(own) = self.own.lock().unwrap().take() {
+            self.registry.adverts.lock().unwrap().remove(&own);
+        }
+    }
+}
+
+/// What a finished `mouser` run printed.
+pub struct Output {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl Output {
+    /// Exit 0, and stdout as JSON.
+    pub fn json(&self) -> Value {
+        assert_eq!(self.code, 0, "stderr: {}", self.stderr);
+        serde_json::from_str(&self.stdout).expect("stdout is one JSON document")
+    }
+}
+
+/// One computer: a user's login environment and, when running, its engine.
+pub struct Node {
+    pub name: String,
+    pub sim: SimNode,
+    env: Vec<(&'static str, String)>,
+    control_path: PathBuf,
+    engine: Option<Engine>,
+    _home: tempfile::TempDir,
+    _config: tempfile::TempDir,
+}
+
+fn free_port() -> u16 {
+    std::net::UdpSocket::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+/// A user's home with the environment that makes the default control path
+/// point inside it.
+#[cfg(target_os = "macos")]
+fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
+    let dir = home.join("Library/Application Support/Mouser");
+    std::fs::create_dir_all(&dir).unwrap();
+    (
+        vec![("HOME", home.to_str().unwrap().to_string())],
+        dir.join("mouser.sock"),
+    )
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
+    (
+        vec![("XDG_RUNTIME_DIR", home.to_str().unwrap().to_string())],
+        home.join("mouser.sock"),
+    )
+}
+
+#[cfg(windows)]
+fn login(_home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static PIPES: AtomicU64 = AtomicU64::new(0);
+    let user = format!(
+        "cli{}n{}",
+        std::process::id(),
+        PIPES.fetch_add(1, Ordering::Relaxed)
+    );
+    let pipe = PathBuf::from(format!(r"\\.\pipe\mouser-{user}"));
+    (vec![("USERNAME", user)], pipe)
+}
+
+/// A temp dir short enough for a Unix socket path.
+fn short_tempdir() -> tempfile::TempDir {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix("mc");
+    if cfg!(unix) {
+        builder.tempdir_in("/tmp").unwrap()
+    } else {
+        builder.tempdir().unwrap()
+    }
+}
+
+impl Node {
+    pub fn id(&self) -> ComputerId {
+        self.engine.as_ref().expect("node is running").computer_id()
+    }
+
+    /// Run `mouser args...` as this computer's user and wait for it.
+    pub async fn mouser(&self, args: &[&str]) -> Output {
+        let child = self.spawn(args);
+        let out = child.wait_with_output().await.unwrap();
+        Output {
+            code: out.status.code().expect("mouser exits by itself"),
+            stdout: String::from_utf8(out.stdout).unwrap(),
+            stderr: String::from_utf8(out.stderr).unwrap(),
+        }
+    }
+
+    /// Start `mouser args...` without waiting (for `desk join`).
+    pub fn spawn(&self, args: &[&str]) -> Child {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_mouser"));
+        command
+            .args(args)
+            .envs(self.env.iter().map(|(k, v)| (*k, v)))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        command.spawn().unwrap()
+    }
+
+    /// The engine's `status`, asked directly over the control socket.
+    pub async fn status(&self) -> Status {
+        serde_json::from_value(self.call(Method::Status).await).unwrap()
+    }
+
+    /// Call a parameterless method directly over the control socket.
+    pub async fn call(&self, method: Method) -> Value {
+        let mut client = ControlClient::connect(&self.control_path).await.unwrap();
+        client.call(method, Some(json!({}))).await.unwrap()
+    }
+
+    /// Poll `status` until `pred` holds.
+    pub async fn wait_status(&self, what: &str, pred: impl Fn(&Status) -> bool) -> Status {
+        let end = Instant::now() + WAIT;
+        loop {
+            let status = self.status().await;
+            if pred(&status) {
+                return status;
+            }
+            assert!(
+                Instant::now() < end,
+                "{}: timed out waiting for {what}\n{status:#?}",
+                self.name
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    /// Poll `mouser requests --json` until a join request is pending; its id.
+    pub async fn pending_request(&self) -> u64 {
+        let end = Instant::now() + WAIT;
+        loop {
+            let requests = self.mouser(&["--json", "requests"]).await.json();
+            if let Some(first) = requests.as_array().unwrap().first() {
+                return first["request_id"].as_u64().unwrap();
+            }
+            assert!(Instant::now() < end, "no join request arrived");
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+}
+
+/// One simulated network and its computers.
+pub struct Lab {
+    net: SimNet,
+    registry: Arc<Registry>,
+}
+
+impl Lab {
+    pub fn new() -> Self {
+        Self {
+            net: SimNet::new(),
+            registry: Arc::new(Registry::default()),
+        }
+    }
+
+    /// A computer whose engine is running and serving its control socket.
+    pub async fn add(&self, name: &str) -> Node {
+        let mut node = self.offline(name);
+        let port = free_port();
+        let mut config = Config::default();
+        config.advanced.port = u32::from(port);
+        mouser_core::config::save(node._config.path(), &config);
+        let sim = self
+            .net
+            .add_node(name, SocketAddr::from(([127, 0, 0, 1], port)));
+        let platform = VirtualPlatform::new();
+        sim.bind_platform(&platform);
+        let mut params = EngineParams::new(
+            Arc::new(platform),
+            node._config.path().to_path_buf(),
+            node.control_path.clone(),
+            name.to_string(),
+            "0.1.0".to_string(),
+        );
+        params.discovery = Some(Arc::new(SimDiscovery {
+            registry: self.registry.clone(),
+            me: sim.clone(),
+            own: Mutex::new(None),
+        }));
+        node.sim = sim;
+        node.engine = Some(Engine::start(params).await);
+        node
+    }
+
+    /// A user whose Mouser is not running.
+    pub fn offline(&self, name: &str) -> Node {
+        let home = short_tempdir();
+        let (env, control_path) = login(home.path());
+        Node {
+            name: name.to_string(),
+            sim: self.net.add_node(
+                &format!("{name}-offline"),
+                SocketAddr::from(([127, 0, 0, 1], 9)),
+            ),
+            env,
+            control_path,
+            engine: None,
+            _home: home,
+            _config: tempfile::tempdir().unwrap(),
+        }
+    }
+}

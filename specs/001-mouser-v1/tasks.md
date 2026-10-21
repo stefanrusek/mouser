@@ -478,11 +478,11 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 **Independent test**: `cargo test -p mouser-cli` passes for desk and approval commands.
 
-- [ ] T289 [P] [US1-cli] Write tests `apps/mouser-cli/tests/contract_cli_desk.rs`: `mouser desks [--json]`, `mouser desk create|join|leave|remove`, `mouser requests`, `mouser approve|decline` map to the control-API methods of contracts/cli.md; `join` waits and prints the decision; exit codes 0 success, 1 error, 2 not running, 3 invalid argument
-- [ ] T290 [US1-cli] Implement the desk and approval commands, socket client and exit-code mapping in `apps/mouser-cli/src/main.rs` and `apps/mouser-cli/src/desk.rs`
-- [ ] T291 [P] [US1-cli] Write J1 step definitions for Story 1 (install, create desk, join, approve, restart-and-rejoin) in `apps/mouser-cli/tests/e2e/steps/us1-cli.rs`, driving the installed `mouser` CLI over SSH; verified by `cargo test -p mouser-cli --no-run` (5.2: lanes author journey steps only)
-- [ ] T292 [US1-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T293 [US1-cli] Commit: phase boundary "US1-cli" (5.3)
+- [X] T289 [P] [US1-cli] Write tests `apps/mouser-cli/tests/contract_cli_desk.rs`: `mouser desks [--json]`, `mouser desk create|join|leave|remove`, `mouser requests`, `mouser approve|decline` map to the control-API methods of contracts/cli.md; `join` waits and prints the decision; exit codes 0 success, 1 error, 2 not running, 3 invalid argument
+- [X] T290 [US1-cli] Implement the desk and approval commands, socket client and exit-code mapping in `apps/mouser-cli/src/main.rs` and `apps/mouser-cli/src/desk.rs`
+- [X] T291 [P] [US1-cli] Write J1 step definitions for Story 1 (install, create desk, join, approve, restart-and-rejoin) in `apps/mouser-cli/tests/e2e/steps/us1-cli.rs`, driving the installed `mouser` CLI over SSH; verified by `cargo test -p mouser-cli --no-run` (5.2: lanes author journey steps only)
+- [X] T292 [US1-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T293 [US1-cli] Commit: phase boundary "US1-cli" (5.3)
 
 #### Phase 27: US2-cli — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
