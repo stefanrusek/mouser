@@ -7,13 +7,15 @@ use std::sync::Arc;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
-use tauri::{AppHandle, Manager, RunEvent, Runtime, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::host::Host;
+use crate::hotkeys::{Hotkey, Hotkeys, Press, Shortcuts};
 use crate::notify::Notifier;
 use crate::tray::{self, TrayController, TrayPort, TrayView};
-use crate::{app, commands, host, platform_select};
+use crate::{app, commands, host, overlay, platform_select};
 
 struct LiveTray<R: Runtime> {
     app: AppHandle<R>,
@@ -68,6 +70,27 @@ impl<R: Runtime> Notifier for LiveNotifier<R> {
     }
 }
 
+struct LiveShortcuts<R: Runtime>(AppHandle<R>);
+
+impl<R: Runtime> Shortcuts for LiveShortcuts<R> {
+    fn replace(&self, bindings: &[(String, Hotkey)], press: Press) {
+        let shortcuts = self.0.global_shortcut();
+        shortcuts
+            .unregister_all()
+            .expect("old hotkeys can be released");
+        for (accelerator, hotkey) in bindings {
+            let (hotkey, press) = (*hotkey, press.clone());
+            shortcuts
+                .on_shortcut(accelerator.as_str(), move |_app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        press(hotkey);
+                    }
+                })
+                .unwrap_or_else(|e| panic!("hotkey {accelerator} can be registered: {e}"));
+        }
+    }
+}
+
 /// Run Mouser until the owner quits it.
 pub fn run() {
     tauri::Builder::default()
@@ -77,6 +100,7 @@ pub fn run() {
             host::on_second_launch(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::control,
             commands::open_permission_settings,
@@ -96,12 +120,36 @@ pub fn run() {
             let control = host.control();
             app.manage(host);
             let handle = app.handle().clone();
+            overlay::create(&handle);
+            let config_dir = mouser_core::config::default_dir();
+            let forward = handle.clone();
+            let hotkeys = Hotkeys::new(
+                Box::new(LiveShortcuts(handle.clone())),
+                control.clone(),
+                Box::new(move || mouser_core::config::load_or_create(&config_dir)),
+                // QuickJump and targeted paste are acted on by the engine
+                // once those stories land; the window layer only reports them.
+                Arc::new(move |hotkey| {
+                    forward
+                        .emit("mouser://hotkey", hotkey.name())
+                        .expect("hotkey press can be announced");
+                }),
+            );
+            hotkeys.sync();
+            app.manage(hotkeys);
+            let events = control.events();
             let appearance = tray::system_appearance(&handle);
             let menu_control = control.clone();
             let icon = TrayIconBuilder::with_id("mouser")
                 .show_menu_on_left_click(true)
                 .on_menu_event(move |app, event| match tray::action(event.id.as_ref()) {
                     tray::Action::Open => tray::open(app, &menu_control),
+                    action @ (tray::Action::Pause | tray::Action::Resume) => {
+                        let control = menu_control.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tray::run_pause(&control, action).await;
+                        });
+                    }
                     tray::Action::Quit => app.exit(0),
                 })
                 .build(app)?;
@@ -121,6 +169,12 @@ pub fn run() {
                         theme_controller.update_appearance(tray::appearance_of(*theme));
                     }
                 });
+            let event_app = handle.clone();
+            tauri::async_runtime::spawn(app::pump_events(
+                event_app,
+                Arc::new(LiveNotifier(handle.clone())),
+                events,
+            ));
             tauri::async_runtime::spawn(async move {
                 let notes = app::start(&handle, &control, &controller).await;
                 app::pump(

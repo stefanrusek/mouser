@@ -3,13 +3,14 @@
 
 use std::sync::Arc;
 
-use mouser_core::ControlHandle;
+use mouser_core::{ControlHandle, EngineEvent};
 use mouser_proto::control::{Notification, Topic};
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::notify::{self, Notifier};
+use crate::overlay;
 use crate::tray::{TrayController, current_status};
 use crate::windows::{self, Which};
 
@@ -46,6 +47,36 @@ pub async fn pump<R: Runtime>(
             Ok(note) => handle(&app, &tray, notifier.as_ref(), note),
             Err(RecvError::Closed) => break,
             Err(RecvError::Lagged(n)) => panic!("the app fell {n} notifications behind the engine"),
+        }
+    }
+}
+
+/// Act on one engine event.
+pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, event: EngineEvent) {
+    match event {
+        EngineEvent::Landing { desktop, .. } => overlay::show_landing(app, desktop),
+        EngineEvent::ReviewOffered { name, .. } => notifier.show(
+            &format!("Check where {name}'s screens sit"),
+            &format!(
+                "{name} joined your desk. Open Mouser to review where its displays are placed."
+            ),
+        ),
+    }
+}
+
+/// Handle engine events until the engine stops.
+pub async fn pump_events<R: Runtime>(
+    app: AppHandle<R>,
+    notifier: Arc<dyn Notifier>,
+    mut events: Receiver<EngineEvent>,
+) {
+    loop {
+        match events.recv().await {
+            Ok(event) => handle_event(&app, notifier.as_ref(), event),
+            Err(RecvError::Closed) => break,
+            Err(RecvError::Lagged(n)) => {
+                panic!("the app fell {n} engine events behind the engine")
+            }
         }
     }
 }

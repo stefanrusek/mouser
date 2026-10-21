@@ -9,7 +9,8 @@ use tauri::test::{
 };
 use tauri::webview::InvokeRequest;
 
-use crate::commands::{call, open_settings, run_fix};
+use crate::commands::{call, call_and_sync, open_settings, run_fix};
+use crate::hotkeys_tests::hotkeys_for;
 use crate::support_tests::{NoSettingsScreen, app_with, fixture, fixture_on, has_window};
 
 #[tokio::test(flavor = "multi_thread")]
@@ -110,6 +111,7 @@ async fn the_ui_reaches_all_four_commands_over_ipc() {
         ])
         .build(mock_context(noop_assets()))
         .unwrap();
+    app.manage(hotkeys_for(f.host.control()).hotkeys);
     app.manage(f.host);
     let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
@@ -143,6 +145,24 @@ async fn the_ui_reaches_all_four_commands_over_ipc() {
     );
 
     ipc("hide_window", json!({})).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn saving_a_setting_picks_up_changed_hotkeys() {
+    let f = fixture().await;
+    let set = hotkeys_for(f.host.control());
+    set.hotkeys.sync();
+    set.config.lock().unwrap().hotkeys.quickjump = "Ctrl+Alt+K".into();
+    let control = f.host.control();
+
+    call_and_sync(&control, &set.hotkeys, "status", None)
+        .await
+        .unwrap();
+    assert_eq!(set.shortcuts.replaced.lock().unwrap().len(), 1);
+
+    // Whether or not the engine accepts the setting, the hotkeys follow config.
+    let _ = call_and_sync(&control, &set.hotkeys, "config.set", None).await;
+    assert_eq!(set.shortcuts.replaced.lock().unwrap().len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]

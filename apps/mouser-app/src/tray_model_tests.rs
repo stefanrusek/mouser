@@ -4,8 +4,8 @@ use tauri::Manager;
 
 use crate::support_tests::{FakeTray, app_with, eventually, fixture, has_window, status_of};
 use crate::tray::{
-    Action, Appearance, Icon, OPEN_ID, QUIT_ID, TrayController, Variant, action, appearance_of,
-    current_status, open, system_appearance, view,
+    Action, Appearance, Icon, OPEN_ID, PAUSE_ID, QUIT_ID, RESUME_ID, TrayController, Variant,
+    action, appearance_of, current_status, open, run_pause, system_appearance, view,
 };
 
 fn is_png(bytes: &[u8]) -> bool {
@@ -67,8 +67,10 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     assert_eq!(active.entries[0].id, None);
     assert_eq!(active.entries[1].id, Some(OPEN_ID));
     assert_eq!(active.entries[1].label, "Open Mouser");
-    assert_eq!(active.entries[2].id, Some(QUIT_ID));
-    assert_eq!(active.entries[2].label, "Quit Mouser");
+    assert_eq!(active.entries[2].id, Some(PAUSE_ID));
+    assert_eq!(active.entries[2].label, "Pause Mouser");
+    assert_eq!(active.entries[3].id, Some(QUIT_ID));
+    assert_eq!(active.entries[3].label, "Quit Mouser");
 
     status.state = EngineState::Paused;
     status.computers.pop();
@@ -77,6 +79,8 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     assert_eq!(paused.summary, "Mouser is paused: 1 computer, 1 display");
     assert!(paused.icon.paused);
     assert_eq!(paused.icon.variant, Variant::Dark);
+    assert_eq!(paused.entries[2].id, Some(RESUME_ID));
+    assert_eq!(paused.entries[2].label, "Resume Mouser");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -117,6 +121,8 @@ async fn the_system_appearance_comes_from_the_main_window() {
 fn menu_lines_map_to_their_actions() {
     assert_eq!(action(OPEN_ID), Action::Open);
     assert_eq!(action(QUIT_ID), Action::Quit);
+    assert_eq!(action(PAUSE_ID), Action::Pause);
+    assert_eq!(action(RESUME_ID), Action::Resume);
 }
 
 #[test]
@@ -133,4 +139,21 @@ async fn the_open_line_opens_mouser() {
     let control = app.state::<crate::host::Host>().control();
     open(&handle, &control);
     eventually(|| has_window(&handle, "main")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_pause_and_resume_lines_pause_and_resume_the_engine() {
+    let f = fixture().await;
+    let control = f.host.control();
+    run_pause(&control, Action::Pause).await;
+    assert_eq!(status_of(&f.host).await.state, EngineState::Paused);
+    run_pause(&control, Action::Resume).await;
+    assert_eq!(status_of(&f.host).await.state, EngineState::Active);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[should_panic(expected = "only Pause and Resume change the engine state")]
+async fn other_lines_do_not_pause() {
+    let f = fixture().await;
+    run_pause(&f.host.control(), Action::Open).await;
 }

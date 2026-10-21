@@ -1,4 +1,4 @@
-// Desk settings: members, leaving or moving, adding by address, and Advanced.
+// Desk settings: members, leaving or moving, and Advanced.
 
 import { button, el, guarded, show } from './dom.js';
 import { trackProblems } from './notify.js';
@@ -73,7 +73,6 @@ export function renderStatus(doc, status) {
 export async function init({ doc, api, every, onFocus }) {
   const errorLine = doc.getElementById('error');
   const moveNote = doc.getElementById('move-note');
-  const addressNote = doc.getElementById('address-note');
   const advancedNote = doc.getElementById('advanced-note');
   const problems = trackProblems(doc.getElementById('problems'), api, []);
   const current = { desk: null };
@@ -103,20 +102,6 @@ export async function init({ doc, api, every, onFocus }) {
     guarded(errorLine, async () => {
       await api.call('desk.leave');
       await refresh();
-    }),
-  );
-
-  doc.getElementById('address-form').addEventListener(
-    'submit',
-    guarded(errorLine, async (event) => {
-      event.preventDefault();
-      const address = doc.getElementById('address').value.trim();
-      if (address === '') {
-        addressNote.textContent = "Type the computer's network address.";
-        return;
-      }
-      await api.call('desk.join', { address });
-      addressNote.textContent = `Waiting for approval from ${address}.`;
     }),
   );
 

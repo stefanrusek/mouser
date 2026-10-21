@@ -7,6 +7,7 @@ export function boot(init, win = window) {
     doc: win.document,
     api: makeApi(win.__TAURI__),
     every: (ms, tick) => win.setInterval(tick, ms),
+    after: (ms, action) => win.setTimeout(action, ms),
     onFocus: (handler) => win.addEventListener('focus', handler),
   });
 }

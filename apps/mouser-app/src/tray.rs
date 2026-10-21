@@ -63,6 +63,8 @@ impl Icon {
 }
 
 pub const OPEN_ID: &str = "open";
+pub const PAUSE_ID: &str = "pause";
+pub const RESUME_ID: &str = "resume";
 pub const QUIT_ID: &str = "quit";
 
 /// One tray menu line; a line without an id is a heading that does nothing.
@@ -108,6 +110,17 @@ pub fn view(status: &Status, os: Os, appearance: Appearance) -> TrayView {
             Entry {
                 id: Some(OPEN_ID),
                 label: "Open Mouser".into(),
+            },
+            if paused {
+                Entry {
+                    id: Some(RESUME_ID),
+                    label: "Resume Mouser".into(),
+                }
+            } else {
+                Entry {
+                    id: Some(PAUSE_ID),
+                    label: "Pause Mouser".into(),
+                }
             },
             Entry {
                 id: Some(QUIT_ID),
@@ -173,12 +186,16 @@ pub fn system_appearance<R: Runtime>(app: &AppHandle<R>) -> Appearance {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Open,
+    Pause,
+    Resume,
     Quit,
 }
 
 pub fn action(id: &str) -> Action {
     match id {
         OPEN_ID => Action::Open,
+        PAUSE_ID => Action::Pause,
+        RESUME_ID => Action::Resume,
         QUIT_ID => Action::Quit,
         other => panic!("the tray has no menu line \"{other}\""),
     }
@@ -197,4 +214,17 @@ pub async fn current_status(control: &ControlHandle) -> Status {
         .await
         .expect("status is available");
     serde_json::from_value(value).expect("status matches its schema")
+}
+
+/// Pause or resume crossing, as the tray line says.
+pub async fn run_pause(control: &ControlHandle, action: Action) {
+    let method = match action {
+        Action::Pause => Method::ActivePause,
+        Action::Resume => Method::ActiveResume,
+        _ => panic!("only Pause and Resume change the engine state"),
+    };
+    control
+        .call(method, None)
+        .await
+        .expect("the engine can be paused or resumed");
 }

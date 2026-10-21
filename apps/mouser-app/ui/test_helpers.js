@@ -18,9 +18,11 @@ export const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 export function fakeApi(answers = {}) {
   const calls = [];
   const listeners = [];
+  const landings = [];
   const record = (name, args) => calls.push([name, ...args]);
   return {
     calls,
+    emitLanding: (landing) => landings.forEach((handler) => handler(landing)),
     emit: (method, params) => listeners.forEach((handler) => handler({ jsonrpc: '2.0', method, params })),
     call: async (method, params) => {
       calls.push([method, params]);
@@ -35,6 +37,9 @@ export function fakeApi(answers = {}) {
       if (answers.fixError) throw answers.fixError;
     },
     hideWindow: async () => record('hide_window', []),
+    onLanding: async (handler) => {
+      landings.push(handler);
+    },
     onNotification: async (handler) => {
       listeners.push(handler);
     },

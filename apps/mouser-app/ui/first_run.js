@@ -112,6 +112,7 @@ export function showResult(doc, result, onAction) {
 export async function init({ doc, api, every, onFocus }) {
   const errorLine = doc.getElementById('error');
   const formError = doc.getElementById('form-error');
+  const addressError = doc.getElementById('address-error');
   const nameInput = doc.getElementById('desk-name');
   const problems = trackProblems(doc.getElementById('problems'), api, []);
   const state = { step: 'permissions', joining: null };
@@ -125,12 +126,15 @@ export async function init({ doc, api, every, onFocus }) {
     showResult(doc, result, result.kind === 'member' ? () => api.hideWindow() : chooseDesk);
   };
 
+  const wait = (joining, text) => {
+    state.joining = joining;
+    state.step = 'waiting';
+    doc.getElementById('waiting-text').textContent = text;
+    showStep(doc, 'waiting');
+  };
   const join = guarded(errorLine, async (desk) => {
     await api.call('desk.join', { desk_id: desk.desk_id });
-    state.joining = desk;
-    state.step = 'waiting';
-    doc.getElementById('waiting-text').textContent = waitingText(desk);
-    showStep(doc, 'waiting');
+    wait(desk, waitingText(desk));
   });
 
   const refreshDesks = async () => {
@@ -181,6 +185,18 @@ export async function init({ doc, api, every, onFocus }) {
       if (!name) return;
       const desk = await api.call('desk.create', { name });
       finish({ kind: 'member', desk: desk.name });
+    }),
+  );
+
+  doc.getElementById('address-form').addEventListener(
+    'submit',
+    guarded(errorLine, async (event) => {
+      event.preventDefault();
+      const address = doc.getElementById('address').value.trim();
+      addressError.textContent = address === '' ? "Type the computer's network address." : '';
+      if (address === '') return;
+      await api.call('desk.join', { address });
+      wait({ name: `The computer at ${address}` }, `Waiting for approval from ${address}`);
     }),
   );
 

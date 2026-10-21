@@ -108,16 +108,15 @@ test('a join that waits for approval says so', async () => {
   assert.ok(doc.getElementById('leave').hidden);
 });
 
-test('a computer can be added by address', async () => {
-  const { win, doc, api } = await start();
-  submit(win, doc, 'address-form');
-  await flush();
-  assert.equal(text(doc, 'address-note'), "Type the computer's network address.");
-  doc.getElementById('address').value = ' 192.168.1.20 ';
-  submit(win, doc, 'address-form');
-  await flush();
-  assert.deepEqual(api.calls.findLast(([m]) => m === 'desk.join'), ['desk.join', { address: '192.168.1.20' }]);
-  assert.equal(text(doc, 'address-note'), 'Waiting for approval from 192.168.1.20.');
+test('desk settings no longer offer adding a computer by address', async () => {
+  const { doc } = await start();
+  assert.equal(doc.getElementById('address-form'), null);
+  assert.ok(!/Add computer by address/.test(doc.body.textContent));
+});
+
+test('the mouse settings are one click away', async () => {
+  const { doc } = await start();
+  assert.equal(doc.getElementById('input-link').getAttribute('href'), 'input_settings.html');
 });
 
 test('Advanced shows the allowlist and the port', async () => {

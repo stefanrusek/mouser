@@ -125,6 +125,30 @@ test('a declined request says Not admitted and offers another desk', async () =>
   assert.ok(!shown(doc, 'step-result'));
 });
 
+test('a desk that is not listed is joined by the address of a computer on it', async () => {
+  const { win, doc, api, page } = await start();
+  click(win, doc.getElementById('continue'));
+  await flush();
+  assert.match(doc.getElementById('address-form').textContent, /Desk not listed\? Enter the address of a computer on it/);
+  const form = doc.getElementById('address-form');
+  const submit = () => form.dispatchEvent(new win.Event('submit', { cancelable: true }));
+  submit();
+  await flush();
+  assert.equal(text(doc, 'address-error'), "Type the computer's network address.");
+  assert.ok(!api.calls.some(([m]) => m === 'desk.join'));
+  doc.getElementById('address').value = ' 192.168.1.20 ';
+  submit();
+  await flush();
+  assert.deepEqual(api.calls.find(([m]) => m === 'desk.join'), ['desk.join', { address: '192.168.1.20' }]);
+  assert.equal(text(doc, 'address-error'), '');
+  assert.equal(text(doc, 'waiting-text'), 'Waiting for approval from 192.168.1.20');
+  assert.ok(shown(doc, 'step-waiting'));
+
+  api.call = async (method) => (method === 'status' ? makeStatus() : []);
+  await page.tick();
+  assert.equal(text(doc, 'result-help'), 'The computer at 192.168.1.20 did not let this computer join.');
+});
+
 test('a desk name must be 1 to 64 characters', () => {
   assert.equal(validName(''), null);
   assert.equal(validName('   '), null);

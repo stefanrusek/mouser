@@ -1,6 +1,6 @@
 {
   "identifier": "default",
   "description": "The Mouser windows talk to the engine only through the app's own commands and events.",
-  "windows": ["main", "settings", "join"],
+  "windows": ["main", "settings", "join", "landing"],
   "permissions": ["core:default"]
 }

@@ -1,6 +1,7 @@
 // The UI's only way to reach the engine: Tauri commands and one event.
 
 export const EVENT = 'mouser://notification';
+export const LANDING_EVENT = 'mouser://landing';
 
 export function makeApi(tauri) {
   const { invoke } = tauri.core;
@@ -12,5 +13,7 @@ export function makeApi(tauri) {
     hideWindow: () => invoke('hide_window'),
     // handler receives {method: topic, params}; resolves to an unlisten function.
     onNotification: (handler) => tauri.event.listen(EVENT, (event) => handler(event.payload)),
+    // handler receives {x, y}: where the pointer landed, in the overlay window's own pixels.
+    onLanding: (handler) => tauri.event.listen(LANDING_EVENT, (event) => handler(event.payload)),
   };
 }

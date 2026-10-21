@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EVENT, makeApi } from './api.js';
+import { EVENT, LANDING_EVENT, makeApi } from './api.js';
 import { boot } from './boot.js';
 import { button, errorText, guarded } from './dom.js';
 import { loadPage } from './test_helpers.js';
@@ -41,6 +41,14 @@ test('notifications arrive as the bare notification', async () => {
   assert.deepEqual(seen, [{ method: 'status', params: {} }]);
 });
 
+test('landings arrive as the bare payload', async () => {
+  const tauri = fakeTauri();
+  const seen = [];
+  await makeApi(tauri).onLanding((landing) => seen.push(landing));
+  tauri.listeners[LANDING_EVENT]({ payload: { x: 60, y: 60 } });
+  assert.deepEqual(seen, [{ x: 60, y: 60 }]);
+});
+
 test('boot hands a window module the document, the api, a timer and focus', () => {
   const tauri = fakeTauri();
   const calls = [];
@@ -48,13 +56,15 @@ test('boot hands a window module the document, the api, a timer and focus', () =
     document: 'doc',
     __TAURI__: tauri,
     setInterval: (tick, ms) => calls.push(['interval', tick, ms]),
+    setTimeout: (action, ms) => calls.push(['timeout', action, ms]),
     addEventListener: (name, handler) => calls.push(['listener', name, handler]),
   };
   const result = boot((deps) => deps, win);
   assert.equal(result.doc, 'doc');
   result.every(500, 'tick');
+  result.after(700, 'action');
   result.onFocus('handler');
-  assert.deepEqual(calls, [['interval', 'tick', 500], ['listener', 'focus', 'handler']]);
+  assert.deepEqual(calls, [['interval', 'tick', 500], ['timeout', 'action', 700], ['listener', 'focus', 'handler']]);
   assert.equal(typeof result.api.call, 'function');
 });
 

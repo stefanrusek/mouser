@@ -3,7 +3,9 @@
 pub mod app;
 pub mod commands;
 pub mod host;
+pub mod hotkeys;
 pub mod notify;
+pub mod overlay;
 pub mod platform_select;
 pub mod tray;
 pub mod windows;
@@ -18,7 +20,11 @@ mod commands_tests;
 #[cfg(test)]
 mod host_tests;
 #[cfg(test)]
+pub(crate) mod hotkeys_tests;
+#[cfg(test)]
 mod notify_tests;
+#[cfg(test)]
+mod overlay_tests;
 #[cfg(test)]
 mod platform_select_tests;
 #[cfg(test)]

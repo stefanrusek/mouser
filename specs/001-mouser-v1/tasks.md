@@ -389,14 +389,14 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: UI and Rust tests pass for the landing highlight, global hotkeys and paused tray state.
 
-- [ ] T249 [P] [US2-app] Write UI tests `apps/mouser-app/ui/landing.test.js`: a `landing` notification shows a brief highlight at the given display position and removes it afterwards (Story 2 sc. 9)
-- [ ] T250 [US2-app] Implement the landing highlight overlay `apps/mouser-app/ui/landing.html`/`landing.js` and its transparent always-on-top window in `apps/mouser-app/src/overlay.rs`
-- [ ] T251 [P] [US2-app] Write unit tests for global hotkeys in `apps/mouser-app/src/hotkeys_tests.rs`: the `hotkeys.enable_disable`, `hotkeys.quickjump` and `hotkeys.targeted_paste` accelerators from config register with the OS and invoke `active.pause`/`active.resume`, QuickJump and targeted paste; changes in config re-register them (Story 2 sc. 12)
-- [ ] T252 [US2-app] Implement global hotkey registration in `apps/mouser-app/src/hotkeys.rs`
-- [ ] T253 [P] [US2-app] Write UI tests `apps/mouser-app/ui/input_settings.test.js`: the mouse section offers buttons 4/5 "Pass through unchanged" / "Back and Forward" writing `mouse.buttons_4_5` (Story 2 sc. 11)
-- [ ] T254 [US2-app] Implement input settings `apps/mouser-app/ui/input_settings.html` and `apps/mouser-app/ui/input_settings.js`
-- [ ] T255 [US2-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T256 [US2-app] Commit: phase boundary "US2-app" (5.3)
+- [X] T249 [P] [US2-app] Write UI tests `apps/mouser-app/ui/landing.test.js`: a `landing` notification shows a brief highlight at the given display position and removes it afterwards (Story 2 sc. 9)
+- [X] T250 [US2-app] Implement the landing highlight overlay `apps/mouser-app/ui/landing.html`/`landing.js` and its transparent always-on-top window in `apps/mouser-app/src/overlay.rs`
+- [X] T251 [P] [US2-app] Write unit tests for global hotkeys in `apps/mouser-app/src/hotkeys_tests.rs`: the `hotkeys.enable_disable`, `hotkeys.quickjump` and `hotkeys.targeted_paste` accelerators from config register with the OS and invoke `active.pause`/`active.resume`, QuickJump and targeted paste; changes in config re-register them (Story 2 sc. 12)
+- [X] T252 [US2-app] Implement global hotkey registration in `apps/mouser-app/src/hotkeys.rs`
+- [X] T253 [P] [US2-app] Write UI tests `apps/mouser-app/ui/input_settings.test.js`: the mouse section offers buttons 4/5 "Pass through unchanged" / "Back and Forward" writing `mouse.buttons_4_5` (Story 2 sc. 11)
+- [X] T254 [US2-app] Implement input settings `apps/mouser-app/ui/input_settings.html` and `apps/mouser-app/ui/input_settings.js`
+- [X] T255 [US2-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T256 [US2-app] Commit: phase boundary "US2-app" (5.3)
 
 #### Phase 18: US4-app — As a desk owner, I want to arrange displays to match my physical desk (P2)
 

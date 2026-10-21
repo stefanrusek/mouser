@@ -11,15 +11,16 @@ workspace = true
 [features]
 # The live app shell (real tray, real plugins, real event loop). Off for the
 # gate: that code runs only inside a launched app and cannot be unit tested.
-gui = ["dep:tauri-plugin-single-instance", "dep:tauri-plugin-notification", "dep:gethostname"]
+gui = ["dep:tauri-plugin-single-instance", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut", "dep:gethostname"]
 
 [dependencies]
 mouser-core = { path = "../../crates/mouser-core" }
 mouser-platform = { path = "../../crates/mouser-platform" }
 mouser-proto = { path = "../../crates/mouser-proto" }
-tauri = { version = "=2.12.5", features = ["tray-icon", "image-png"] }
+tauri = { version = "=2.12.5", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-single-instance = { version = "=2.5.4", optional = true }
 tauri-plugin-notification = { version = "=2.7.0", optional = true }
+tauri-plugin-global-shortcut = { version = "=2.4.1", optional = true }
 tokio = { version = "1.54", features = ["sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,6 +34,6 @@ tauri-build = { version = "=2.7.4", features = [] }
 
 [dev-dependencies]
 mouser-testkit = { path = "../../crates/mouser-testkit" }
-tauri = { version = "=2.12.5", features = ["tray-icon", "image-png", "test"] }
+tauri = { version = "=2.12.5", features = ["tray-icon", "image-png", "macos-private-api", "test"] }
 tempfile = "3"
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "time"] }
