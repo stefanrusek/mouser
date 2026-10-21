@@ -8,7 +8,7 @@ use mouser_proto::control::{
 use mouser_proto::ids::{ComputerId, DeskId};
 use serde_json::{Value, json};
 
-use crate::{Failure, Mouser};
+use crate::{Failure, Mouser, decode};
 
 #[derive(Subcommand)]
 pub enum DeskCommand {
@@ -26,10 +26,6 @@ pub enum DeskCommand {
         /// A computer name or id.
         computer: String,
     },
-}
-
-fn decode<T: serde::de::DeserializeOwned>(value: Value) -> T {
-    serde_json::from_value(value).expect("Mouser answers with the documented shape")
 }
 
 pub async fn desks(mouser: &mut Mouser) -> Result<(), Failure> {

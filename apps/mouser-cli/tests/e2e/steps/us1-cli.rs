@@ -34,7 +34,7 @@ fn quit(computer: Computer) {
 }
 
 /// `computer`'s `mouser status --json` once `check` accepts it.
-fn status_where(
+pub(crate) fn status_where(
     computer: Computer,
     what: &str,
     check: impl Fn(&serde_json::Value) -> bool,

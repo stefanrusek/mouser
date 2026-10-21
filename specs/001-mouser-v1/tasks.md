@@ -486,19 +486,19 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 27: US2-cli — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
-- [ ] T294 [P] [US2-cli] Write tests `apps/mouser-cli/tests/contract_cli_pause.rs`: `mouser pause` / `mouser resume` call `active.pause` / `active.resume` (Story 2 sc. 12)
-- [ ] T295 [US2-cli] Implement `pause`/`resume` in `apps/mouser-cli/src/pause.rs`
-- [ ] T296 [P] [US2-cli] Write J1 step definitions for Story 2 (cross both ways by OS-level pointer movement on the controller, type text and read it back over SSH, panic key) in `apps/mouser-cli/tests/e2e/steps/us2-cli.rs`; verified by `cargo test -p mouser-cli --no-run`
-- [ ] T297 [P] [US2-cli] Write J1 step definitions for Story 3 (sleep and wake a computer over SSH, wait, cross again, continuous typing check) in `apps/mouser-cli/tests/e2e/steps/us3-cli.rs`; verified by `cargo test -p mouser-cli --no-run`
-- [ ] T298 [US2-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T299 [US2-cli] Commit: phase boundary "US2-cli" (5.3)
+- [X] T294 [P] [US2-cli] Write tests `apps/mouser-cli/tests/contract_cli_pause.rs`: `mouser pause` / `mouser resume` call `active.pause` / `active.resume` (Story 2 sc. 12)
+- [X] T295 [US2-cli] Implement `pause`/`resume` in `apps/mouser-cli/src/pause.rs`
+- [X] T296 [P] [US2-cli] Write J1 step definitions for Story 2 (cross both ways by OS-level pointer movement on the controller, type text and read it back over SSH, panic key) in `apps/mouser-cli/tests/e2e/steps/us2-cli.rs`; verified by `cargo test -p mouser-cli --no-run`
+- [X] T297 [P] [US2-cli] Write J1 step definitions for Story 3 (sleep and wake a computer over SSH, wait, cross again, continuous typing check) in `apps/mouser-cli/tests/e2e/steps/us3-cli.rs`; verified by `cargo test -p mouser-cli --no-run`
+- [X] T298 [US2-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T299 [US2-cli] Commit: phase boundary "US2-cli" (5.3)
 
 #### Phase 28: US9-cli — As a troubleshooting agent, I want to inspect and change Mouser from the command line (P3)
 
 **Independent test**: `cargo test -p mouser-cli` passes: status JSON validates against the schema; config and logs commands work with and without the app running.
 
-- [ ] T300 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_status.rs`: `mouser status --json` output validates against `status.schema.json`; plain `mouser status` prints the desk, each computer's connection, missing permissions and problems; with the app stopped it exits 2 with "Mouser is not running" (Story 9 sc. 1)
-- [ ] T301 [US9-cli] Implement `status` in `apps/mouser-cli/src/status.rs`
+- [X] T300 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_status.rs`: `mouser status --json` output validates against `status.schema.json`; plain `mouser status` prints the desk, each computer's connection, missing permissions and problems; with the app stopped it exits 2 with "Mouser is not running" (Story 9 sc. 1)
+- [X] T301 [US9-cli] Implement `status` in `apps/mouser-cli/src/status.rs`
 - [ ] T302 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_config.rs`: `mouser config get [key]`, `config set key value` (invalid value prints `key: reason`, exit 3), `config path`; with the app stopped `get/set/path` operate directly on `config.toml` (Story 9 sc. 2)
 - [ ] T303 [US9-cli] Implement `config` in `apps/mouser-cli/src/config.rs`
 - [ ] T304 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_logs.rs`: `mouser logs enable|disable|path|tail [-n N]`; `tail` prints raw JSON Lines each validating against `log-record.schema.json`; `path`/`tail` work with the app stopped (Story 9 sc. 3, FR-010)

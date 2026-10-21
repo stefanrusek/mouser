@@ -1,13 +1,11 @@
 //! Contract tests for the desk and approval commands of contracts/cli.md: the
 //! real `mouser` binary against in-process engines serving their control socket.
 
-mod support;
-
 use std::time::Duration;
 
+use crate::support::{Lab, Node, Output};
 use mouser_proto::control::Method;
 use serde_json::Value;
-use support::{Lab, Node, Output};
 
 async fn finished(child: tokio::process::Child) -> Output {
     let out = tokio::time::timeout(Duration::from_secs(20), child.wait_with_output())

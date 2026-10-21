@@ -49,7 +49,14 @@ impl Computer {
                     .collect::<Vec<_>>()
                     .join(" ");
                 let mut command = Command::new("ssh");
-                command.args(["-o", "BatchMode=yes", &peer(), &line]);
+                command.args([
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=5",
+                    &peer(),
+                    &line,
+                ]);
                 command
             }
         }

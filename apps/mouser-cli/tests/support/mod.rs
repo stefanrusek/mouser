@@ -232,6 +232,11 @@ impl Lab {
 
     /// A computer whose engine is running and serving its control socket.
     pub async fn add(&self, name: &str) -> Node {
+        self.add_with(name, VirtualPlatform::new()).await
+    }
+
+    /// Like `add`, on a platform the test has already set up.
+    pub async fn add_with(&self, name: &str, platform: VirtualPlatform) -> Node {
         let mut node = self.offline(name);
         let port = free_port();
         let mut config = Config::default();
@@ -240,7 +245,6 @@ impl Lab {
         let sim = self
             .net
             .add_node(name, SocketAddr::from(([127, 0, 0, 1], port)));
-        let platform = VirtualPlatform::new();
         sim.bind_platform(&platform);
         let mut params = EngineParams::new(
             Arc::new(platform),

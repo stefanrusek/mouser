@@ -1,6 +1,8 @@
 //! The `mouser` command-line client of a running Mouser (contracts/cli.md).
 
 mod desk;
+mod pause;
+mod status;
 
 use std::fmt;
 use std::process::ExitCode;
@@ -48,6 +50,11 @@ impl fmt::Display for Failure {
     }
 }
 
+/// Decode a control-API result.
+pub fn decode<T: serde::de::DeserializeOwned>(value: Value) -> T {
+    serde_json::from_value(value).expect("Mouser answers with the documented shape")
+}
+
 /// One connection to the running Mouser's control API.
 pub struct Mouser {
     client: ControlClient,
@@ -93,6 +100,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Desk, computers, connections, missing permissions and problems.
+    Status,
+    /// Stop crossing on every computer.
+    Pause,
+    /// Resume crossing on every computer.
+    Resume,
     /// Desks discovered on the network.
     Desks,
     /// Create, join or leave a desk, or remove a computer from it.
@@ -117,6 +130,9 @@ enum Command {
 async fn run(cli: Cli) -> Result<(), Failure> {
     let mut mouser = Mouser::connect(cli.json).await?;
     match cli.command {
+        Command::Status => status::run(&mut mouser).await,
+        Command::Pause => pause::run(&mut mouser, true).await,
+        Command::Resume => pause::run(&mut mouser, false).await,
         Command::Desks => desk::desks(&mut mouser).await,
         Command::Desk { action } => desk::run(&mut mouser, action).await,
         Command::Requests => desk::requests(&mut mouser).await,
