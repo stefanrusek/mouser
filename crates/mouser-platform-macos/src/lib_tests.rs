@@ -1,10 +1,12 @@
 use super::*;
 
 #[test]
-fn capabilities_of_later_phases_are_unsupported_not_panicking() {
+fn clipboard_and_file_drag_are_supported() {
     let p = MacPlatform::new();
-    assert!(matches!(p.clipboard(), Err(Error::Unsupported)));
-    assert!(p.file_drag().is_none());
+    // Building the clipboard only opens the pasteboard; nothing is read.
+    assert!(p.clipboard().is_ok());
+    // Building the drag handler reads nothing and starts nothing.
+    assert!(p.file_drag().is_some());
     assert!(!p.foreground_elevated());
 }
 

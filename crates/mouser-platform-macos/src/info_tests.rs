@@ -8,15 +8,7 @@ fn info_reports_macos_with_the_declared_limitations() {
     assert_eq!(info.session, SessionType::Native);
     assert!(info.version.chars().next().unwrap().is_ascii_digit());
     let declared: Vec<Capability> = info.limitations.iter().map(|l| l.capability).collect();
-    assert_eq!(
-        declared,
-        [
-            Capability::Inject,
-            Capability::Clipboard,
-            Capability::FileDrag,
-            Capability::SecureAttention,
-        ]
-    );
+    assert_eq!(declared, [Capability::Inject, Capability::SecureAttention,]);
 }
 
 #[test]

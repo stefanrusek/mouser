@@ -572,15 +572,15 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 
 #### Phase 35: US6-platform-macos — As a desk user, I want copy and paste to work between computers (P2)
 
-- [ ] T350 [P] [US6-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us6.rs` running conformance rule 5 (clipboard write/read) for Text, Html, Rtf, Png and Files against `MacPlatform`, restoring the original clipboard afterwards
-- [ ] T351 [US6-platform-macos] Implement `Clipboard` on clipboard-rs 0.3.5 (multi-format `set`, `NSPasteboard.changeCount` for `change_count`, path normalisation) in `crates/mouser-platform-macos/src/clipboard.rs`
+- [X] T350 [P] [US6-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us6.rs` running conformance rule 5 (clipboard write/read) for Text, Html, Rtf, Png and Files against `MacPlatform`, restoring the original clipboard afterwards
+- [X] T351 [US6-platform-macos] Implement `Clipboard` on clipboard-rs 0.3.5 (multi-format `set`, `NSPasteboard.changeCount` for `change_count`, path normalisation) in `crates/mouser-platform-macos/src/clipboard.rs`
 - [ ] T352 [US6-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
 - [ ] T353 [US6-platform-macos] Commit: phase boundary "US6-platform-macos" (5.3)
 
 #### Phase 36: US7-platform-macos — As a desk user, I want to drag files from one computer to another (P2)
 
-- [ ] T354 [P] [US7-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/drag_tests.rs`: `outgoing()` returns the file URLs on the drag pasteboard while a drag is in progress; `begin_incoming(names)` starts a drag from a transparent window at the cursor whose drop reports the destination folder
-- [ ] T355 [US7-platform-macos] Implement `FileDrag` in `crates/mouser-platform-macos/src/drag.rs`
+- [X] T354 [P] [US7-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/drag_tests.rs`: `outgoing()` returns the file URLs on the drag pasteboard while a drag is in progress; `begin_incoming(names)` starts a drag from a transparent window at the cursor whose drop reports the destination folder
+- [X] T355 [US7-platform-macos] Implement `FileDrag` in `crates/mouser-platform-macos/src/drag.rs`
 - [ ] T356 [US7-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
 - [ ] T357 [US7-platform-macos] Commit: phase boundary "US7-platform-macos" (5.3)
 

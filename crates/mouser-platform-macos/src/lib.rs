@@ -2,14 +2,15 @@
 //!
 //! Provides permissions, interface classification, the Keychain secret store,
 //! login-item autostart, displays, input capture and injection and Secure
-//! Input detection. Clipboard and the rest arrive with their own phases; until
-//! then they report `Unsupported` and are declared as limitations (rule 9),
-//! which is the contract-conformant answer for a capability a backend does not
-//! yet have.
+//! Input detection. Clipboard and file drag are supported; capabilities a later phase adds report
+//! `Unsupported` and are declared as limitations (rule 9) until it lands.
 
 mod autostart;
 mod capture;
+mod clipboard;
 mod displays;
+mod drag;
+mod dragwin;
 mod echo;
 mod fullscreen;
 mod inject;
@@ -22,7 +23,7 @@ mod secure_input;
 mod tap;
 
 use mouser_platform::{
-    Autostart, Capability, Clipboard, Error, FileDrag, InputCapture, InputInject, Limitation,
+    Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
     Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
 };
@@ -93,14 +94,6 @@ impl Platform for MacPlatform {
                     "Some games and remote-desktop apps ignore Mouser's input on this Mac.",
                 ),
                 limitation(
-                    Capability::Clipboard,
-                    "Clipboard sharing is not available yet.",
-                ),
-                limitation(
-                    Capability::FileDrag,
-                    "Dragging files between computers is not available yet.",
-                ),
-                limitation(
                     Capability::SecureAttention,
                     "Ctrl-Alt-Del can only be sent to Windows computers.",
                 ),
@@ -133,7 +126,9 @@ impl Platform for MacPlatform {
     }
 
     fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
-        Err(Error::Unsupported)
+        Ok(Box::new(clipboard::MacClipboard::new(
+            clipboard::SystemBoard::new()?,
+        )))
     }
 
     fn secure_input(&self) -> Option<SecureInputHolder> {
@@ -165,7 +160,10 @@ impl Platform for MacPlatform {
     }
 
     fn file_drag(&self) -> Option<Box<dyn FileDrag>> {
-        None
+        Some(Box::new(drag::MacFileDrag::new(
+            dragwin::SystemProbe,
+            dragwin::SystemStarter,
+        )))
     }
 }
 
@@ -174,7 +172,11 @@ mod autostart_tests;
 #[cfg(test)]
 mod capture_tests;
 #[cfg(test)]
+mod clipboard_tests;
+#[cfg(test)]
 mod displays_tests;
+#[cfg(test)]
+mod drag_tests;
 #[cfg(test)]
 mod echo_tests;
 #[cfg(test)]
