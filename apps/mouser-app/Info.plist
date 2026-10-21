@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Mouser needs to find and talk to the other computers on your desk over your local network so one mouse and keyboard can control them.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_mouser._udp</string>
+  </array>
+</dict>
+</plist>

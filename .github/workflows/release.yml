@@ -1,0 +1,183 @@
+name: release
+# Tag v* -> signed bundles on macOS/Windows/Linux -> GitHub pre-release with
+# every installer, the updater bundles + signatures, and latest.json.
+# Secrets and the release procedure: docs/releasing.md
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  TAURI_CLI: "@tauri-apps/cli@2.12.4"
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # One universal (arm64 + x86_64) app and dmg: a single download and a
+          # single updater bundle serve every Mac, and a lipo'd CLI sidecar keeps
+          # the app signature valid on both. Costs a second compile of the app.
+          - os: macos-14
+            sidecar: universal-apple-darwin
+            tauri_args: --target universal-apple-darwin --bundles app,dmg
+            bundle_dir: target/universal-apple-darwin/release/bundle
+            artifact: macos
+          - os: windows-2025
+            sidecar: x86_64-pc-windows-msvc
+            tauri_args: --bundles nsis
+            bundle_dir: target/release/bundle
+            artifact: windows
+          - os: ubuntu-24.04
+            sidecar: x86_64-unknown-linux-gnu
+            tauri_args: --bundles appimage,deb
+            bundle_dir: target/release/bundle
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Tag must match the app version
+        shell: bash
+        run: |
+          conf="$(node -p "require('./apps/mouser-app/tauri.conf.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${conf}" || { echo "tag ${GITHUB_REF_NAME} != tauri.conf.json version v${conf}"; exit 1; }
+
+      - name: Install Ubuntu system packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libssl-dev libdbus-1-dev librsvg2-dev patchelf
+
+      - name: Install toolchain from rust-toolchain.toml
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          if [ "${{ runner.os }}" = "macOS" ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Import Developer ID certificate into a temporary keychain
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          keychain="$RUNNER_TEMP/mouser-build.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          existing="$(security list-keychains -d user | tr -d '"')"
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$keychain" $existing
+          rm "$RUNNER_TEMP/cert.p12"
+          # Tauri reads the identity name from APPLE_SIGNING_IDENTITY; the cert
+          # itself is already imported above, so APPLE_CERTIFICATE is not passed on.
+          security find-identity -v -p codesigning "$keychain" | grep -F "$APPLE_SIGNING_IDENTITY" \
+            || { echo "secret APPLE_SIGNING_IDENTITY not found in the imported certificate"; exit 1; }
+
+      - name: Build the CLI sidecar and stage the UI
+        shell: bash
+        run: |
+          apps/mouser-app/scripts/build-sidecar.sh "${{ matrix.sidecar }}"
+          apps/mouser-app/scripts/stage-ui.sh
+
+      - name: Bundle (and on macOS sign, notarize, staple)
+        shell: bash
+        working-directory: apps/mouser-app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          else
+            unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_P8
+          fi
+          npx --yes "$TAURI_CLI" build --features gui --config tauri.release.conf.json ${{ matrix.tauri_args }}
+
+      - name: Verify the macOS app is signed, notarized and stapled
+        if: runner.os == 'macOS'
+        run: |
+          app="${{ matrix.bundle_dir }}/macos/Mouser.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          xcrun stapler validate "$app"
+          spctl -a -vv "$app" 2>&1 | tee /dev/stderr | grep -q "source=Notarized Developer ID"
+          "$app/Contents/MacOS/mouser" --version
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          mkdir out
+          b="${{ matrix.bundle_dir }}"
+          v="${GITHUB_REF_NAME#v}"
+          case "${{ runner.os }}" in
+            macOS)
+              cp "$b"/dmg/*.dmg out/
+              cp "$b/macos/Mouser.app.tar.gz"     "out/Mouser_${v}_universal.app.tar.gz"
+              cp "$b/macos/Mouser.app.tar.gz.sig" "out/Mouser_${v}_universal.app.tar.gz.sig" ;;
+            Windows)
+              cp "$b"/nsis/*-setup.exe "$b"/nsis/*-setup.exe.sig out/ ;;
+            Linux)
+              cp "$b"/appimage/*.AppImage "$b"/appimage/*.AppImage.sig "$b"/deb/*.deb out/ ;;
+          esac
+          ls -l out
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: assets-${{ matrix.artifact }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Remove the temporary keychain
+        if: always() && runner.os == 'macOS'
+        run: security delete-keychain "$RUNNER_TEMP/mouser-build.keychain-db" || true
+
+  publish:
+    needs: bundle
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: assets-*
+          path: assets
+          merge-multiple: true
+
+      - name: Generate latest.json
+        run: node apps/mouser-app/scripts/make-latest-json.mjs assets "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" > assets/latest.json
+
+      - name: Validate latest.json against the release manifest schema
+        run: |
+          mkdir "$RUNNER_TEMP/validator" && cd "$RUNNER_TEMP/validator"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund ajv-cli@5.0.0 ajv-formats@2.1.1
+          npx ajv validate --spec=draft2020 -c ajv-formats \
+            -s "$GITHUB_WORKSPACE/specs/001-mouser-v1/contracts/release-manifest.schema.json" \
+            -d "$GITHUB_WORKSPACE/assets/latest.json"
+
+      - name: Create the pre-release and upload every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --prerelease --verify-tag \
+            --title "Mouser $GITHUB_REF_NAME" --generate-notes assets/*

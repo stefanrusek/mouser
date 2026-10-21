@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name={{name}}
+Comment=Share one mouse and keyboard across your computers
+Exec={{exec}}
+Icon={{icon}}
+Terminal=false
+Categories={{categories}}
+StartupWMClass=com.mouser.app
+X-GNOME-UsesNotifications=true

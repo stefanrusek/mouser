@@ -1,0 +1,65 @@
+# Releasing Mouser
+
+A release is produced entirely by `.github/workflows/release.yml` when a tag matching `v*` is pushed. It builds on macOS, Windows and Ubuntu, then creates a GitHub **pre-release** with every installer, the signed updater bundles and `latest.json`.
+
+## Cutting a release
+
+1. Set the same version in the workspace `Cargo.toml` (`version`) and `apps/mouser-app/tauri.conf.json` (`version`). The workflow fails if the tag is not `v` + the `tauri.conf.json` version.
+2. Merge to `main`, make sure CI is green.
+3. `git tag v0.1.0 && git push origin v0.1.0`.
+4. Watch the `release` workflow. When it finishes, the pre-release `v0.1.0` has the assets below.
+5. To promote to a normal release, untick "pre-release" on GitHub. Note that `releases/latest/download/latest.json` (the updater endpoint) only resolves for non-pre-releases.
+
+## Repository secrets (Settings > Secrets and variables > Actions)
+
+| Secret | What it is |
+|---|---|
+| `APPLE_CERTIFICATE` | Developer ID Application certificate + private key exported from Keychain Access as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
+| `APPLE_CERTIFICATE_PASSWORD` | Password chosen when exporting the `.p12` |
+| `KEYCHAIN_PASSWORD` | Any random string; protects the temporary keychain the job creates and deletes |
+| `APPLE_SIGNING_IDENTITY` | Exact certificate name, e.g. `Developer ID Application: Stefan Rusek (M4RA6A4VX9)` |
+| `APPLE_API_KEY_ID` | App Store Connect API key ID (passed to Tauri as `APPLE_API_KEY`) |
+| `APPLE_API_ISSUER` | App Store Connect issuer ID (a UUID) |
+| `APPLE_API_KEY_P8` | Full text of the `AuthKey_XXXX.p8` file. The job writes it to a temp file and sets `APPLE_API_KEY_PATH` |
+| `TAURI_SIGNING_PRIVATE_KEY` | Contents of the minisign updater private key file (see below) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password of that key |
+
+Tauri 2's environment variable names for notarization with an API key are `APPLE_API_ISSUER`, `APPLE_API_KEY` (the key ID) and `APPLE_API_KEY_PATH` (path to the `.p8`). Windows is unsigned for now (Authenticode is deferred, decision D4), so SmartScreen will warn on first run.
+
+Updater key: generated with `npx @tauri-apps/cli@2.12.4 signer generate`. The public half is `plugins.updater.pubkey` in `apps/mouser-app/tauri.conf.json`. If the private key or its password is lost, installed apps can never accept another update, so keep a backup outside GitHub. `crates/mouser-core/src/release/pubkey.rs` (T489) is not written yet; it belongs to the US10 core work and must carry the same public key.
+
+## Assets in the release
+
+- `Mouser_<v>_universal.dmg` - macOS (arm64 + x86_64), signed, notarized, stapled
+- `Mouser_<v>_x64-setup.exe` - Windows NSIS installer (per-user, unsigned)
+- `Mouser_<v>_amd64.AppImage` and `Mouser_<v>_amd64.deb` - Linux
+- `Mouser_<v>_universal.app.tar.gz`, `*-setup.exe`, `*.AppImage` each with a `.sig` - updater bundles
+- `latest.json` - updater manifest, validated in CI against `specs/001-mouser-v1/contracts/release-manifest.schema.json`
+
+## The `mouser` command-line tool
+
+The CLI ships inside every bundle (a Tauri `externalBin` sidecar, signed with the app on macOS):
+
+- macOS: `/Applications/Mouser.app/Contents/MacOS/mouser`. Put it on your PATH with `sudo ln -s /Applications/Mouser.app/Contents/MacOS/mouser /usr/local/bin/mouser`.
+- Windows: `mouser.exe` next to `Mouser.exe` in `%LOCALAPPDATA%\Mouser`. Add that folder to PATH (Settings > System > About > Advanced system settings > Environment Variables).
+- Linux: the deb installs it as `/usr/bin/mouser`. From the AppImage, run `./Mouser_*.AppImage` with the extracted `usr/bin/mouser` (`--appimage-extract`).
+
+## Building a bundle locally (macOS, signed, not notarized)
+
+```
+apps/mouser-app/scripts/build-sidecar.sh aarch64-apple-darwin
+apps/mouser-app/scripts/stage-ui.sh
+cd apps/mouser-app
+APPLE_SIGNING_IDENTITY="Developer ID Application: ..." \
+  npx --yes @tauri-apps/cli@2.12.4 build --target aarch64-apple-darwin --bundles app,dmg \
+  --features gui --config tauri.release.conf.json
+```
+
+(Add `TAURI_SIGNING_PRIVATE_KEY` and its password to also produce updater signatures.) The `gui` feature is required: without it the app has no window or tray. `tauri.release.conf.json` adds the sidecar, the updater artifacts and a clean UI folder, so plain `cargo build` and the gate do not need them.
+
+## Not included yet
+
+- macOS login-window agent (US12).
+- Windows `MouserService` install, `SoftwareSASGeneration` registry value, and the portable zip (US12 / US13). `mouser-service-win` is still a skeleton.
+- Windows Authenticode signing (D4).
+- Unverified until the first CI run: the Windows NSIS and Linux AppImage/deb bundles (only the macOS bundle was built locally), the Linux desktop template (`apps/mouser-app/linux/com.mouser.app.desktop`; Tauri names the installed file after the app binary), and the universal macOS build.
