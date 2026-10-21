@@ -251,17 +251,17 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us6` passes: text, HTML, RTF, PNG and files copied on one virtual computer paste on another; targeted paste changes only one clipboard; other desks are unaffected.
 
-- [ ] T160 [US6-core] Write the acceptance runner `crates/mouser-core/tests/acc_us6.rs` and steps `crates/mouser-core/tests/steps/us6.rs` for every scenario in `tests/features/us6.feature`
-- [ ] T161 [P] [US6-core] Write unit tests for clipboard watching in `crates/mouser-core/src/clipboard/watch_tests.rs`: a `change_count` increase triggers `read()` and a `ClipboardOffer` with an increasing `sequence`; writes Mouser makes itself are tagged and never re-offered (no echo)
-- [ ] T162 [US6-core] Implement clipboard watching and offers in `crates/mouser-core/src/clipboard/watch.rs`
-- [ ] T163 [P] [US6-core] Write unit tests for applying offers in `crates/mouser-core/src/clipboard/apply_tests.rs`: representations up to 1 MiB arrive inline and are written with every representation; larger ones are fetched with `ClipboardFetch` on paste; a representation the receiver cannot hold is dropped and the best remaining one pasted (Story 6 sc. 1; edge case)
-- [ ] T164 [US6-core] Implement offer application and lazy fetch in `crates/mouser-core/src/clipboard/apply.rs`
-- [ ] T165 [P] [US6-core] Write unit tests for copied files in `crates/mouser-core/src/clipboard/files_tests.rs`: a file/folder copy sends only a manifest (names, sizes, relative paths); pasting fetches the bytes through a transfer and writes local copies (Story 6 sc. 2)
-- [ ] T166 [US6-core] Implement file clipboard manifests and paste-time fetch in `crates/mouser-core/src/clipboard/files.rs`
-- [ ] T167 [P] [US6-core] Write unit tests for targeted paste in `crates/mouser-core/src/clipboard/targeted_tests.rs`: the targeted-paste hotkey fetches the latest remote content and writes it only on this computer; no other member's clipboard changes (Story 6 sc. 3)
-- [ ] T168 [US6-core] Implement targeted paste in `crates/mouser-core/src/clipboard/targeted.rs`
-- [ ] T169 [US6-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T170 [US6-core] Commit: phase boundary "US6-core" (5.3)
+- [X] T160 [US6-core] Write the acceptance runner `crates/mouser-core/tests/acc_us6.rs` and steps `crates/mouser-core/tests/steps/us6.rs` for every scenario in `tests/features/us6.feature`
+- [X] T161 [P] [US6-core] Write unit tests for clipboard watching in `crates/mouser-core/src/clipboard/watch_tests.rs`: a `change_count` increase triggers `read()` and a `ClipboardOffer` with an increasing `sequence`; writes Mouser makes itself are tagged and never re-offered (no echo)
+- [X] T162 [US6-core] Implement clipboard watching and offers in `crates/mouser-core/src/clipboard/watch.rs`
+- [X] T163 [P] [US6-core] Write unit tests for applying offers in `crates/mouser-core/src/clipboard/apply_tests.rs`: representations up to 1 MiB arrive inline and are written with every representation; larger ones are fetched with `ClipboardFetch` on paste; a representation the receiver cannot hold is dropped and the best remaining one pasted (Story 6 sc. 1; edge case)
+- [X] T164 [US6-core] Implement offer application and lazy fetch in `crates/mouser-core/src/clipboard/apply.rs`
+- [X] T165 [P] [US6-core] Write unit tests for copied files in `crates/mouser-core/src/clipboard/files_tests.rs`: a file/folder copy sends only a manifest (names, sizes, relative paths); pasting fetches the bytes through a transfer and writes local copies (Story 6 sc. 2)
+- [X] T166 [US6-core] Implement file clipboard manifests and paste-time fetch in `crates/mouser-core/src/clipboard/files.rs`
+- [X] T167 [P] [US6-core] Write unit tests for targeted paste in `crates/mouser-core/src/clipboard/targeted_tests.rs`: the targeted-paste hotkey fetches the latest remote content and writes it only on this computer; no other member's clipboard changes (Story 6 sc. 3)
+- [X] T168 [US6-core] Implement targeted paste in `crates/mouser-core/src/clipboard/targeted.rs`
+- [X] T169 [US6-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T170 [US6-core] Commit: phase boundary "US6-core" (5.3)
 
 #### Phase 9: US7-core — As a desk user, I want to drag files from one computer to another (P2)
 

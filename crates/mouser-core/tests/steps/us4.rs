@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{World, given, then, when};
 use mouser_core::EngineEvent;
-use mouser_platform::{LocalDisplay, LocalInput, Platform};
+use mouser_platform::{ClipRep, LocalDisplay, LocalInput, Platform};
 use mouser_proto::control::{ConnectionState, Empty, JoinPending, Method, PendingJoin, Topic};
 use mouser_proto::model::Layout;
 use mouser_testkit::{Injected, VirtualPlatform};
@@ -551,7 +551,13 @@ async fn stays_a_member(w: &mut ArrangeWorld) {
     let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
     assert!(!alpha.is_grabbed());
     assert!(beta.injected().is_empty());
-    // Still a connected member of the desk, which is what clipboard offers go to.
+    // It receives clipboard content all the same.
+    alpha.set_local_clipboard(vec![ClipRep::Text("for Beta".into())]);
+    until("Beta to receive the clipboard", || {
+        beta.clipboard_contents() == [ClipRep::Text("for Beta".into())]
+    })
+    .await;
+    // And it is still a connected member of the desk, which is what clipboard offers go to.
     for name in ["Alpha", "Beta"] {
         let status = w.lab.node(name).status().await;
         assert_eq!(status.computers.len(), 2, "{name}");

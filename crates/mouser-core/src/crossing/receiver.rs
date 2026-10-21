@@ -128,6 +128,10 @@ impl Crossing {
         }
         let usage = map_usage(rx.os, me, usage);
         press(&mut rx.injected, io, Action::Key(usage, down));
+        if down {
+            let held = rx.injected.keys.clone();
+            self.clipboard_keys(&held, usage);
+        }
     }
 
     /// A mouse button, with buttons 4 and 5 as configured.

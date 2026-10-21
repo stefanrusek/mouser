@@ -19,6 +19,8 @@ pub struct DisplayDetails {
     pub online: bool,
     /// When an offline computer was last seen.
     pub last_seen: Option<String>,
+    /// The placement was made automatically and the owner has not looked at it.
+    pub needs_review: bool,
 }
 
 impl Ctx {
@@ -58,6 +60,7 @@ impl Ctx {
                         computer_name: name.clone(),
                         online,
                         last_seen: last_seen.clone(),
+                        needs_review: core.needs_review.contains(&display.display_id),
                     })
                     .collect::<Vec<_>>()
             })

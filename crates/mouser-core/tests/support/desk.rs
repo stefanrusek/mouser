@@ -123,6 +123,8 @@ pub struct Setup {
     pub protocol_version: u16,
     pub mouser_version: String,
     pub blind: bool,
+    /// The kinds of clipboard content this computer can hold (default: all).
+    pub clipboard_holds: Option<fn(&mouser_platform::ClipRep) -> bool>,
 }
 
 impl Default for Setup {
@@ -133,6 +135,7 @@ impl Default for Setup {
             protocol_version: mouser_proto::wire::PROTOCOL_VERSION,
             mouser_version: "0.1.0".into(),
             blind: false,
+            clipboard_holds: None,
         }
     }
 }
@@ -272,8 +275,15 @@ impl Node {
             own: Mutex::new(None),
             blind: self.setup.blind,
         };
+        let platform: Arc<dyn mouser_platform::Platform> = match self.setup.clipboard_holds {
+            None => Arc::new(self.platform.clone()),
+            Some(holds) => Arc::new(super::picky::Picky {
+                inner: self.platform.clone(),
+                holds,
+            }),
+        };
         let mut params = EngineParams::new(
-            Arc::new(self.platform.clone()),
+            platform,
             self.dir.path().to_path_buf(),
             self.control_path.clone(),
             self.name.clone(),

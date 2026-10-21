@@ -19,6 +19,9 @@ use tokio::sync::{Notify, broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use crate::clipboard::Command;
+use crate::clipboard::files::Inbox;
+use crate::clipboard::targeted::Chord;
 use crate::config;
 use crate::control::{self, ControlHandle};
 use crate::crossing::buttons::Buttons45;
@@ -175,6 +178,10 @@ pub(crate) struct Ctx {
     pub events: broadcast::Sender<EngineEvent>,
     pub crossing: Arc<Mutex<Crossing>>,
     pub secrets: Mutex<Box<dyn SecretStore>>,
+    /// Tells the clipboard task what to do.
+    pub clip: mpsc::UnboundedSender<Command>,
+    /// Files pasted from other computers, which streams are expected for.
+    pub clip_inbox: Inbox,
     pub core: Mutex<Core>,
     pub next_link: AtomicU64,
     stop: CancellationToken,
@@ -347,16 +354,21 @@ impl Engine {
         let dirty = Arc::new(Notify::new());
         let problems = Arc::new(Problems::new(notify.clone()));
         let panic = PanicSpec::parse(&config.hotkeys.panic).expect("hotkeys.panic is valid");
+        let targeted_paste =
+            Chord::parse(&config.hotkeys.targeted_paste).expect("hotkeys.targeted_paste is valid");
+        let (clip, clip_commands) = mpsc::unbounded_channel();
         let crossing = Arc::new(Mutex::new(Crossing::new(
             identity.computer_id(),
             crate::platform_os(params.platform.info().os),
             Buttons45::from_config(&config.mouse.buttons_4_5),
             panic,
+            targeted_paste,
             Host {
                 events: events.clone(),
                 dirty: dirty.clone(),
                 platform: params.platform.clone(),
                 problems: problems.clone(),
+                clipboard: clip.clone(),
             },
         )));
         let interfaces = params.platform.interfaces();
@@ -374,6 +386,8 @@ impl Engine {
             events,
             crossing,
             secrets: Mutex::new(secrets),
+            clip,
+            clip_inbox: Inbox::default(),
             core: Mutex::new(Core {
                 config,
                 state,
@@ -396,6 +410,7 @@ impl Engine {
         ctx.resume();
         ctx.raise_limitations();
         ctx.try_start_input();
+        ctx.start_clipboard(clip_commands);
         let (tx, rx) = std::sync::mpsc::channel();
         let watch = ctx
             .platform

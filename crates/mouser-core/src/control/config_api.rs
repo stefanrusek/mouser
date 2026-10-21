@@ -1,8 +1,8 @@
 //! `config.get` / `config.set` (Story 9 scenario 2, FR-005, contracts/config.md).
 //!
 //! A key is `section.name`; a whole section (or no key at all) can be read.
-//! A write is validated with `Config::validate` (and the panic gesture, which
-//! the engine parses at start) before anything changes; then it is saved,
+//! A write is validated with `Config::validate` (and the panic gesture and the
+//! targeted-paste hotkey, which the engine parses at start) before anything changes; then it is saved,
 //! applied to the running engine, and, for the desk-shared keys, replicated
 //! to the desk with a new epoch.
 
@@ -13,6 +13,7 @@ use mouser_proto::control::RpcError;
 use mouser_proto::wire::ControlMessage;
 use serde_json::Value;
 
+use crate::clipboard::targeted::Chord;
 use crate::config;
 use crate::control::invalid;
 use crate::crossing::buttons::Buttons45;
@@ -60,12 +61,15 @@ impl Ctx {
         next.validate().map_err(|e| rejected(&e.key, e.reason))?;
         let panic =
             PanicSpec::parse(&next.hotkeys.panic).map_err(|e| rejected("hotkeys.panic", e))?;
+        let targeted_paste = Chord::parse(&next.hotkeys.targeted_paste)
+            .map_err(|e| rejected("hotkeys.targeted_paste", e))?;
         let name_changed = next.general.computer_name != core.config.general.computer_name;
         core.config = next;
         config::save(&self.config_dir, &core.config);
         {
             let mut crossing = self.crossing.lock().unwrap();
             crossing.buttons = Buttons45::from_config(&core.config.mouse.buttons_4_5);
+            crossing.targeted_paste = targeted_paste;
             if crossing.panic.spec() != panic {
                 crossing.panic = PanicDetector::new(panic);
             }

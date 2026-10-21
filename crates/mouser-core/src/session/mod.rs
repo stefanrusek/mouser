@@ -95,6 +95,19 @@ async fn motion_loop(ctx: Arc<Ctx>, peer: ComputerId, conn: quinn::Connection) {
     }
 }
 
+/// Receives the files that desk-mates stream to us until the connection ends.
+async fn file_loop(ctx: Arc<Ctx>, conn: quinn::Connection) {
+    while let Ok(stream) = conn.accept_uni().await {
+        // A stream cut short by a lost connection is a transfer that did not finish.
+        if let Ok(Some(paths)) = ctx.clip_inbox.receive(stream).await {
+            // No clipboard task means this platform shares no clipboard.
+            let _ = ctx
+                .clip
+                .send(crate::clipboard::Command::FilesArrived(paths));
+        }
+    }
+}
+
 async fn watch_closed(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, conn: quinn::Connection) {
     let _guard = LinkGuard { ctx, peer, link_id };
     conn.closed().await;
@@ -232,6 +245,7 @@ impl Ctx {
                 .clear(ProblemKind::IncompatibleVersion, &peer.to_string());
             self.spawn(read_loop(self.clone(), peer, link_id, reader));
             self.spawn(motion_loop(self.clone(), peer, conn.clone()));
+            self.spawn(file_loop(self.clone(), conn.clone()));
         } else {
             let (text, mine_is_older) = incompatible_text;
             self.problems.raise(
@@ -276,6 +290,8 @@ impl Ctx {
         };
         self.problems
             .clear(ProblemKind::SecureInput, &peer.to_string());
+        // No clipboard task means this platform shares no clipboard.
+        let _ = self.clip.send(crate::clipboard::Command::PeerGone(peer));
         if waiting {
             self.fail_pending("The request to join the desk was not answered.");
         }
@@ -324,6 +340,12 @@ impl Ctx {
             ControlMessage::Remove { computer_id } => self.on_remove(peer, computer_id),
             ControlMessage::Displays { displays } => self.on_displays(peer, displays),
             ControlMessage::Status(status) => self.on_peer_status(peer, status),
+            message @ (ControlMessage::ClipboardOffer { .. }
+            | ControlMessage::ClipboardFetch { .. }
+            | ControlMessage::ClipboardData { .. }
+            | ControlMessage::TransferOffer { .. }
+            | ControlMessage::TransferAccept { .. }
+            | ControlMessage::TransferDone { .. }) => self.clipboard_message(peer, message),
             ControlMessage::Enter {
                 display_id,
                 x,

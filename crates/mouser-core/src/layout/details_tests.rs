@@ -78,3 +78,48 @@ async fn a_computer_that_went_away_shows_when_it_was_last_seen_too() {
     // Its displays stay on the desk meanwhile.
     assert_eq!(layout["displays"].as_array().unwrap().len(), 2);
 }
+
+fn needs_review(layout: &Value, computer: &str) -> Value {
+    detail(layout, computer)["needs_review"].clone()
+}
+
+#[tokio::test]
+async fn each_display_says_whether_its_placement_awaits_review() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let layout = layout_of(&nodes[0]).await;
+    // Beta was placed automatically; Alpha's own display was never moved.
+    assert_eq!(needs_review(&layout, "Beta"), json!(true));
+    assert_eq!(needs_review(&layout, "Alpha"), json!(false));
+}
+
+#[tokio::test]
+async fn placing_or_moving_a_display_with_layout_set_clears_only_its_flag() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta", "Gamma"]).await;
+    let a = &nodes[0];
+    let layout = layout_of(a).await;
+    assert_eq!(needs_review(&layout, "Beta"), json!(true));
+    assert_eq!(needs_review(&layout, "Gamma"), json!(true));
+    // Gamma goes below Alpha; Beta stays where it was put.
+    let alpha = a
+        .engine
+        .layout()
+        .placements
+        .into_iter()
+        .find(|p| p.display_id.computer == a.engine.computer_id())
+        .unwrap();
+    let gamma = nodes[2].engine.computer_id().to_string();
+    let mut next = layout.clone();
+    for p in next["placements"].as_array_mut().unwrap() {
+        if p["display_id"]["computer"] == gamma.as_str() {
+            p["x"] = json!(alpha.x);
+            p["y"] = json!(alpha.y + 296);
+        }
+    }
+    let _: mouser_proto::control::Empty = call(a, Method::LayoutSet, next).await;
+    let layout = layout_of(a).await;
+    assert_eq!(needs_review(&layout, "Gamma"), json!(false));
+    assert_eq!(needs_review(&layout, "Beta"), json!(true));
+    assert_eq!(a.engine.needs_review().len(), 1);
+}

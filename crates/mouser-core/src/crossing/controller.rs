@@ -34,6 +34,8 @@ impl Crossing {
             self.forward(input, now);
         } else if let LocalInput::Motion { dx, dy, abs } = input {
             self.cross_from_local(dx, dy, abs, now);
+        } else if let LocalInput::Key { usage, down: true } = input {
+            self.clipboard_keys(&self.session.held.keys, usage);
         }
     }
 

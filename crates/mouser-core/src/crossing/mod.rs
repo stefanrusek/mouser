@@ -57,8 +57,11 @@ use mouser_platform::{
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, EdgeOptions, Os};
 use mouser_proto::wire::{ControlMessage, MotionDatagram};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{Notify, broadcast};
 
+use crate::clipboard::Command;
+use crate::clipboard::targeted::{Chord, paste_chord};
 use crate::engine::{Core, Ctx, EngineEvent, Outgoing, Phase};
 use crate::layout::edges::{self, Placed};
 use crate::problems::Problems;
@@ -132,6 +135,10 @@ pub(crate) struct Crossing {
     pub problems: Arc<Problems>,
     /// Blocked crossings that may be overridden by a second bump.
     pub bumps: Bumps,
+    /// The targeted-paste hotkey.
+    pub targeted_paste: Chord,
+    /// The clipboard task, told of the paste shortcut and the hotkey.
+    pub clipboard: UnboundedSender<Command>,
 }
 
 /// What the input path reports to and asks of the rest of the engine.
@@ -141,10 +148,18 @@ pub(crate) struct Host {
     pub dirty: Arc<Notify>,
     pub platform: Arc<dyn Platform>,
     pub problems: Arc<Problems>,
+    pub clipboard: UnboundedSender<Command>,
 }
 
 impl Crossing {
-    pub fn new(me: ComputerId, os: Os, buttons: Buttons45, panic: PanicSpec, host: Host) -> Self {
+    pub fn new(
+        me: ComputerId,
+        os: Os,
+        buttons: Buttons45,
+        panic: PanicSpec,
+        targeted_paste: Chord,
+        host: Host,
+    ) -> Self {
         Self {
             me,
             os,
@@ -160,7 +175,24 @@ impl Crossing {
             platform: host.platform,
             problems: host.problems,
             bumps: Bumps::default(),
+            targeted_paste,
+            clipboard: host.clipboard,
         }
+    }
+
+    /// A key went down while `held` were down, on this computer's keyboard
+    /// or the controller's: the paste shortcut and the targeted-paste hotkey
+    /// are clipboard business.
+    pub fn clipboard_keys(&self, held: &std::collections::BTreeSet<u32>, usage: u32) {
+        let command = if self.targeted_paste.pressed(held, usage) {
+            Command::Targeted
+        } else if paste_chord(self.os).pressed(held, usage) {
+            Command::Paste
+        } else {
+            return;
+        };
+        // No clipboard task means this platform shares no clipboard.
+        let _ = self.clipboard.send(command);
     }
 
     /// A new layout snapshot. Control that cannot continue on it (the
@@ -200,7 +232,7 @@ const INPUT_PERMISSIONS: [PermissionKind; 4] = [
 
 /// `Err(Unsupported)` means the platform cannot do it (and says so in its
 /// limitations); anything else is a failure.
-fn supported<T>(result: mouser_platform::Result<T>) -> Option<T> {
+pub(crate) fn supported<T>(result: mouser_platform::Result<T>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(e) => {

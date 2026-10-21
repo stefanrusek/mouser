@@ -68,3 +68,10 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Corner blocking applies to every crossing (also on remote displays); full-screen blocking only when leaving this computer, from replicated `Layout.block_fullscreen`.
 - A block raises a `crossing_blocked` Problem with `fix = open_arranger_edge`; it stays open for the session (no clear method yet).
 - app US5: `open_arranger_edge` carries no edge identity, so the arranger opens the first shared edge's options; open item for core to include display+side in the fix. Edge options are written for both sides of an edge.
+
+## core US6 decisions (for US7, app/cli)
+
+- Representations up to 1 MiB (`clipboard::INLINE_LIMIT`) are pushed with the offer; larger ones and files are fetched when the paste shortcut (Cmd+V / Ctrl+V) or targeted-paste hotkey is seen, so the first paste of a large item can be stale (open item: needs lazy/delayed-render support in the `Clipboard` trait).
+- Files: receiver sends `ClipboardFetch{Files}`, origin answers `TransferOffer`; `TransferAccept` → one uni stream per file (16-byte transfer id + 4-byte item index) → `TransferDone`. Files land in `<config_dir>/clipboard/<transfer id>/` (never cleaned up: open item); escaping paths refused. US7 must share the Transfer* dispatch now owned by clipboard.
+- Large `ClipboardData` rides the control stream and can briefly delay input (open item).
+- `hotkeys.targeted_paste` must parse as modifiers + key; `config.set` refuses bad values, applies live.

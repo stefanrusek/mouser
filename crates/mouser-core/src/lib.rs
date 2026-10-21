@@ -1,6 +1,7 @@
 //! The Mouser engine: identity, desk membership, discovery, transport, control API.
 
 pub mod autostart;
+pub mod clipboard;
 pub mod config;
 pub mod control;
 pub mod crossing;

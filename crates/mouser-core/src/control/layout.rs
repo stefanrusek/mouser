@@ -82,6 +82,12 @@ impl Ctx {
         desk.state.author = me;
         let state = desk.state.clone();
         self.layout_changed(&mut core, &old, &state);
+        // The owner placed or moved these displays: nothing is left to review.
+        for placement in &state.layout.placements {
+            if !old.placements.contains(placement) {
+                core.needs_review.remove(&placement.display_id);
+            }
+        }
         let displays = self.local_displays(&core);
         let mut messages = vec![ControlMessage::DeskState(state)];
         if displays_changed {
