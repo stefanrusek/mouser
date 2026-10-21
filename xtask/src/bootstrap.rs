@@ -24,7 +24,7 @@ pub fn run() {
     }
     if succeeds(Command::new("node").arg("--version")) {
         must(
-            Command::new("npm")
+            Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" })
                 .args(["ci"])
                 .current_dir("apps/mouser-app/ui"),
         );
