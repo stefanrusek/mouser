@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [x] No [NEEDS CLARIFICATION] markers remain — all 3 resolved by operator 2026-10-21 (see spec Clarifications)
+- [x] No clarification markers remain — all 3 resolved by operator 2026-10-21 (see spec Clarifications)
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
