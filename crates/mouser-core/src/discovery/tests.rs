@@ -195,8 +195,12 @@ fn real_mdns_announces_browses_and_unregisters_on_stop() {
     for _ in 0..3 {
         let a = MdnsDiscovery::new(a_id, host_interfaces());
         a.announce(&advert(0xa1, Some((9, "Mdns test desk")), 47811));
-        wait_until("B to see A", || {
-            b.found().iter().any(|f| f.computer == a_id)
+        // On a repeat, a lost goodbye leaves the previous run's (unjoined)
+        // record in B until this announcement replaces it.
+        wait_until("B to see A on its desk", || {
+            b.found()
+                .iter()
+                .any(|f| f.computer == a_id && f.desk.is_some())
         });
         let seen = b.found().into_iter().find(|f| f.computer == a_id).unwrap();
         assert_eq!(

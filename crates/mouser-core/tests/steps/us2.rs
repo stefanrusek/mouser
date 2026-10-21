@@ -921,11 +921,16 @@ async fn press_buttons_4_and_5(w: &mut CrossWorld) {
 #[then("the chosen behavior happens on that computer")]
 async fn chosen_behavior_happens(w: &mut CrossWorld) {
     let (beta, gamma) = (w.platform("Beta"), w.platform("Gamma"));
-    injected(&gamma, "Forward on Gamma", |i| {
-        *i == Injected::Key {
-            usage: ALT,
-            down: false,
-        }
+    // Each chord ends with Alt up, so the Forward chord (the second) is done
+    // when two have been injected; the first is only the Back chord's end.
+    until("Forward on Gamma", || {
+        let alt_ups = |i: &Injected| {
+            *i == Injected::Key {
+                usage: ALT,
+                down: false,
+            }
+        };
+        gamma.injected().iter().filter(|i| alt_ups(i)).count() == 2
     })
     .await;
     let buttons: Vec<_> = beta

@@ -659,14 +659,20 @@ async fn they_find_each_other(w: &mut DeskWorld) {
 )]
 async fn each_shows_a_message(w: &mut DeskWorld) {
     for (name, other) in [("Alpha", "Beta"), ("Beta", "Alpha")] {
+        // What the computer shows is its status: a computer that finds the
+        // other while it is still starting up raises the problem before any
+        // client could have subscribed, and status is what such a client
+        // reads first.
         let problem = w
             .lab
             .node(name)
-            .notification("the version notice", Topic::Problem, |p| {
-                p["kind"] == json!(ProblemKind::IncompatibleVersion)
-            })
-            .await;
-        let text = problem["message"].as_str().unwrap();
+            .status()
+            .await
+            .problems
+            .into_iter()
+            .find(|p| p.kind == ProblemKind::IncompatibleVersion)
+            .expect("a version problem");
+        let text = &problem.message;
         assert!(text.contains(other), "{name}: {text}");
         assert!(
             text.contains("0.1.0") && text.contains("0.2.0"),

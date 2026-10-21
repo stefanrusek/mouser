@@ -34,7 +34,11 @@ pub fn save(dir: &Path, config: &Config) {
 
 /// The per-OS configuration directory of this user.
 pub fn default_dir() -> PathBuf {
-    dir_from(&|key| std::env::var(key).ok())
+    dir_from(&process_env)
+}
+
+fn process_env(key: &str) -> Option<String> {
+    std::env::var(key).ok()
 }
 
 #[cfg(target_os = "macos")]

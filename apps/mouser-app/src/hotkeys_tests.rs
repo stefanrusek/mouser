@@ -160,7 +160,10 @@ async fn the_enable_disable_hotkey_pauses_and_then_resumes() {
 async fn quickjump_and_targeted_paste_are_handed_on() {
     let s = setup().await;
     s.hotkeys.sync();
+    // Each OS press is handled on its own task, so two presses issued with no
+    // gap have no defined order; a person's key presses are never that close.
     s.shortcuts.pressed(Hotkey::QuickJump);
+    eventually(|| s.forwarded.lock().unwrap().len() == 1).await;
     s.shortcuts.pressed(Hotkey::TargetedPaste);
     eventually(|| s.forwarded.lock().unwrap().len() == 2).await;
     assert_eq!(
