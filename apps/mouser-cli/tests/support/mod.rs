@@ -88,17 +88,19 @@ pub struct Node {
     pub sim: SimNode,
     env: Vec<(&'static str, String)>,
     control_path: PathBuf,
-    engine: Option<Engine>,
+    id: Option<ComputerId>,
     _home: tempfile::TempDir,
     _config: tempfile::TempDir,
 }
 
+/// A port for one engine, in 20000-40000 (clear of the OS ephemeral range that
+/// SimNet's relay sockets draw from). Every call in a process gets a distinct
+/// one; it is deliberately not probed, because on macOS a just-closed probe
+/// socket can make the engine's own bind fail.
 fn free_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+    static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
 }
 
 /// A user's home with the environment that makes the default control path
@@ -147,7 +149,7 @@ fn short_tempdir() -> tempfile::TempDir {
 
 impl Node {
     pub fn id(&self) -> ComputerId {
-        self.engine.as_ref().expect("node is running").computer_id()
+        self.id.expect("node is running")
     }
 
     /// Run `mouser args...` as this computer's user and wait for it.
@@ -220,6 +222,7 @@ impl Node {
 pub struct Lab {
     net: SimNet,
     registry: Arc<Registry>,
+    engines: Mutex<Vec<Engine>>,
 }
 
 impl Lab {
@@ -227,6 +230,16 @@ impl Lab {
         Self {
             net: SimNet::new(),
             registry: Arc::new(Registry::default()),
+            engines: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Stop every engine and wait for its tasks. Each test ends with this,
+    /// before its nodes (and their temp dirs) are dropped.
+    pub async fn shutdown(self) {
+        let engines = std::mem::take(&mut *self.engines.lock().unwrap());
+        for engine in engines {
+            engine.shutdown().await;
         }
     }
 
@@ -259,7 +272,9 @@ impl Lab {
             own: Mutex::new(None),
         }));
         node.sim = sim;
-        node.engine = Some(Engine::start(params).await);
+        let engine = Engine::start(params).await;
+        node.id = Some(engine.computer_id());
+        self.engines.lock().unwrap().push(engine);
         node
     }
 
@@ -275,7 +290,7 @@ impl Lab {
             ),
             env,
             control_path,
-            engine: None,
+            id: None,
             _home: home,
             _config: tempfile::tempdir().unwrap(),
         }

@@ -28,6 +28,7 @@ async fn pause_and_resume_toggle_the_running_mouser() {
         serde_json::json!({})
     );
     assert_eq!(alpha.status().await.state, EngineState::Active);
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -42,4 +43,5 @@ async fn pause_and_resume_exit_2_when_mouser_is_not_running() {
     }
     let help = nobody.mouser(&["--help"]).await;
     assert!(help.stdout.contains("pause") && help.stdout.contains("resume"));
+    lab.shutdown().await;
 }

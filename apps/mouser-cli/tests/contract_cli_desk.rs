@@ -57,6 +57,7 @@ async fn every_command_exits_2_when_mouser_is_not_running() {
         assert_eq!(out.stdout, "");
         assert_eq!(out.stderr.trim(), "Mouser is not running", "{args:?}");
     }
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -86,6 +87,7 @@ async fn unusable_arguments_exit_3_and_help_exits_0() {
     for command in ["desks", "desk", "requests", "approve", "decline"] {
         assert!(help.stdout.contains(command), "help lists {command}");
     }
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -113,6 +115,7 @@ async fn a_created_desk_is_listed_on_the_network() {
     assert_eq!(listed[0]["desk_id"], desk_id.as_str());
     assert_eq!(listed[0]["name"], "Home office");
     assert_eq!(listed[0]["members"][0], "Alpha");
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -196,6 +199,7 @@ async fn join_waits_for_approval_and_prints_the_decision() {
         .await;
     let left = alpha.mouser(&["--json", "desk", "leave"]).await;
     assert_eq!(left.json(), serde_json::json!({}));
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -216,6 +220,7 @@ async fn a_declined_join_exits_1_with_the_reason() {
     assert_eq!(join.stdout, "");
     assert!(join.stderr.contains("not admitted"), "{}", join.stderr);
     assert!(beta.status().await.desk.is_none());
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -252,4 +257,5 @@ async fn arguments_that_name_nothing_exit_3() {
     let already = alpha.mouser(&["desk", "join", "10.0.0.1:1"]).await;
     assert_eq!(already.code, 3);
     assert!(already.stderr.contains("leave the current desk first"));
+    lab.shutdown().await;
 }

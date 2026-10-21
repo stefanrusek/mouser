@@ -40,6 +40,7 @@ async fn status_json_validates_against_the_schema() {
         assert_eq!(parsed.computers.len(), 2);
         assert_eq!(parsed.desk.unwrap().name, "Home office");
     }
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -110,6 +111,7 @@ async fn status_text_names_desk_connections_permissions_and_problems() {
     alpha.mouser(&["pause"]).await;
     let paused = alpha.mouser(&["status"]).await.stdout;
     assert!(paused.starts_with("Alpha: paused\n"));
+    lab.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -122,4 +124,5 @@ async fn status_exits_2_when_mouser_is_not_running() {
         assert_eq!(out.stdout, "");
         assert_eq!(out.stderr.trim(), "Mouser is not running");
     }
+    lab.shutdown().await;
 }
