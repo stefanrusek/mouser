@@ -99,8 +99,8 @@ Cargo workspace at repo root (plan.md "Project Structure"): `crates/mouser-{prot
 - [X] T048 [P] Write `crates/mouser-core/tests/features/us13.feature` (Story 13 scenarios 1–2; limitation scenario: Windows portable states it cannot control login, permission prompts, Ctrl-Alt-Del or administrator apps), verbatim
 
 - [X] T049 Verify lane disjointness: extract every file path named by tasks under each `### Lane:` heading of this file and confirm the lane file sets are pairwise disjoint and disjoint from `specs/001-mouser-v1/contracts/`, `crates/mouser-proto/`, `crates/mouser-platform/`, `crates/mouser-testkit/` and `crates/mouser-core/tests/features/`; record the script output (5.2; verification only)
-- [ ] T050 Gate: `cargo xtask gate --packages mouser-proto,mouser-platform,mouser-testkit --lane foundational` exits 0 on all three CI runners
-- [ ] T051 Commit: phase boundary "Foundational" (5.3)
+- [X] T050 Gate: `cargo xtask gate --packages mouser-proto,mouser-platform,mouser-testkit --lane foundational` exits 0 on all three CI runners
+- [X] T051 Commit: phase boundary "Foundational" (5.3)
 
 **Checkpoint**: Contracts frozen. All lanes may start.
 
