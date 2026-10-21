@@ -30,6 +30,7 @@ Source of the feature inventory: sharemouse.com, the ShareMouse edition matrix, 
 - On first launch, Mouser lists desks it finds on the network and offers "Join *Home office*" or "Create a new desk". One click.
 - Several desks coexist on one network without seeing each other's input or clipboard.
 - A computer can be moved to another desk or removed from one in the UI.
+- Joining needs one click of approval on a computer already on the desk ("Allow *Laptop* to join Home office?").
 - Encryption keys are exchanged automatically when a computer joins; no password or code to type.
 
 ## Requirements
@@ -67,7 +68,7 @@ Source of the feature inventory: sharemouse.com, the ShareMouse edition matrix, 
 - Zero-config discovery, scoped to a desk (see Desks) [autodiscover]
 - Manual peers by address, and an allowlist [manual-ip]
 - Encrypted traffic, automatic [encryption]
-- LAN only; nothing goes to the internet [lan-only]
+- LAN only; nothing goes to the internet, except one desk computer checking for and downloading new Mouser releases [lan-only]
 - Version compatibility check with a clear message [version-check]
 - Extra network adapters (VPN, VM, container bridges) never break connectivity, with no configuration [from adapter note]
 
@@ -79,7 +80,7 @@ Source of the feature inventory: sharemouse.com, the ShareMouse edition matrix, 
 - Launch at login [autostart]
 - Guided permissions setup per OS [permissions]
 - Diagnostic logging: one checkbox (and a CLI/config equivalent); logs go to a file in JSON Lines format so agents can read them. No OS console logging, no launch-time key combos [diagnostics]
-- Auto-update across the LAN: one computer updates, the rest follow [auto-update]
+- Auto-update across the LAN: one computer downloads new releases, the rest update from it over the LAN [auto-update]
 - Portable mode: run without installing [portable]
 - Self-healing connections [reconnect]
 - Status & health panel: who's connected, latency, last error, missing permissions, and why the pointer isn't crossing [health]

@@ -1,6 +1,8 @@
 <!--
 Sync Impact Report
-Version change: 1.1.0 -> 1.2.0 (2026-10-21): Development Workflow gains the rule that every
+Version change: 1.2.0 -> 1.3.0 (2026-10-21): Principle III gains the release-download exception
+  and one-click join approval (operator decisions in specs/001-mouser-v1 clarifications).
+Previous: 1.1.0 -> 1.2.0 (2026-10-21): Development Workflow gains the rule that every
   tasks.md Polish phase updates docs/ to prevent drift.
 Previous: 1.0.0 -> 1.1.0
 Modified principles: none (project principles I-VII preserved unchanged)
@@ -47,7 +49,10 @@ Rationale: ShareMouse's dropped connections and VPN/VM breakage are the reason f
 - All traffic MUST still be encrypted, with keys exchanged automatically and no user-facing
   setup.
 - Mouser is LAN only. Nothing MAY be sent to the internet; no cloud services, accounts, telemetry
-  or licensing.
+  or licensing. Sole exception: one desk computer MAY check the published release location and
+  download new Mouser releases, which it then shares over the LAN; that exchange MUST carry no
+  input, clipboard, file or desk information.
+- Joining a desk MUST be approved with one click on a computer already on that desk.
 - Separate desks on one network MUST NOT see each other's input or clipboard.
 
 ### IV. Agent-Friendly Operations
@@ -1605,4 +1610,4 @@ own versioning is tracked by the stamp line below and MUST be preserved by any l
 
 Spec-Driven Development Amendment (v6.2.0)
 
-**Version**: 1.2.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-21
+**Version**: 1.3.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-21
