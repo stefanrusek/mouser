@@ -1,1 +1,46 @@
+//! The Mouser engine: identity, desk membership, discovery, transport, control API.
 
+pub mod autostart;
+pub mod config;
+pub mod control;
+pub mod crossing;
+pub mod desk;
+pub mod discovery;
+pub mod engine;
+pub mod identity;
+pub mod layout;
+pub mod problems;
+pub mod session;
+pub mod state;
+pub mod transport;
+
+#[cfg(test)]
+mod engine_tests;
+#[cfg(test)]
+mod testing;
+
+pub use control::{ControlHandle, client::ControlClient};
+pub use engine::{Engine, EngineParams};
+
+/// The wire/control-API name of a platform's operating system.
+pub(crate) fn platform_os(os: mouser_platform::Os) -> mouser_proto::model::Os {
+    match os {
+        mouser_platform::Os::MacOs => mouser_proto::model::Os::Macos,
+        mouser_platform::Os::Windows => mouser_proto::model::Os::Windows,
+        mouser_platform::Os::Linux => mouser_proto::model::Os::Linux,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_platform_os_has_a_wire_name() {
+        use mouser_platform::Os as P;
+        use mouser_proto::model::Os as W;
+        assert_eq!(platform_os(P::MacOs), W::Macos);
+        assert_eq!(platform_os(P::Windows), W::Windows);
+        assert_eq!(platform_os(P::Linux), W::Linux);
+    }
+}

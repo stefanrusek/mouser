@@ -118,47 +118,47 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us1` passes: two virtual computers create/join a desk with one-click approval and list each other as members.
 
-- [ ] T052 [US1-core] Implement the multi-node desk harness (test infrastructure) in `crates/mouser-core/tests/support/desk.rs`: start N `Engine`s, each with its own `VirtualPlatform`, temp config dir and `SimNet` node; expose each node's control-API client and notification stream
-- [ ] T053 [US1-core] Write the acceptance runner `crates/mouser-core/tests/acc_us1.rs` and step definitions `crates/mouser-core/tests/steps/us1.rs` for every scenario in `tests/features/us1.feature`
-- [ ] T054 [P] [US1-core] Write unit tests for device identity in `crates/mouser-core/src/identity/tests.rs`: first launch generates an Ed25519 device key stored via `SecretStore` under `device_key`; later launches reuse it; `ComputerId` derives from it
-- [ ] T055 [US1-core] Implement device identity in `crates/mouser-core/src/identity/mod.rs`
-- [ ] T056 [P] [US1-core] Write unit tests for local state persistence in `crates/mouser-core/src/state/tests.rs`: `state.json` round-trips desk membership (`Unjoined | Pending(desk) | Member(desk)`), layout and epoch; desk key is stored only in `SecretStore` under `desk_key/<desk_id>`
-- [ ] T057 [US1-core] Implement local state persistence in `crates/mouser-core/src/state/mod.rs`
-- [ ] T058 [P] [US1-core] Write unit tests for config loading in `crates/mouser-core/src/config/tests.rs`: missing file yields `Config::default()` and is written; existing file is parsed with `mouser_proto::config::Config`
-- [ ] T059 [US1-core] Implement config loading and saving at the per-OS path from contracts/config.md in `crates/mouser-core/src/config/mod.rs`
-- [ ] T060 [P] [US1-core] Write unit tests for the interface filter in `crates/mouser-core/src/discovery/filter_tests.rs`: only `NetInterface` of kind `PhysicalLan` is enabled; IPv4 preferred; an fe80 address is advertised only on the interface it belongs to (research R3)
-- [ ] T061 [US1-core] Implement the physical-LAN interface predicate in `crates/mouser-core/src/discovery/filter.rs`
-- [ ] T062 [P] [US1-core] Write unit tests for discovery in `crates/mouser-core/src/discovery/tests.rs`: service `_mouser._udp.local.` advertises TXT `v`, `cid`, `desk`, `dn`, `port`; browse results group computers by desk; shutdown unregisters and waits for confirmation
-- [ ] T063 [US1-core] Implement discovery with mdns-sd 0.21.6 (`disable_interface(All)` + `enable_interface(Predicate(..))`) in `crates/mouser-core/src/discovery/mod.rs`
-- [ ] T064 [P] [US1-core] Write unit tests for the transport in `crates/mouser-core/src/transport/tests.rs`: endpoint binds `[::]:port` falling back to `0.0.0.0:port`, ALPN `mouser/1`; a peer whose certificate key does not hash to the expected `ComputerId` is rejected; datagrams and a bidirectional control stream carry framed messages
-- [ ] T065 [US1-core] Implement the QUIC transport (quinn 0.11.12, rcgen certificate from the device key, pinning verifier, keep-alive 750 ms, max idle timeout 3 s per research R2) in `crates/mouser-core/src/transport/mod.rs`
-- [ ] T066 [P] [US1-core] Write unit tests for the handshake in `crates/mouser-core/src/session/handshake_tests.rs`: `Hello` exchanged first; differing protocol versions mark the peer `Incompatible` and raise an `incompatible_version` Problem whose message names the other computer, both Mouser versions, and which one to update (Story 1 sc. 8)
-- [ ] T067 [US1-core] Implement the `Hello` handshake and version check in `crates/mouser-core/src/session/handshake.rs`
-- [ ] T068 [P] [US1-core] Write unit tests for the problems registry in `crates/mouser-core/src/problems/tests.rs`: raising a Problem with an existing `problem_id` (kind + subject) does not duplicate it; clearing sets `cleared_at`; subscribers receive `problem` notifications
-- [ ] T069 [US1-core] Implement the problems registry in `crates/mouser-core/src/problems/mod.rs`
-- [ ] T070 [P] [US1-core] Write unit tests for desk creation in `crates/mouser-core/src/desk/create_tests.rs`: `desk.create{name}` trims the name, requires 1–64 characters, generates `desk_id` and a 32-byte `desk_key`, makes this computer the only member, and starts advertising the desk
-- [ ] T071 [US1-core] Implement desk creation in `crates/mouser-core/src/desk/create.rs`
-- [ ] T072 [P] [US1-core] Write unit tests for join requests in `crates/mouser-core/src/desk/join_tests.rs`: `desk.join` sends `JoinRequest` and enters `Pending`; the member emits a `join_request` notification; `join.decide{approve:true}` sends `JoinDecision` with the sealed desk key and DeskState and the joiner becomes `Member`; `approve:false` returns the joiner to `Unjoined` with a `join_refused` Problem ("not admitted") (Story 1 sc. 2–3, FR-013)
-- [ ] T073 [US1-core] Implement the join request / one-click approval flow in `crates/mouser-core/src/desk/join.rs`
-- [ ] T074 [P] [US1-core] Write unit tests for `DeskAuth` in `crates/mouser-core/src/session/auth_tests.rs`: every new connection proves membership with HMAC(desk_key, handshake transcript); a computer without the desk key receives no desk traffic (Story 1 sc. 4)
-- [ ] T075 [US1-core] Implement `DeskAuth` and per-desk traffic isolation in `crates/mouser-core/src/session/auth.rs`
-- [ ] T076 [P] [US1-core] Write unit tests for DeskState replication in `crates/mouser-core/src/desk/replication_tests.rs`: highest `(epoch, computer_id)` wins; every member converges on the same member list
-- [ ] T077 [US1-core] Implement DeskState replication in `crates/mouser-core/src/desk/replication.rs`
-- [ ] T078 [P] [US1-core] Write unit tests for leave/remove/move in `crates/mouser-core/src/desk/membership_tests.rs`: `desk.leave` and `desk.remove_member` remove the computer from every member list and rotate `desk_key`; `desk.move` leaves the old desk only after approval by the new one (Story 1 sc. 5)
-- [ ] T079 [US1-core] Implement leave, remove and move with desk-key rotation in `crates/mouser-core/src/desk/membership.rs`
-- [ ] T080 [P] [US1-core] Write unit tests for joining by address in `crates/mouser-core/src/desk/manual_tests.rs`: `desk.join{address:"host:port"}` dials directly and then follows the same approval flow (Story 1 sc. 6)
-- [ ] T081 [US1-core] Implement joining by network address in `crates/mouser-core/src/desk/manual.rs`
-- [ ] T082 [P] [US1-core] Write unit tests for the allowlist in `crates/mouser-core/src/desk/allowlist_tests.rs`: with a non-empty allowlist a `JoinRequest` from an address outside every CIDR is refused, no prompt is shown, and the owner gets a `join_refused` Problem naming the refused computer (Story 1 sc. 7)
-- [ ] T083 [US1-core] Implement allowlist enforcement in `crates/mouser-core/src/desk/allowlist.rs`
-- [ ] T084 [P] [US1-core] Write unit tests for start-at-login in `crates/mouser-core/src/autostart/tests.rs`: completing first-run with `general.start_at_login = true` calls `Autostart::set(true)`; on start the engine reconnects to its desk from persisted state with no action (Story 1 sc. 9, FR-011)
-- [ ] T085 [US1-core] Implement start-at-login and resume-on-start in `crates/mouser-core/src/autostart/mod.rs`
-- [ ] T086 [P] [US1-core] Write unit tests for the local control server in `crates/mouser-core/src/control/server_tests.rs`: newline-delimited JSON-RPC 2.0 over the per-OS socket/pipe path from contracts/control-api.md; methods `status`, `desks.discovered`, `desk.create`, `desk.join`, `desk.leave`, `desk.move`, `desk.remove_member`, `join.pending`, `join.decide`, `subscribe`; results validate against the `mouser-proto` types; another OS user cannot connect
-- [ ] T087 [US1-core] Implement the local control server and the US1 methods in `crates/mouser-core/src/control/server.rs`
-- [ ] T088 [P] [US1-core] Write unit tests for the status builder in `crates/mouser-core/src/control/status_tests.rs`: `status` reports this computer, `state` (`active`/`paused`), desk, every member with connection, permissions, limitations and display count, and open problems; output validates against `status.schema.json`; tray summary counts computers and displays (Story 1 sc. 10)
-- [ ] T089 [US1-core] Implement the status builder in `crates/mouser-core/src/control/status.rs`
-- [ ] T090 [US1-core] Implement `Engine` startup/shutdown composing identity, state, config, discovery, transport, desk and control modules in `crates/mouser-core/src/engine.rs` and export it from `crates/mouser-core/src/lib.rs`
-- [ ] T091 [US1-core] Gate: `cargo xtask gate --packages mouser-core --lane core` (acc_us1 and all mouser-core tests pass, 100% coverage)
-- [ ] T092 [US1-core] Commit: phase boundary "US1-core" (5.3)
+- [X] T052 [US1-core] Implement the multi-node desk harness (test infrastructure) in `crates/mouser-core/tests/support/desk.rs`: start N `Engine`s, each with its own `VirtualPlatform`, temp config dir and `SimNet` node; expose each node's control-API client and notification stream
+- [X] T053 [US1-core] Write the acceptance runner `crates/mouser-core/tests/acc_us1.rs` and step definitions `crates/mouser-core/tests/steps/us1.rs` for every scenario in `tests/features/us1.feature`
+- [X] T054 [P] [US1-core] Write unit tests for device identity in `crates/mouser-core/src/identity/tests.rs`: first launch generates an Ed25519 device key stored via `SecretStore` under `device_key`; later launches reuse it; `ComputerId` derives from it
+- [X] T055 [US1-core] Implement device identity in `crates/mouser-core/src/identity/mod.rs`
+- [X] T056 [P] [US1-core] Write unit tests for local state persistence in `crates/mouser-core/src/state/tests.rs`: `state.json` round-trips desk membership (`Unjoined | Pending(desk) | Member(desk)`), layout and epoch; desk key is stored only in `SecretStore` under `desk_key/<desk_id>`
+- [X] T057 [US1-core] Implement local state persistence in `crates/mouser-core/src/state/mod.rs`
+- [X] T058 [P] [US1-core] Write unit tests for config loading in `crates/mouser-core/src/config/tests.rs`: missing file yields `Config::default()` and is written; existing file is parsed with `mouser_proto::config::Config`
+- [X] T059 [US1-core] Implement config loading and saving at the per-OS path from contracts/config.md in `crates/mouser-core/src/config/mod.rs`
+- [X] T060 [P] [US1-core] Write unit tests for the interface filter in `crates/mouser-core/src/discovery/filter_tests.rs`: only `NetInterface` of kind `PhysicalLan` is enabled; IPv4 preferred; an fe80 address is advertised only on the interface it belongs to (research R3)
+- [X] T061 [US1-core] Implement the physical-LAN interface predicate in `crates/mouser-core/src/discovery/filter.rs`
+- [X] T062 [P] [US1-core] Write unit tests for discovery in `crates/mouser-core/src/discovery/tests.rs`: service `_mouser._udp.local.` advertises TXT `v`, `cid`, `desk`, `dn`, `port`; browse results group computers by desk; shutdown unregisters and waits for confirmation
+- [X] T063 [US1-core] Implement discovery with mdns-sd 0.21.6 (`disable_interface(All)` + `enable_interface(Predicate(..))`) in `crates/mouser-core/src/discovery/mod.rs`
+- [X] T064 [P] [US1-core] Write unit tests for the transport in `crates/mouser-core/src/transport/tests.rs`: endpoint binds `[::]:port` falling back to `0.0.0.0:port`, ALPN `mouser/1`; a peer whose certificate key does not hash to the expected `ComputerId` is rejected; datagrams and a bidirectional control stream carry framed messages
+- [X] T065 [US1-core] Implement the QUIC transport (quinn 0.11.12, rcgen certificate from the device key, pinning verifier, keep-alive 750 ms, max idle timeout 3 s per research R2) in `crates/mouser-core/src/transport/mod.rs`
+- [X] T066 [P] [US1-core] Write unit tests for the handshake in `crates/mouser-core/src/session/handshake_tests.rs`: `Hello` exchanged first; differing protocol versions mark the peer `Incompatible` and raise an `incompatible_version` Problem whose message names the other computer, both Mouser versions, and which one to update (Story 1 sc. 8)
+- [X] T067 [US1-core] Implement the `Hello` handshake and version check in `crates/mouser-core/src/session/handshake.rs`
+- [X] T068 [P] [US1-core] Write unit tests for the problems registry in `crates/mouser-core/src/problems/tests.rs`: raising a Problem with an existing `problem_id` (kind + subject) does not duplicate it; clearing sets `cleared_at`; subscribers receive `problem` notifications
+- [X] T069 [US1-core] Implement the problems registry in `crates/mouser-core/src/problems/mod.rs`
+- [X] T070 [P] [US1-core] Write unit tests for desk creation in `crates/mouser-core/src/desk/create_tests.rs`: `desk.create{name}` trims the name, requires 1–64 characters, generates `desk_id` and a 32-byte `desk_key`, makes this computer the only member, and starts advertising the desk
+- [X] T071 [US1-core] Implement desk creation in `crates/mouser-core/src/desk/create.rs`
+- [X] T072 [P] [US1-core] Write unit tests for join requests in `crates/mouser-core/src/desk/join_tests.rs`: `desk.join` sends `JoinRequest` and enters `Pending`; the member emits a `join_request` notification; `join.decide{approve:true}` sends `JoinDecision` with the sealed desk key and DeskState and the joiner becomes `Member`; `approve:false` returns the joiner to `Unjoined` with a `join_refused` Problem ("not admitted") (Story 1 sc. 2–3, FR-013)
+- [X] T073 [US1-core] Implement the join request / one-click approval flow in `crates/mouser-core/src/desk/join.rs`
+- [X] T074 [P] [US1-core] Write unit tests for `DeskAuth` in `crates/mouser-core/src/session/auth_tests.rs`: every new connection proves membership with HMAC(desk_key, handshake transcript); a computer without the desk key receives no desk traffic (Story 1 sc. 4)
+- [X] T075 [US1-core] Implement `DeskAuth` and per-desk traffic isolation in `crates/mouser-core/src/session/auth.rs`
+- [X] T076 [P] [US1-core] Write unit tests for DeskState replication in `crates/mouser-core/src/desk/replication_tests.rs`: highest `(epoch, computer_id)` wins; every member converges on the same member list
+- [X] T077 [US1-core] Implement DeskState replication in `crates/mouser-core/src/desk/replication.rs`
+- [X] T078 [P] [US1-core] Write unit tests for leave/remove/move in `crates/mouser-core/src/desk/membership_tests.rs`: `desk.leave` and `desk.remove_member` remove the computer from every member list and rotate `desk_key`; `desk.move` leaves the old desk only after approval by the new one (Story 1 sc. 5)
+- [X] T079 [US1-core] Implement leave, remove and move with desk-key rotation in `crates/mouser-core/src/desk/membership.rs`
+- [X] T080 [P] [US1-core] Write unit tests for joining by address in `crates/mouser-core/src/desk/manual_tests.rs`: `desk.join{address:"host:port"}` dials directly and then follows the same approval flow (Story 1 sc. 6)
+- [X] T081 [US1-core] Implement joining by network address in `crates/mouser-core/src/desk/manual.rs`
+- [X] T082 [P] [US1-core] Write unit tests for the allowlist in `crates/mouser-core/src/desk/allowlist_tests.rs`: with a non-empty allowlist a `JoinRequest` from an address outside every CIDR is refused, no prompt is shown, and the owner gets a `join_refused` Problem naming the refused computer (Story 1 sc. 7)
+- [X] T083 [US1-core] Implement allowlist enforcement in `crates/mouser-core/src/desk/allowlist.rs`
+- [X] T084 [P] [US1-core] Write unit tests for start-at-login in `crates/mouser-core/src/autostart/tests.rs`: completing first-run with `general.start_at_login = true` calls `Autostart::set(true)`; on start the engine reconnects to its desk from persisted state with no action (Story 1 sc. 9, FR-011)
+- [X] T085 [US1-core] Implement start-at-login and resume-on-start in `crates/mouser-core/src/autostart/mod.rs`
+- [X] T086 [P] [US1-core] Write unit tests for the local control server in `crates/mouser-core/src/control/server_tests.rs`: newline-delimited JSON-RPC 2.0 over the per-OS socket/pipe path from contracts/control-api.md; methods `status`, `desks.discovered`, `desk.create`, `desk.join`, `desk.leave`, `desk.move`, `desk.remove_member`, `join.pending`, `join.decide`, `subscribe`; results validate against the `mouser-proto` types; another OS user cannot connect
+- [X] T087 [US1-core] Implement the local control server and the US1 methods in `crates/mouser-core/src/control/server.rs`
+- [X] T088 [P] [US1-core] Write unit tests for the status builder in `crates/mouser-core/src/control/status_tests.rs`: `status` reports this computer, `state` (`active`/`paused`), desk, every member with connection, permissions, limitations and display count, and open problems; output validates against `status.schema.json`; tray summary counts computers and displays (Story 1 sc. 10)
+- [X] T089 [US1-core] Implement the status builder in `crates/mouser-core/src/control/status.rs`
+- [X] T090 [US1-core] Implement `Engine` startup/shutdown composing identity, state, config, discovery, transport, desk and control modules in `crates/mouser-core/src/engine.rs` and export it from `crates/mouser-core/src/lib.rs`
+- [X] T091 [US1-core] Gate: `cargo xtask gate --packages mouser-core --lane core` (acc_us1 and all mouser-core tests pass, 100% coverage)
+- [X] T092 [US1-core] Commit: phase boundary "US1-core" (5.3)
 
 #### Phase 4: US2-core — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 

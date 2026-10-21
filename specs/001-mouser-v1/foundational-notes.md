@@ -28,3 +28,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 ## mouser-testkit
 - `VirtualPlatform` (clones share one virtual computer) and `SimNet`/`SimNode` (tokio; `route_to(&peer)` gives the address to dial; `set_delay`, `set_blackhole`, `change_address`, `sleep`/`wake`, `add_interface`/`remove_interface`, `bind_platform`). See `crates/mouser-testkit/src/`.
 - Double-usage banner printed at process exit (D2).
+
+## mouser-core (US1-core decisions, accepted by orchestrator)
+- Desk-key rotation after leave/remove reuses `JoinDecision{approved:true, sealed}` sent to remaining members; the lowest remaining `ComputerId` rotates (`desk/membership.rs::rotate`). The sealed payload rides inside the pinned-TLS QUIC connection.
+- Discovery is behind a `Discovery` trait (`announce`, `found`, `stop`); `MdnsDiscovery` is production, the acceptance harness uses an in-process registry over SimNet addresses.
+- Missing permissions surface as a `missing_permission` Problem with `fix = open_system_settings:<kind>`; the app calls `Platform::open_permission_settings` itself (no control method).
+- Windows control pipe: `\\.\pipe\mouser-<USERNAME>` with `reject_remote_clients`.

@@ -1,0 +1,408 @@
+//! `Engine`: startup and shutdown, composing identity, state, config,
+//! discovery, transport, desk and control modules.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+use mouser_platform::{Platform, SecretStore};
+use mouser_proto::config::Config;
+use mouser_proto::control::Notification;
+use mouser_proto::ids::{ComputerId, DeskId};
+use mouser_proto::model::{DeskState, Layout, Member};
+use mouser_proto::wire::{ControlMessage, PROTOCOL_VERSION};
+use tokio::sync::{broadcast, mpsc};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
+
+use crate::config;
+use crate::control::{self, ControlHandle};
+use crate::desk::join::Requests;
+use crate::discovery::{Advert, Discovery, MdnsDiscovery};
+use crate::identity::Identity;
+use crate::problems::Problems;
+use crate::session::handshake::PeerHello;
+use crate::state::{self, LocalState, desk_key_name};
+use crate::transport::Transport;
+
+/// How often discovery results are reconciled with connections.
+const RECONCILE: Duration = Duration::from_millis(250);
+
+/// Everything an engine needs from its host.
+pub struct EngineParams {
+    pub platform: Arc<dyn Platform>,
+    /// Directory holding `config.toml` and `state.json`.
+    pub config_dir: PathBuf,
+    /// Control socket path (Unix) or pipe name (Windows).
+    pub control_path: PathBuf,
+    /// The operating system's name for this computer (the config can override it).
+    pub computer_name: String,
+    pub mouser_version: String,
+    /// Wire protocol version spoken; only tests use anything but `PROTOCOL_VERSION`.
+    pub protocol_version: u16,
+    /// Discovery backend; `None` selects real mDNS on the physical LAN.
+    pub discovery: Option<Arc<dyn Discovery>>,
+}
+
+impl EngineParams {
+    pub fn new(
+        platform: Arc<dyn Platform>,
+        config_dir: PathBuf,
+        control_path: PathBuf,
+        computer_name: String,
+        mouser_version: String,
+    ) -> Self {
+        Self {
+            platform,
+            config_dir,
+            control_path,
+            computer_name,
+            mouser_version,
+            protocol_version: PROTOCOL_VERSION,
+            discovery: None,
+        }
+    }
+}
+
+/// Where a connection to a peer is in its life.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Phase {
+    /// `Hello`s exchanged.
+    Greeted,
+    /// We sent a `JoinRequest` and wait for the decision.
+    AwaitingDecision,
+    /// Protocol versions cannot work together; no desk traffic.
+    Incompatible,
+    /// The peer proved desk membership.
+    Authed,
+}
+
+pub(crate) enum Outgoing {
+    Message(ControlMessage),
+    /// Flush what is queued, then close the connection.
+    Close,
+}
+
+pub(crate) struct Peer {
+    pub link_id: u64,
+    pub hello: PeerHello,
+    pub conn: quinn::Connection,
+    pub out: mpsc::UnboundedSender<Outgoing>,
+    pub phase: Phase,
+    pub displays: Vec<mouser_proto::model::Display>,
+    pub last_seen: String,
+}
+
+impl Peer {
+    pub fn send(&self, msg: ControlMessage) {
+        // A closed channel means the link already ended; its reader cleans up.
+        let _ = self.out.send(Outgoing::Message(msg));
+    }
+
+    pub fn close(&self) {
+        let _ = self.out.send(Outgoing::Close);
+    }
+}
+
+/// What a pending join is for.
+pub(crate) struct PendingJoin {
+    pub name: Option<String>,
+}
+
+pub(crate) struct Core {
+    pub config: Config,
+    pub state: LocalState,
+    pub desk_key: Option<[u8; 32]>,
+    pub pending: Option<PendingJoin>,
+    pub peers: BTreeMap<ComputerId, Peer>,
+    pub dialing: BTreeSet<ComputerId>,
+    pub requests: Requests,
+    pub paused: bool,
+}
+
+/// State shared by every task of one engine.
+pub(crate) struct Ctx {
+    pub identity: Identity,
+    pub platform: Arc<dyn Platform>,
+    pub config_dir: PathBuf,
+    pub computer_name: String,
+    pub mouser_version: String,
+    pub protocol_version: u16,
+    pub transport: Transport,
+    pub discovery: Arc<dyn Discovery>,
+    pub problems: Problems,
+    pub notify: broadcast::Sender<Notification>,
+    pub secrets: Mutex<Box<dyn SecretStore>>,
+    pub core: Mutex<Core>,
+    pub next_link: AtomicU64,
+    stop: CancellationToken,
+    tasks: TaskTracker,
+}
+
+impl Ctx {
+    pub fn me(&self) -> ComputerId {
+        self.identity.computer_id()
+    }
+
+    pub fn display_name(&self) -> String {
+        let core = self.core.lock().unwrap();
+        self.display_name_in(&core)
+    }
+
+    pub fn display_name_in(&self, core: &Core) -> String {
+        match core.config.general.computer_name.as_str() {
+            "" => self.computer_name.clone(),
+            name => name.to_string(),
+        }
+    }
+
+    /// Run `task` until the engine shuts down.
+    pub fn spawn(&self, task: impl std::future::Future<Output = ()> + Send + 'static) {
+        let stop = self.stop.clone();
+        self.tasks.spawn(async move {
+            stop.run_until_cancelled(task).await;
+        });
+    }
+
+    pub fn next_link_id(&self) -> u64 {
+        self.next_link.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub fn state_path(&self) -> PathBuf {
+        self.config_dir.join(state::FILE)
+    }
+
+    /// The `Hello` this computer sends first on every connection.
+    pub fn hello(&self) -> ControlMessage {
+        let core = self.core.lock().unwrap();
+        ControlMessage::Hello {
+            protocol_version: self.protocol_version,
+            mouser_version: self.mouser_version.clone(),
+            computer_id: self.me(),
+            display_name: self.display_name_in(&core),
+            os: crate::platform_os(self.platform.info().os),
+            desk_id: core.state.desk.as_ref().map(|d| d.desk_id),
+        }
+    }
+
+    /// This computer as a desk member.
+    pub fn member_in(&self, core: &Core) -> Member {
+        Member {
+            computer_id: self.me(),
+            device_public_key: self.identity.public_key(),
+            display_name: self.display_name_in(core),
+            os: crate::platform_os(self.platform.info().os),
+            mouser_version: self.mouser_version.clone(),
+            joined_at: crate::problems::now(),
+        }
+    }
+
+    /// The initial desk state with this computer as the only member.
+    pub fn new_desk_state(&self, core: &Core) -> DeskState {
+        DeskState {
+            epoch: 1,
+            author: self.me(),
+            members: vec![self.member_in(core)],
+            layout: Layout {
+                equalize_dimensions: core.config.crossing.equalize_dimensions,
+                block_fullscreen: core.config.crossing.block_fullscreen,
+                ..Layout::default()
+            },
+            allowlist: core.config.advanced.allowlist.clone(),
+        }
+    }
+
+    /// Tell the network what this computer is and which desk it is on.
+    pub fn announce(&self) {
+        let advert = {
+            let core = self.core.lock().unwrap();
+            Advert {
+                computer: self.me(),
+                display_name: self.display_name_in(&core),
+                protocol: self.protocol_version,
+                desk: core
+                    .state
+                    .desk
+                    .as_ref()
+                    .map(|d| (d.desk_id, d.name.clone())),
+                port: self.transport.local_addr().port(),
+            }
+        };
+        self.discovery.announce(&advert);
+    }
+
+    /// Persist the state, and the desk key in the secret store.
+    pub fn persist(&self, core: &Core) {
+        core.state.save(&self.state_path());
+    }
+
+    pub fn store_desk_key(&self, desk: &DeskId, key: &[u8; 32]) {
+        self.secrets
+            .lock()
+            .unwrap()
+            .set(&desk_key_name(desk), key)
+            .expect("secret store writable");
+    }
+
+    pub fn delete_desk_key(&self, desk: &DeskId) {
+        self.secrets
+            .lock()
+            .unwrap()
+            .delete(&desk_key_name(desk))
+            .expect("secret store writable");
+    }
+
+    /// Send the current `status` to subscribers.
+    pub fn notify_status(&self) {
+        let status = control::status::build(self);
+        let note = Notification {
+            jsonrpc: "2.0".into(),
+            method: mouser_proto::control::Topic::Status,
+            params: serde_json::to_value(status).expect("status serializes"),
+        };
+        // No subscribers is fine.
+        let _ = self.notify.send(note);
+    }
+}
+
+/// A running engine.
+pub struct Engine {
+    pub(crate) ctx: Arc<Ctx>,
+    control_path: PathBuf,
+}
+
+impl Engine {
+    /// Start the engine: load identity, config and state, bind the QUIC
+    /// endpoint, announce on the network, serve the control API, and resume
+    /// the desk from persisted state with no action.
+    pub async fn start(params: EngineParams) -> Engine {
+        std::fs::create_dir_all(&params.config_dir).expect("config directory");
+        let config = config::load_or_create(&params.config_dir);
+        let mut secrets = params.platform.secrets();
+        let identity = Identity::load_or_create(secrets.as_mut());
+        let state = LocalState::load(&params.config_dir.join(state::FILE));
+        let desk_key = state.desk.as_ref().map(|d| {
+            let stored = secrets
+                .get(&desk_key_name(&d.desk_id))
+                .expect("secret store readable")
+                .expect("desk key stored for the persisted desk");
+            <[u8; 32]>::try_from(stored).expect("desk key is 32 bytes")
+        });
+        let port = u16::try_from(config.advanced.port).expect("validated port");
+        let transport = Transport::bind(&identity, port);
+        let discovery = params.discovery.unwrap_or_else(|| {
+            Arc::new(MdnsDiscovery::new(
+                identity.computer_id(),
+                params.platform.interfaces(),
+            ))
+        });
+        let (notify, _) = broadcast::channel(256);
+        let ctx = Arc::new(Ctx {
+            identity,
+            platform: params.platform,
+            config_dir: params.config_dir,
+            computer_name: params.computer_name,
+            mouser_version: params.mouser_version,
+            protocol_version: params.protocol_version,
+            transport,
+            discovery,
+            problems: Problems::new(notify.clone()),
+            notify,
+            secrets: Mutex::new(secrets),
+            core: Mutex::new(Core {
+                config,
+                state,
+                desk_key,
+                pending: None,
+                peers: BTreeMap::new(),
+                dialing: BTreeSet::new(),
+                requests: Requests::default(),
+                paused: false,
+            }),
+            next_link: AtomicU64::new(0),
+            stop: CancellationToken::new(),
+            tasks: TaskTracker::new(),
+        });
+        ctx.resume();
+        ctx.spawn(accept_loop(ctx.clone()));
+        ctx.spawn(reconcile_loop(ctx.clone()));
+        control::server::serve(&ctx, &params.control_path);
+        Engine {
+            ctx,
+            control_path: params.control_path,
+        }
+    }
+
+    pub fn computer_id(&self) -> ComputerId {
+        self.ctx.me()
+    }
+
+    /// The address the QUIC endpoint is bound to.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.ctx.transport.local_addr()
+    }
+
+    /// In-process access to the control API (what the app's UI uses).
+    pub fn control(&self) -> ControlHandle {
+        ControlHandle::new(self.ctx.clone())
+    }
+
+    /// Close every connection, leave the network and stop all tasks.
+    pub async fn shutdown(self) {
+        for peer in self.ctx.core.lock().unwrap().peers.values() {
+            peer.conn.close(0u32.into(), b"shutdown");
+        }
+        self.ctx.transport.close();
+        let discovery = self.ctx.discovery.clone();
+        tokio::task::spawn_blocking(move || discovery.stop())
+            .await
+            .expect("discovery stops");
+        self.ctx.stop.cancel();
+        self.ctx.tasks.close();
+        self.ctx.tasks.wait().await;
+        self.ctx.transport.wait_idle().await;
+        control::server::cleanup(&self.control_path);
+    }
+}
+
+async fn accept_loop(ctx: Arc<Ctx>) {
+    while let Some(incoming) = ctx.transport.accept().await {
+        let task = ctx.clone().accept_one(incoming);
+        ctx.spawn(async move {
+            task.await;
+        });
+    }
+}
+
+async fn reconcile_loop(ctx: Arc<Ctx>) {
+    let mut tick = tokio::time::interval(RECONCILE);
+    loop {
+        tick.tick().await;
+        ctx.reconcile();
+    }
+}
+
+impl Ctx {
+    /// Dial discovered computers we should be connected to: desk-mates and
+    /// computers with an incompatible protocol (so both sides are told).
+    /// Only the lower `ComputerId` dials, so a pair never connects twice.
+    pub fn reconcile(self: &Arc<Self>) {
+        let found = self.discovery.found();
+        let mut core = self.core.lock().unwrap();
+        let my_desk = core.state.desk.as_ref().map(|d| d.desk_id);
+        for f in found {
+            let known = core.peers.contains_key(&f.computer) || core.dialing.contains(&f.computer);
+            let same_desk = my_desk.is_some() && f.desk.as_ref().map(|d| d.0) == my_desk;
+            let incompatible =
+                !mouser_proto::wire::is_compatible(f.protocol, self.protocol_version);
+            if !known && (same_desk || incompatible) && self.me() < f.computer {
+                core.dialing.insert(f.computer);
+                self.spawn(self.clone().dial_found(f));
+            }
+        }
+    }
+}

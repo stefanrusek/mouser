@@ -1,0 +1,161 @@
+//! The `status` result (contracts/status.schema.json).
+
+use std::collections::BTreeMap;
+
+use mouser_platform::{PermissionKind as PlatformKind, PermissionState as PlatformState};
+use mouser_proto::control::{
+    ComputerRef, ConnectionState, EngineState, ProblemKind, Status, StatusComputer, StatusDesk,
+};
+use mouser_proto::model::{PermissionKind, PermissionState};
+
+use crate::engine::{Ctx, Phase};
+use crate::problems::permission_text;
+use crate::state::Membership;
+
+fn permission_kind(kind: PlatformKind) -> PermissionKind {
+    match kind {
+        PlatformKind::Accessibility => PermissionKind::Accessibility,
+        PlatformKind::InputMonitoring => PermissionKind::InputMonitoring,
+        PlatformKind::ScreenRecording => PermissionKind::ScreenRecording,
+        PlatformKind::FullDiskAccess => PermissionKind::FullDiskAccess,
+        PlatformKind::InputCapturePortal => PermissionKind::InputCapturePortal,
+        PlatformKind::RemoteDesktopPortal => PermissionKind::RemoteDesktopPortal,
+    }
+}
+
+fn permission_state(state: PlatformState) -> PermissionState {
+    match state {
+        PlatformState::Granted => PermissionState::Granted,
+        PlatformState::Missing => PermissionState::Missing,
+        PlatformState::NotApplicable => PermissionState::NotApplicable,
+    }
+}
+
+/// What the menu bar or system tray shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TraySummary {
+    pub state: EngineState,
+    pub computers: u32,
+    pub displays: u32,
+}
+
+/// Active or paused, and how many computers and displays are on the desk.
+pub fn tray_summary(status: &Status) -> TraySummary {
+    TraySummary {
+        state: status.state,
+        computers: status.computers.len() as u32,
+        displays: status.computers.iter().map(|c| c.displays).sum(),
+    }
+}
+
+impl Ctx {
+    /// Raise a `missing_permission` problem (with the fix that opens the right
+    /// system screen) for each missing permission, and clear it once granted.
+    pub(crate) fn sync_permission_problems(&self) {
+        for (kind, state) in self.platform.permissions() {
+            let wire = permission_kind(kind);
+            let subject = serde_json::to_value(wire).expect("kind serializes");
+            let subject = subject.as_str().expect("kind is a string");
+            if state == PlatformState::Missing {
+                self.problems.raise(
+                    ProblemKind::MissingPermission,
+                    subject,
+                    self.me(),
+                    permission_text(wire).to_string(),
+                    Some(mouser_proto::control::FixAction::OpenSystemSettings(wire)),
+                );
+            } else {
+                self.problems.clear(ProblemKind::MissingPermission, subject);
+            }
+        }
+    }
+}
+
+/// The `status` result.
+pub(crate) fn build(ctx: &Ctx) -> Status {
+    ctx.sync_permission_problems();
+    let info = ctx.platform.info();
+    let permissions: BTreeMap<PermissionKind, PermissionState> = ctx
+        .platform
+        .permissions()
+        .into_iter()
+        .map(|(k, s)| (permission_kind(k), permission_state(s)))
+        .collect();
+    let my_displays = ctx.platform.displays().expect("displays readable").len() as u32;
+    let core = ctx.core.lock().unwrap();
+    let name = ctx.display_name_in(&core);
+    let mut computers = vec![StatusComputer {
+        id: ctx.me(),
+        name: name.clone(),
+        os: crate::platform_os(info.os),
+        version: ctx.mouser_version.clone(),
+        connection: ConnectionState::SelfComputer,
+        rtt_ms: None,
+        last_seen: None,
+        permissions,
+        limitations: info.limitations.into_iter().map(|l| l.text).collect(),
+        displays: my_displays,
+    }];
+    if let Some(desk) = &core.state.desk {
+        for member in desk
+            .state
+            .members
+            .iter()
+            .filter(|m| m.computer_id != ctx.me())
+        {
+            let peer = core.peers.get(&member.computer_id);
+            let connection = match peer.map(|p| p.phase) {
+                Some(Phase::Authed) => ConnectionState::Connected,
+                Some(Phase::Incompatible) => ConnectionState::Incompatible,
+                _ => ConnectionState::Offline,
+            };
+            computers.push(StatusComputer {
+                id: member.computer_id,
+                name: member.display_name.clone(),
+                os: member.os,
+                version: member.mouser_version.clone(),
+                connection,
+                rtt_ms: peer
+                    .filter(|_| connection == ConnectionState::Connected)
+                    .map(|p| p.conn.rtt().as_secs_f64() * 1000.0),
+                last_seen: peer.map(|p| p.last_seen.clone()),
+                permissions: BTreeMap::new(),
+                limitations: Vec::new(),
+                displays: peer.map_or(0, |p| p.displays.len() as u32),
+            });
+        }
+    }
+    let desk = match (&core.state.membership, &core.state.desk) {
+        (Membership::Unjoined, _) => None,
+        (Membership::Pending(id), _) => Some(StatusDesk {
+            id: *id,
+            name: core
+                .pending
+                .as_ref()
+                .and_then(|p| p.name.clone())
+                .unwrap_or_default(),
+            pending_join: Some(true),
+        }),
+        (Membership::Member(id), desk) => Some(StatusDesk {
+            id: *id,
+            name: desk.as_ref().expect("a member has a desk").name.clone(),
+            pending_join: None,
+        }),
+    };
+    let state = if core.paused {
+        EngineState::Paused
+    } else {
+        EngineState::Active
+    };
+    drop(core);
+    Status {
+        version: ctx.mouser_version.clone(),
+        computer: ComputerRef { id: ctx.me(), name },
+        state,
+        desk,
+        active_computer: None,
+        computers,
+        problems: ctx.problems.open(),
+        logging: None,
+    }
+}
