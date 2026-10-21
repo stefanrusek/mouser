@@ -42,12 +42,12 @@ Mouser v1 delivers all 13 stories of the spec: computers join a named desk (one-
 | VI Test the seams | PASS | Simulated-network and VirtualPlatform acceptance tests; regression test per reliability fix; protocol version check |
 | VII Simplicity | PASS | One engine crate, one trait; Windows service justified in Complexity Tracking |
 | Dev workflow: Polish updates docs/ | PASS | Polish phase carries docs/ tasks (tasks phase) |
-| 1.3 No open markers before tasks | **BLOCKED** | D1–D5 below are `[NEEDS CLARIFICATION]` until the operator decides |
-| 3.1 External deps probed | PARTIAL | macOS, QUIC, mDNS, Tauri, clipboard, releases probed; Windows/Linux research only → D1 |
-| 3.4 Test infra present | GAP | cargo-llvm-cov missing; no CI; no Windows/Linux runners → setup tasks + D1 |
-| 4.1 Test doubles are operator decisions | **BLOCKED** | D2 |
-| 4.3 E2E admission | **BLOCKED** | D5 |
-| 5.2 Workspace bootstrap defined | **BLOCKED** | D5 |
+| 1.3 No open markers before tasks | PASS | D1–D5 decided by operator 2026-10-21 |
+| 3.1 External deps probed | PASS (risk accepted) | Windows/Linux research only; hardware probes scheduled before their lane tasks (D1) |
+| 3.4 Test infra present | GAP → setup tasks | cargo-llvm-cov, GitHub repo + CI runners (D1) precede all feature tasks |
+| 4.1 Test doubles are operator decisions | PASS | VirtualPlatform + SimNet sanctioned (D2) |
+| 4.3 E2E admission | PASS | J1 admitted (D5) |
+| 5.2 Workspace bootstrap defined | PASS | constitution v1.4.0 (D5) |
 
 ## Project Structure
 
@@ -412,7 +412,7 @@ sequenceDiagram
 - **Contract (`contract_`)**: wire messages round-trip and version checks (both roles); control API and CLI JSON validated against `status.schema.json` / `log-record.schema.json`; config parsing against config.md; release manifest against its schema; `mouser-platform` behavioural rules 1–8 run against `VirtualPlatform` (consumer side) and against each real backend on its own OS (producer side).
 - **Implementation tests**: unit tests in each package to reach 100% line coverage (cargo-llvm-cov), excluding `mouser-testkit`, `spikes/`, generated `gen/`.
 - **Regression**: each reliability fix adds an `acc_`/SimNet scenario reproducing it (constitution VI).
-- **E2E (`e2e_`)**: inventory today is empty (greenfield). See D5.
+- **E2E (`e2e_`)**: one admitted journey, J1 (D5), run on real machines at the terminal phase.
 
 ## Infrastructure Detection (Principle 3.4)
 
@@ -441,21 +441,21 @@ Greenfield: no suppressions, local debt or structural debt exist. Pre-emptive me
 **Gates by phase (mode-consistent):**
 - Foundational: `cargo xtask gate --packages mouser-proto,mouser-platform,mouser-testkit`
 - Lane phase: `cargo xtask gate --packages <lane package>` (fmt, clippy -D warnings, tests, coverage 100% for that package); backend lanes run on their own OS runner
-- Convergence and terminal: `cargo xtask gate --all` (+ E2E only if D5 admits a journey)
+- Convergence and terminal: `cargo xtask gate --all`, then J1 on real machines
 
-Workspace bootstrap command required by Principle 5.2 is not yet defined in the constitution → D5.
+Workspace bootstrap: `cargo fetch --locked && cargo xtask bootstrap` (constitution v1.4.0).
 
-## Decisions Owed by the Operator
+## Operator Decisions (2026-10-21)
 
-- **D1 — Windows/Linux verification.** No Windows or Linux probe could run (research R5, R6; FINDINGS-windows-linux "Probes to schedule"), there is no git remote or CI, and nothing links cross-OS from this Mac (R11). [NEEDS CLARIFICATION: How will Windows and Linux be built and verified? Options: (A) create a GitHub repository and use GitHub Actions macOS/Windows/Ubuntu runners for builds and backend contract tests, plus your own Windows and Linux machines for the hardware probes listed in FINDINGS-windows-linux; (B) your own machines only (self-hosted runners); (C) accept the risk and build Windows/Linux backends unverified until later.]
-- **D2 — Test doubles.** Acceptance tests need stand-ins for the OS (input, displays, clipboard, permissions) and for the network (impairment relay). [NEEDS CLARIFICATION: Sanction two test doubles? `VirtualPlatform` (OS stand-in implementing contracts/platform-api.md) and `SimNet` (in-process UDP relay that can delay, black-hole and re-address). Real-config debt: each real backend passes the same platform contract tests on its own OS runner (D1), and the network behaviour is re-validated by the `spike_quic` pathloss/migrate probes promoted to tests on real interfaces. Options: (A) sanction both; (B) sanction VirtualPlatform only and run network tests over real loopback/LAN interfaces; (C) neither.]
-- **D3 — Platform limitations to state in the app (FR-001).** Research shows these are infeasible or need special entitlements in v1. [NEEDS CLARIFICATION: Accept these as stated limitations for v1? (1) Apps that ignore simulated input (Story 2 sc. 7) are not reached on macOS without an Apple virtual-HID entitlement, nor on Windows without a kernel driver; (2) Wayland: GNOME < 51 / Plasma < 6.7 ask for permission at each login and can't share the clipboard from the capturing computer; compositors without InputCapture (Sway, Hyprland, COSMIC) unsupported; no full-screen blocking on Wayland; (3) file drag between computers (Story 7) on Linux is unavailable, use copy and paste; (4) Windows portable mode has no login/UAC/Ctrl-Alt-Del control or elevated-app control; (5) stock GNOME without the AppIndicator extension has no tray icon. Options: (A) accept all; (B) accept all except (1) — pursue the macOS virtual-HID entitlement / DriverKit extension in v1; (C) list the ones to reject.]
-- **D4 — Signing credentials.** This Mac has 0 code-signing identities (R12); without Developer ID every dev rebuild resets Accessibility/Input Monitoring, and Story 10 sc. 2 can't be met. [NEEDS CLARIFICATION: Provide (A) Apple Developer ID Application certificate + notary API key now, plus a Windows Authenticode certificate and generate the minisign update key; (B) Apple now, Windows signing deferred (SmartScreen warnings on Windows); (C) defer all signing — ad-hoc builds until release.]
-- **D5 — Workspace bootstrap and E2E.** Package-parallel mode requires the constitution to define a workspace bootstrap command (Principle 5.2), and any E2E journey needs operator admission (4.3). [NEEDS CLARIFICATION: (a) Amend the constitution with bootstrap command `cargo fetch --locked && cargo xtask bootstrap` (installs pinned dev tools: cargo-llvm-cov; no E2E infrastructure)? (b) Admit one E2E journey — J1 "two real computers on a LAN: install, form a desk with approval, cross both ways and type, sleep/wake one, cross again" run per quickstart.md on real machines at the terminal phase — or keep the E2E inventory empty and rely on acceptance + backend contract tests plus manual quickstart validation?]
+- **D1 — Windows/Linux verification → A.** A GitHub repository with GitHub Actions macOS, Windows and Ubuntu runners builds and runs every backend's contract tests; the owner's own Windows and Linux machines run the hardware probes listed in spikes/FINDINGS-windows-linux.md ("Probes to schedule") before the corresponding lane tasks are committed. Repository creation and visibility are confirmed with the owner when the setup task runs.
+- **D2 — Test doubles → A.** Sanctioned: `VirtualPlatform` (OS stand-in implementing contracts/platform-api.md) and `SimNet` (in-process UDP relay that delays, black-holes and re-addresses). Real-config debt: each real backend passes the same platform contract tests on its own OS runner (D1), and the `spike_quic` migrate/pathloss probes are promoted to `contract_` tests over real interfaces on each runner. Any run where a double stands in for missing real configuration emits one aggregated run-level warning naming it.
+- **D3 — Stated platform limitations → A (all accepted).** Shown in the app per FR-001: (1) apps that ignore simulated input are not reached on macOS (no virtual-HID entitlement) or Windows (no kernel driver); (2) Wayland GNOME < 51 / Plasma < 6.7 re-prompt each login and cannot share the clipboard from the capturing computer; compositors without InputCapture unsupported; no full-screen blocking on Wayland; (3) file drag between computers unavailable on Linux (copy and paste instead); (4) Windows portable mode has no login/UAC/Ctrl-Alt-Del or elevated-app control; (5) stock GNOME without AppIndicator has no tray icon.
+- **D4 — Signing → B.** Apple Developer ID Application certificate and notary API key are provided now (owner installs them in the login keychain; CI receives them as secrets); Windows Authenticode deferred (SmartScreen warnings until then). The minisign update key is generated in the release setup task.
+- **D5 — Bootstrap and E2E → (a) yes, (b) J1 admitted.** Constitution v1.4.0 defines the workspace bootstrap command `cargo fetch --locked && cargo xtask bootstrap`. E2E inventory: **J1** "two real computers on a LAN: install, form a desk with approval, cross both ways and type, sleep/wake one, cross again", authored as `e2e_j1_two_computers.feature` with steps driven through the real app and CLI, executed on real machines at the Convergence/terminal phase per quickstart.md §2–3. No other journeys.
 
 ## Post-Design Constitution Re-check
 
-Design artifacts (data-model.md, contracts/, quickstart.md) introduce no new violations. Remaining blockers are exactly D1–D5; the tasks phase must not run until they are decided (Principle 1.3).
+Design artifacts (data-model.md, contracts/, quickstart.md) introduce no new violations. D1–D5 are decided; no clarification markers remain.
 
 ## Complexity Tracking
 

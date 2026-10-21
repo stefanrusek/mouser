@@ -1,6 +1,8 @@
 <!--
 Sync Impact Report
-Version change: 1.2.0 -> 1.3.0 (2026-10-21): Principle III gains the release-download exception
+Version change: 1.3.0 -> 1.4.0 (2026-10-21): Development Workflow defines the workspace bootstrap
+  command (Principle 5.2), operator decision D5 in specs/001-mouser-v1/plan.md.
+Previous: 1.2.0 -> 1.3.0 (2026-10-21): Principle III gains the release-download exception
   and one-click join approval (operator decisions in specs/001-mouser-v1 clarifications).
 Previous: 1.1.0 -> 1.2.0 (2026-10-21): Development Workflow gains the rule that every
   tasks.md Polish phase updates docs/ to prevent drift.
@@ -101,6 +103,9 @@ Added complexity MUST be justified in the plan's complexity-tracking section.
   match what the feature actually delivered (requirements, technical decisions, and any user or
   operator documentation affected), so `docs/` never drifts from the code. A feature that changes
   nothing under `docs/` MUST still carry a task that verifies this and records it.
+- Workspace bootstrap command (Principle 5.2): `cargo fetch --locked && cargo xtask bootstrap`. It fetches
+  locked dependencies and installs the pinned dev tools (cargo-llvm-cov) so a fresh worktree can run
+  package-scoped gates; it never starts or provisions E2E infrastructure.
 
 ## Spec-Driven Development Methodology Amendment
 
@@ -1610,4 +1615,4 @@ own versioning is tracked by the stamp line below and MUST be preserved by any l
 
 Spec-Driven Development Amendment (v6.2.0)
 
-**Version**: 1.3.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-21
+**Version**: 1.4.0 | **Ratified**: 2026-10-21 | **Last Amended**: 2026-10-21

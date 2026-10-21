@@ -21,6 +21,7 @@ Inputs (read for intent, not copied):
 - Q: Where do updates come from? → A: One desk computer checks the published release location, downloads new releases, and spreads them to the rest over the LAN; this is the only internet access (Story 10, FR-003; constitution Principle III amended).
 - Q: Does joining a desk need approval? → A: Yes, a one-click "Allow <computer> to join <desk>?" prompt on a computer already on the desk (Story 1, FR-013).
 - Q: Timing targets? → A: Crossing shows no visible pause; recovery within 5 seconds of wake or network change (SC-007, SC-008).
+- Q (plan D3): Which platform limitations are stated in the app for v1? → A: All five accepted — see Assumptions, "Accepted platform limitations".
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -318,6 +319,12 @@ The owner can run Mouser from a folder or removable drive on a computer where th
 - Linux support targets X11 and the GNOME and KDE Wayland sessions; other Wayland compositors may not support input capture and will show that limitation (FR-001).
 - macOS releases are signed and notarized by the owner's Apple Developer ID, which is what keeps permissions across updates (Story 10, scenario 2).
 - Portable mode (Story 13) is required on Windows; on macOS and Linux, where operating-system permissions are tied to an installed application, it is provided where the operating system allows and the limitation is shown otherwise (FR-001).
+- Accepted platform limitations (operator decision 2026-10-21, plan D3), shown in the app on the affected computer per FR-001:
+  1. Story 2 sc. 7: applications that ignore simulated input are not reached on macOS or Windows.
+  2. Wayland: GNOME before 51 and Plasma before 6.7 ask for permission at each login and cannot share the clipboard from the computer sharing its mouse; desktops without input-capture support (Sway, Hyprland, COSMIC) are unsupported; full-screen blocking (Story 5 sc. 2) is unavailable.
+  3. Story 7: file drag between computers is unavailable on Linux; copy and paste (Story 6) is the alternative.
+  4. Story 13 on Windows: portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator.
+  5. GNOME without the AppIndicator extension shows no tray icon; tray-menu actions are available from the app window instead.
 - The installed ShareMouse 7.0.29 was inventoried for its feature set (preference screens, messages, defaults) while writing the requirements; it is not a reference artifact and nothing in it is binding.
 - Out of scope for v1, per docs/product-requirements.md: remote mouse/scroll speed tuning, multimedia keys, lock-key sync, keyboard language sync, named or location-based layout profiles, shared displays and monitor input switching, toggle-monitors hotkey, wrap-around, require-a-key-to-switch, blocking in maximized windows or chosen applications, per-display jump hotkeys, display dimming, power/lock/screensaver sync, remote Mac login with stored credentials, reset-to-defaults, settings UI lock, licensing, Wake-on-LAN, password grouping, and pairing codes.
 
