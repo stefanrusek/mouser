@@ -10,9 +10,12 @@
 
 pub mod buttons;
 pub mod controller;
+pub mod corners;
+pub mod fullscreen;
 pub mod loss;
 pub mod modifiers;
 pub mod ordering;
+pub mod r#override;
 pub mod panic;
 pub mod pause;
 pub mod receiver;
@@ -23,11 +26,17 @@ mod buttons_tests;
 #[cfg(test)]
 mod controller_tests;
 #[cfg(test)]
+mod corners_tests;
+#[cfg(test)]
+mod fullscreen_tests;
+#[cfg(test)]
 mod loss_tests;
 #[cfg(test)]
 mod modifiers_tests;
 #[cfg(test)]
 mod ordering_tests;
+#[cfg(test)]
+mod override_tests;
 #[cfg(test)]
 mod panic_tests;
 #[cfg(test)]
@@ -43,16 +52,18 @@ use std::sync::mpsc;
 
 use bytes::Bytes;
 use mouser_platform::{
-    Error, InputCapture, InputInject, LocalInput, PermissionKind, PermissionState,
+    Error, InputCapture, InputInject, LocalInput, PermissionKind, PermissionState, Platform,
 };
 use mouser_proto::ids::ComputerId;
-use mouser_proto::model::{Display, Os};
+use mouser_proto::model::{Display, EdgeOptions, Os};
 use mouser_proto::wire::{ControlMessage, MotionDatagram};
 use tokio::sync::{Notify, broadcast};
 
 use crate::engine::{Core, Ctx, EngineEvent, Outgoing, Phase};
 use crate::layout::edges::{self, Placed};
+use crate::problems::Problems;
 use buttons::Buttons45;
+use r#override::Bumps;
 use panic::{PanicDetector, PanicSpec};
 use receiver::Receiving;
 use state::Session;
@@ -90,6 +101,10 @@ pub(crate) struct DeskMap {
     pub mine: Vec<Display>,
     /// Crossing maps whole edges onto whole edges (`equalize_dimensions`).
     pub equalize: bool,
+    /// Per-edge options; an edge without an entry has the defaults.
+    pub edge_options: Vec<EdgeOptions>,
+    /// Full-screen blocking is on (`Layout.block_fullscreen`).
+    pub block_fullscreen: bool,
     /// Authenticated peers.
     pub wires: BTreeMap<ComputerId, Wire>,
 }
@@ -113,17 +128,23 @@ pub(crate) struct Crossing {
     pub events: broadcast::Sender<EngineEvent>,
     /// Woken when what `status` reports about crossing changed.
     pub dirty: Arc<Notify>,
+    pub platform: Arc<dyn Platform>,
+    pub problems: Arc<Problems>,
+    /// Blocked crossings that may be overridden by a second bump.
+    pub bumps: Bumps,
+}
+
+/// What the input path reports to and asks of the rest of the engine.
+pub(crate) struct Host {
+    pub events: broadcast::Sender<EngineEvent>,
+    /// Woken when what `status` reports about crossing changed.
+    pub dirty: Arc<Notify>,
+    pub platform: Arc<dyn Platform>,
+    pub problems: Arc<Problems>,
 }
 
 impl Crossing {
-    pub fn new(
-        me: ComputerId,
-        os: Os,
-        buttons: Buttons45,
-        panic: PanicSpec,
-        events: broadcast::Sender<EngineEvent>,
-        dirty: Arc<Notify>,
-    ) -> Self {
+    pub fn new(me: ComputerId, os: Os, buttons: Buttons45, panic: PanicSpec, host: Host) -> Self {
         Self {
             me,
             os,
@@ -134,8 +155,11 @@ impl Crossing {
             session: Session::default(),
             panic: PanicDetector::new(panic),
             receiving: None,
-            events,
-            dirty,
+            events: host.events,
+            dirty: host.dirty,
+            platform: host.platform,
+            problems: host.problems,
+            bumps: Bumps::default(),
         }
     }
 
@@ -212,6 +236,8 @@ impl Ctx {
         let map = DeskMap {
             placed: edges::placed(&displays, &layout),
             equalize: layout.equalize_dimensions,
+            edge_options: layout.edge_options.clone(),
+            block_fullscreen: layout.block_fullscreen,
             mine,
             wires,
         };

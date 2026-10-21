@@ -233,19 +233,19 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us5` passes: corner and full-screen blocking hold the pointer; a double bump crosses; the first block shows an explanation.
 
-- [ ] T147 [US5-core] Write the acceptance runner `crates/mouser-core/tests/acc_us5.rs` and steps `crates/mouser-core/tests/steps/us5.rs` for every scenario in `tests/features/us5.feature`
-- [ ] T148 [P] [US5-core] Write unit tests for corner blocking in `crates/mouser-core/src/crossing/corners_tests.rs`: with `block_corners = true` (default) on an edge, motion past that edge within the fixed corner size of either end does not cross (Story 5 sc. 1)
-- [ ] T149 [US5-core] Implement corner blocking in `crates/mouser-core/src/crossing/corners.rs`
-- [ ] T150 [P] [US5-core] Write unit tests for full-screen blocking in `crates/mouser-core/src/crossing/fullscreen_tests.rs`: with `crossing.block_fullscreen = true` and `Platform::foreground_is_fullscreen()` true, no crossing occurs (Story 5 sc. 2)
-- [ ] T151 [US5-core] Implement full-screen blocking in `crates/mouser-core/src/crossing/fullscreen.rs`
-- [ ] T152 [P] [US5-core] Write unit tests for the double-bump override in `crates/mouser-core/src/crossing/override_tests.rs`: a second blocked hit on the same edge within the override window crosses; a single hit does not (Story 5 sc. 3)
-- [ ] T153 [US5-core] Implement the double-bump override in `crates/mouser-core/src/crossing/override.rs`
-- [ ] T154 [P] [US5-core] Write unit tests for the block explanation in `crates/mouser-core/src/problems/blocked_tests.rs`: the first blocked crossing since the explanation was last shown raises a `crossing_blocked` notification saying what blocked it and how to cross anyway or open the arranger edge; later blocks do not repeat it (Story 5 sc. 4)
-- [ ] T155 [US5-core] Implement the block explanation in `crates/mouser-core/src/problems/blocked.rs`
-- [ ] T156 [P] [US5-core] Write unit tests for per-edge options in `crates/mouser-core/src/layout/edge_options_tests.rs`: changing `edge_options[(display, side)].block_corners` through `layout.set` applies to that edge only on every member (Story 5 sc. 5)
-- [ ] T157 [US5-core] Implement per-edge option updates in `crates/mouser-core/src/layout/edge_options.rs`
-- [ ] T158 [US5-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T159 [US5-core] Commit: phase boundary "US5-core" (5.3)
+- [X] T147 [US5-core] Write the acceptance runner `crates/mouser-core/tests/acc_us5.rs` and steps `crates/mouser-core/tests/steps/us5.rs` for every scenario in `tests/features/us5.feature`
+- [X] T148 [P] [US5-core] Write unit tests for corner blocking in `crates/mouser-core/src/crossing/corners_tests.rs`: with `block_corners = true` (default) on an edge, motion past that edge within the fixed corner size of either end does not cross (Story 5 sc. 1)
+- [X] T149 [US5-core] Implement corner blocking in `crates/mouser-core/src/crossing/corners.rs`
+- [X] T150 [P] [US5-core] Write unit tests for full-screen blocking in `crates/mouser-core/src/crossing/fullscreen_tests.rs`: with `crossing.block_fullscreen = true` and `Platform::foreground_is_fullscreen()` true, no crossing occurs (Story 5 sc. 2)
+- [X] T151 [US5-core] Implement full-screen blocking in `crates/mouser-core/src/crossing/fullscreen.rs`
+- [X] T152 [P] [US5-core] Write unit tests for the double-bump override in `crates/mouser-core/src/crossing/override_tests.rs`: a second blocked hit on the same edge within the override window crosses; a single hit does not (Story 5 sc. 3)
+- [X] T153 [US5-core] Implement the double-bump override in `crates/mouser-core/src/crossing/override.rs`
+- [X] T154 [P] [US5-core] Write unit tests for the block explanation in `crates/mouser-core/src/problems/blocked_tests.rs`: the first blocked crossing since the explanation was last shown raises a `crossing_blocked` notification saying what blocked it and how to cross anyway or open the arranger edge; later blocks do not repeat it (Story 5 sc. 4)
+- [X] T155 [US5-core] Implement the block explanation in `crates/mouser-core/src/problems/blocked.rs`
+- [X] T156 [P] [US5-core] Write unit tests for per-edge options in `crates/mouser-core/src/layout/edge_options_tests.rs`: changing `edge_options[(display, side)].block_corners` through `layout.set` applies to that edge only on every member (Story 5 sc. 5)
+- [X] T157 [US5-core] Implement per-edge option updates in `crates/mouser-core/src/layout/edge_options.rs`
+- [X] T158 [US5-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T159 [US5-core] Commit: phase boundary "US5-core" (5.3)
 
 #### Phase 8: US6-core — As a desk user, I want copy and paste to work between computers (P2)
 

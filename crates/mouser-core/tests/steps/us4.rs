@@ -499,8 +499,9 @@ async fn turns_on_equalized_dimensions(w: &mut ArrangeWorld) {
 #[then("crossing maps the full length of one edge onto the full length of the other")]
 async fn maps_full_edge_to_full_edge(w: &mut ArrangeWorld) {
     let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
-    // Half way down Alpha is half way down Beta, and the bottom is the bottom.
-    for (at, lands) in [(540.0, 540.0), (1079.0, 1079.0), (0.0, 0.0)] {
+    // Half way down Alpha is half way down Beta, and the ends are the ends
+    // (tried just clear of the corners, which Story 5 blocks).
+    for (at, lands) in [(540.0, 540.0), (1060.0, 1060.0), (20.0, 20.0)] {
         beta.take_injected();
         push(&alpha, 1.0, 0.0, (1919.0, at));
         injected(

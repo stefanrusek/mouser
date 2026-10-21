@@ -33,12 +33,12 @@ impl Crossing {
         if self.session.remote().is_some() {
             self.forward(input, now);
         } else if let LocalInput::Motion { dx, dy, abs } = input {
-            self.cross_from_local(dx, dy, abs);
+            self.cross_from_local(dx, dy, abs, now);
         }
     }
 
     /// The pointer pushes past the edge of one of this computer's displays.
-    fn cross_from_local(&mut self, dx: f64, dy: f64, abs: (f64, f64)) {
+    fn cross_from_local(&mut self, dx: f64, dy: f64, abs: (f64, f64), now: Instant) {
         if self.paused {
             return;
         }
@@ -58,12 +58,16 @@ impl Crossing {
             (abs.0 + dx - f64::from(ox), abs.1 + dy - f64::from(oy)),
         );
         let (mx, my) = edges::mm_per_px(source);
-        if let Step::Cross { to, at } =
-            equalize::step(&self.map.placed, here, wanted, self.map.equalize)
-            && self.map.placed[to].display.display_id.computer != self.me
-        {
-            self.release_current();
-            self.begin(to, at, (mx, my), abs);
+        match equalize::step(&self.map.placed, here, wanted, self.map.equalize) {
+            Step::Cross { to, at }
+                if self.map.placed[to].display.display_id.computer != self.me
+                    && self.may_cross(here, wanted, true, now) =>
+            {
+                self.release_current();
+                self.begin(to, at, (mx, my), abs);
+            }
+            Step::Cross { .. } => {}
+            _ => self.bumps.release(),
         }
     }
 
@@ -154,7 +158,7 @@ impl Crossing {
     /// The pointer is on another computer: send it what the devices do.
     fn forward(&mut self, input: LocalInput, now: Instant) {
         match input {
-            LocalInput::Motion { dx, dy, .. } => self.move_remote(dx, dy),
+            LocalInput::Motion { dx, dy, .. } => self.move_remote(dx, dy, now),
             LocalInput::Button { button, down } => {
                 if self.was_sent(
                     down,
@@ -213,7 +217,7 @@ impl Crossing {
 
     /// Move the remote pointer by device deltas, crossing onward when it
     /// leaves its display.
-    fn move_remote(&mut self, dx: f64, dy: f64) {
+    fn move_remote(&mut self, dx: f64, dy: f64, now: Instant) {
         let r = self
             .session
             .remote_mut()
@@ -223,8 +227,18 @@ impl Crossing {
         let from = edges::index_of(&self.map.placed, &r.display).expect("display is on the map");
         let wanted = (r.at.0 + dx * speed.0, r.at.1 + dy * speed.1);
         match equalize::step(&self.map.placed, from, wanted, self.map.equalize) {
-            Step::Stay => self.point_at(from, wanted),
-            Step::Clamp { at } => self.point_at(from, at),
+            Step::Stay => {
+                self.bumps.release();
+                self.point_at(from, wanted);
+            }
+            Step::Clamp { at } => {
+                self.bumps.release();
+                self.point_at(from, at);
+            }
+            Step::Cross { .. } if !self.may_cross(from, wanted, false, now) => {
+                let held = edges::clamp_into(self.map.placed[from].rect, wanted);
+                self.point_at(from, held);
+            }
             Step::Cross { to, at } => {
                 let target = &self.map.placed[to];
                 let owner = target.display.display_id.computer;

@@ -176,7 +176,7 @@ pub enum Step {
     Clamp { at: (f64, f64) },
 }
 
-pub(super) fn clamp_into(rect: Rect, at: (f64, f64)) -> (f64, f64) {
+pub fn clamp_into(rect: Rect, at: (f64, f64)) -> (f64, f64) {
     (
         at.0.clamp(f64::from(rect.x), f64::from(rect.right()) - INSET),
         at.1.clamp(f64::from(rect.y), f64::from(rect.bottom()) - INSET),
@@ -185,7 +185,7 @@ pub(super) fn clamp_into(rect: Rect, at: (f64, f64)) -> (f64, f64) {
 
 /// The side of `rect` that a point outside it left through, and where along
 /// that side (desk coordinate on the axis along it).
-pub(super) fn exit(rect: Rect, at: (f64, f64)) -> (Side, f64) {
+pub fn exit(rect: Rect, at: (f64, f64)) -> (Side, f64) {
     if at.0 >= f64::from(rect.right()) {
         (Side::Right, at.1)
     } else if at.0 < f64::from(rect.x) {

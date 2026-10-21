@@ -1,6 +1,7 @@
 //! The problems registry: user-visible problems, de-duplicated by
 //! `problem_id` (kind + subject), announced to subscribers.
 
+pub mod blocked;
 pub mod limitations;
 pub mod secure_input;
 
@@ -131,6 +132,8 @@ impl Problems {
     }
 }
 
+#[cfg(test)]
+mod blocked_tests;
 #[cfg(test)]
 mod limitations_tests;
 #[cfg(test)]

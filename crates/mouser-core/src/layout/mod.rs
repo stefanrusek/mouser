@@ -3,6 +3,7 @@
 pub mod autoplace;
 pub mod details;
 pub mod displays;
+pub mod edge_options;
 pub mod edges;
 pub mod equalize;
 pub mod remove;
@@ -14,6 +15,8 @@ mod autoplace_tests;
 mod details_tests;
 #[cfg(test)]
 mod displays_tests;
+#[cfg(test)]
+mod edge_options_tests;
 #[cfg(test)]
 mod edges_tests;
 #[cfg(test)]

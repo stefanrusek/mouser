@@ -21,9 +21,9 @@ use tokio_util::task::TaskTracker;
 
 use crate::config;
 use crate::control::{self, ControlHandle};
-use crate::crossing::Crossing;
 use crate::crossing::buttons::Buttons45;
 use crate::crossing::panic::PanicSpec;
+use crate::crossing::{Crossing, Host};
 use crate::desk::join::Requests;
 use crate::discovery::{Advert, Discovery, MdnsDiscovery};
 use crate::identity::Identity;
@@ -170,7 +170,7 @@ pub(crate) struct Ctx {
     pub protocol_version: u16,
     pub transport: Transport,
     pub discovery: Arc<dyn Discovery>,
-    pub problems: Problems,
+    pub problems: Arc<Problems>,
     pub notify: broadcast::Sender<Notification>,
     pub events: broadcast::Sender<EngineEvent>,
     pub crossing: Arc<Mutex<Crossing>>,
@@ -345,14 +345,19 @@ impl Engine {
         let (notify, _) = broadcast::channel(256);
         let (events, _) = broadcast::channel(256);
         let dirty = Arc::new(Notify::new());
+        let problems = Arc::new(Problems::new(notify.clone()));
         let panic = PanicSpec::parse(&config.hotkeys.panic).expect("hotkeys.panic is valid");
         let crossing = Arc::new(Mutex::new(Crossing::new(
             identity.computer_id(),
             crate::platform_os(params.platform.info().os),
             Buttons45::from_config(&config.mouse.buttons_4_5),
             panic,
-            events.clone(),
-            dirty.clone(),
+            Host {
+                events: events.clone(),
+                dirty: dirty.clone(),
+                platform: params.platform.clone(),
+                problems: problems.clone(),
+            },
         )));
         let interfaces = params.platform.interfaces();
         let ctx = Arc::new(Ctx {
@@ -364,7 +369,7 @@ impl Engine {
             protocol_version: params.protocol_version,
             transport,
             discovery,
-            problems: Problems::new(notify.clone()),
+            problems,
             notify,
             events,
             crossing,

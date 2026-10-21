@@ -61,3 +61,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The arranger reads `display.needs_review` per display from `layout.get`; core does not emit it yet and has no way to clear it (open item for core: add the boolean, clear on any `layout.set` touching that display).
 - Equalize is set through `layout.set` (`equalize_dimensions`), not `config.set`.
 - A ReviewOffered event opens the arranger window (notifications have no click callback). Revisit if the owner finds it intrusive.
+
+## core US5 decisions (for app US5)
+
+- Corner size 8 logical px (`crossing/corners.rs`); double-bump window 600 ms (`crossing/override.rs`); a bump is one continuous contact, re-armed by backing off.
+- Corner blocking applies to every crossing (also on remote displays); full-screen blocking only when leaving this computer, from replicated `Layout.block_fullscreen`.
+- A block raises a `crossing_blocked` Problem with `fix = open_arranger_edge`; it stays open for the session (no clear method yet).
