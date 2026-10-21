@@ -367,23 +367,23 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: `cargo xtask gate --packages mouser-app` passes; launching the app shows the tray icon and the first-run window drives permissions and desk choice through the control API.
 
-- [ ] T232 [US1-app] Create `apps/mouser-app/tauri.conf.json` (main window `"visible": false`, single-instance and autostart plugins, `bundle.active: false` for dev builds), `apps/mouser-app/build.rs`, `apps/mouser-app/capabilities/default.json`, and template/light/dark tray icons under `apps/mouser-app/icons/`
-- [ ] T233 [P] [US1-app] Write unit tests for platform selection in `apps/mouser-app/src/platform_select_tests.rs`: macOS builds use `mouser-platform-macos`, Windows `mouser-platform-windows`, Linux chooses the X11 or Wayland backend of `mouser-platform-linux` from `XDG_SESSION_TYPE`/`WAYLAND_DISPLAY`
-- [ ] T234 [US1-app] Implement platform selection in `apps/mouser-app/src/platform_select.rs`
-- [ ] T235 [P] [US1-app] Write unit tests for the engine host in `apps/mouser-app/src/host_tests.rs`: app start constructs `mouser_core::Engine` with the selected platform and exposes an in-process control-API client; a second app launch focuses the first (single instance)
-- [ ] T236 [US1-app] Implement the engine host and single-instance handling in `apps/mouser-app/src/host.rs`
-- [ ] T237 [P] [US1-app] Write unit tests for the tray model in `apps/mouser-app/src/tray_model_tests.rs`: from `status` the tray shows active/paused and "N computers, M displays"; on macOS the icon is a template image, elsewhere the light or dark variant follows the system appearance (Story 1 sc. 10)
-- [ ] T238 [US1-app] Implement the tray model and tray icon/menu wiring in `apps/mouser-app/src/tray.rs`
-- [ ] T239 [P] [US1-app] Write UI tests `apps/mouser-app/ui/first_run.test.js`: the permission step lists each required permission as granted or missing with an "Open settings" button calling `open_permission_settings`; the desk step lists discovered desks with member names and a "Create desk" form (name 1–64 characters); choosing a desk shows "Waiting for approval on <computer>" then "Member of <desk>" or "Not admitted" (Story 1 sc. 1–3)
-- [ ] T240 [US1-app] Implement the first-run window `apps/mouser-app/ui/first_run.html` and `apps/mouser-app/ui/first_run.js`
-- [ ] T241 [P] [US1-app] Write UI tests `apps/mouser-app/ui/join_prompt.test.js`: a `join_request` notification shows "Allow <computer> to join <desk>?" with Allow and Decline buttons calling `join.decide` (FR-013)
-- [ ] T242 [US1-app] Implement the join approval prompt `apps/mouser-app/ui/join_prompt.html` and `apps/mouser-app/ui/join_prompt.js`, opened by the host on each `join_request` notification
-- [ ] T243 [P] [US1-app] Write UI tests `apps/mouser-app/ui/desk_settings.test.js`: the desk section lists members with Remove, offers Leave and Move to another desk, "Add computer by address", and under Advanced the allowlist and port fields (Story 1 sc. 5–7, FR-007, FR-008)
-- [ ] T244 [US1-app] Implement desk settings `apps/mouser-app/ui/desk_settings.html` and `apps/mouser-app/ui/desk_settings.js`
-- [ ] T245 [P] [US1-app] Write UI tests `apps/mouser-app/ui/notify.test.js`: `problem` notifications render the plain-language message and at most one fix button (shared by all stories)
-- [ ] T246 [US1-app] Implement the notification presenter `apps/mouser-app/ui/notify.js` and its OS-notification bridge in `apps/mouser-app/src/notify.rs`
-- [ ] T247 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T248 [US1-app] Commit: phase boundary "US1-app" (5.3)
+- [X] T232 [US1-app] Create `apps/mouser-app/tauri.conf.json` (main window `"visible": false`, single-instance and autostart plugins, `bundle.active: false` for dev builds), `apps/mouser-app/build.rs`, `apps/mouser-app/capabilities/default.json`, and template/light/dark tray icons under `apps/mouser-app/icons/`
+- [X] T233 [P] [US1-app] Write unit tests for platform selection in `apps/mouser-app/src/platform_select_tests.rs`: macOS builds use `mouser-platform-macos`, Windows `mouser-platform-windows`, Linux chooses the X11 or Wayland backend of `mouser-platform-linux` from `XDG_SESSION_TYPE`/`WAYLAND_DISPLAY`
+- [X] T234 [US1-app] Implement platform selection in `apps/mouser-app/src/platform_select.rs`
+- [X] T235 [P] [US1-app] Write unit tests for the engine host in `apps/mouser-app/src/host_tests.rs`: app start constructs `mouser_core::Engine` with the selected platform and exposes an in-process control-API client; a second app launch focuses the first (single instance)
+- [X] T236 [US1-app] Implement the engine host and single-instance handling in `apps/mouser-app/src/host.rs`
+- [X] T237 [P] [US1-app] Write unit tests for the tray model in `apps/mouser-app/src/tray_model_tests.rs`: from `status` the tray shows active/paused and "N computers, M displays"; on macOS the icon is a template image, elsewhere the light or dark variant follows the system appearance (Story 1 sc. 10)
+- [X] T238 [US1-app] Implement the tray model and tray icon/menu wiring in `apps/mouser-app/src/tray.rs`
+- [X] T239 [P] [US1-app] Write UI tests `apps/mouser-app/ui/first_run.test.js`: the permission step lists each required permission as granted or missing with an "Open settings" button calling `open_permission_settings`; the desk step lists discovered desks with member names and a "Create desk" form (name 1–64 characters); choosing a desk shows "Waiting for approval on <computer>" then "Member of <desk>" or "Not admitted" (Story 1 sc. 1–3)
+- [X] T240 [US1-app] Implement the first-run window `apps/mouser-app/ui/first_run.html` and `apps/mouser-app/ui/first_run.js`
+- [X] T241 [P] [US1-app] Write UI tests `apps/mouser-app/ui/join_prompt.test.js`: a `join_request` notification shows "Allow <computer> to join <desk>?" with Allow and Decline buttons calling `join.decide` (FR-013)
+- [X] T242 [US1-app] Implement the join approval prompt `apps/mouser-app/ui/join_prompt.html` and `apps/mouser-app/ui/join_prompt.js`, opened by the host on each `join_request` notification
+- [X] T243 [P] [US1-app] Write UI tests `apps/mouser-app/ui/desk_settings.test.js`: the desk section lists members with Remove, offers Leave and Move to another desk, "Add computer by address", and under Advanced the allowlist and port fields (Story 1 sc. 5–7, FR-007, FR-008)
+- [X] T244 [US1-app] Implement desk settings `apps/mouser-app/ui/desk_settings.html` and `apps/mouser-app/ui/desk_settings.js`
+- [X] T245 [P] [US1-app] Write UI tests `apps/mouser-app/ui/notify.test.js`: `problem` notifications render the plain-language message and at most one fix button (shared by all stories)
+- [X] T246 [US1-app] Implement the notification presenter `apps/mouser-app/ui/notify.js` and its OS-notification bridge in `apps/mouser-app/src/notify.rs`
+- [X] T247 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T248 [US1-app] Commit: phase boundary "US1-app" (5.3)
 
 #### Phase 17: US2-app — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 

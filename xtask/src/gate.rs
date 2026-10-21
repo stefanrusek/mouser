@@ -100,13 +100,38 @@ pub fn run(args: Args) -> i32 {
         pargs.extend(["-p", p]);
     }
     ok &= record(lane, cargo(&["fmt"]).args(&pargs).arg("--check"), "fmt");
+    // --no-deps: without it clippy also lints workspace path dependencies,
+    // so one lane's in-progress code would fail another lane's gate.
     ok &= record(
         lane,
-        cargo(&["clippy"])
-            .args(&pargs)
-            .args(["--all-targets", "--", "-D", "warnings"]),
+        cargo(&["clippy"]).args(&pargs).args([
+            "--all-targets",
+            "--no-deps",
+            "--",
+            "-D",
+            "warnings",
+        ]),
         "clippy",
     );
+    if pkgs.iter().any(|p| p == "mouser-app") {
+        // The live Tauri shell only compiles with `gui`; lint it too.
+        ok &= record(
+            lane,
+            &mut cargo(&[
+                "clippy",
+                "-p",
+                "mouser-app",
+                "--features",
+                "gui",
+                "--all-targets",
+                "--no-deps",
+                "--",
+                "-D",
+                "warnings",
+            ]),
+            "clippy-gui",
+        );
+    }
     ok &= record(lane, cargo(&["test"]).args(&pargs), "test");
     // Per-lane coverage target dir: llvm-cov cleans profraw files in its target
     // dir, so lanes gating concurrently must not share one.

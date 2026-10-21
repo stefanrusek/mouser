@@ -7,3 +7,32 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+# The live app shell (real tray, real plugins, real event loop). Off for the
+# gate: that code runs only inside a launched app and cannot be unit tested.
+gui = ["dep:tauri-plugin-single-instance", "dep:tauri-plugin-notification", "dep:gethostname"]
+
+[dependencies]
+mouser-core = { path = "../../crates/mouser-core" }
+mouser-platform = { path = "../../crates/mouser-platform" }
+mouser-proto = { path = "../../crates/mouser-proto" }
+tauri = { version = "=2.12.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = { version = "=2.5.4", optional = true }
+tauri-plugin-notification = { version = "=2.7.0", optional = true }
+tokio = { version = "1.54", features = ["sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+gethostname = { version = "1", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mouser-platform-macos = { path = "../../crates/mouser-platform-macos" }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dev-dependencies]
+mouser-testkit = { path = "../../crates/mouser-testkit" }
+tauri = { version = "=2.12.5", features = ["tray-icon", "image-png", "test"] }
+tempfile = "3"
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "time"] }

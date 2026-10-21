@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A computer wants to join</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <div id="requests"></div>
+  <p id="error" class="error" role="alert"></p>
+</main>
+<script type="module">
+  import { boot } from './boot.js';
+  import { init } from './join_prompt.js';
+  boot(init);
+</script>
+</body>
+</html>
