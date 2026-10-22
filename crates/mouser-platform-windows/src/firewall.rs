@@ -5,7 +5,8 @@
 //! that was never allowed leaves the app unreachable. Either way other
 //! computers cannot connect to this PC, and nothing in Mouser says why. This
 //! reads the firewall policy (`INetFwPolicy2`) and raises a problem while the
-//! firewall is on for a current network profile and Mouser is not let in on it.
+//! firewall is on for a current network profile and Mouser is not let in on it
+//! (by a rule for its program, a rule for its UDP port, or a default of Allow).
 //!
 //! The decision is [`is_blocked`], a pure function over a [`Policy`]; reading
 //! the real policy is [`read_policy`]. [`watch`] re-checks at the start, on
@@ -48,6 +49,13 @@ pub(crate) struct Rule {
     pub(crate) enabled: bool,
     /// `NET_FW_PROFILE2_*` bits the rule applies to (`ALL` has every bit).
     pub(crate) profiles: i32,
+    /// `NET_FW_IP_PROTOCOL_*`: 6 TCP, 17 UDP, 256 any.
+    pub(crate) protocol: i32,
+    /// The rule's local ports as written: `*`, `47801`, `1000,2000-3000`;
+    /// empty means all.
+    pub(crate) local_ports: String,
+    /// The Windows service the rule is limited to; empty for none.
+    pub(crate) service: String,
 }
 
 /// The firewall as it stands now.
@@ -57,7 +65,31 @@ pub(crate) struct Policy {
     pub(crate) enabled: i32,
     /// Profiles of the networks this PC is connected to now.
     pub(crate) current: i32,
+    /// Profiles whose default for inbound traffic is Allow.
+    pub(crate) default_allow: i32,
     pub(crate) rules: Vec<Rule>,
+}
+
+/// The UDP port other computers connect to: `advanced.port`'s default
+/// (`mouser-proto` config). The platform crate is not told the configured
+/// port, and the seam does not carry it, so a changed port is not followed.
+pub(crate) const PORT: u16 = 47801;
+
+const UDP: i32 = 17;
+const ANY_PROTOCOL: i32 = 256;
+
+/// Whether a rule's `LocalPorts` text includes `port`: `*` or nothing (all),
+/// numbers, comma lists and `from-to` ranges. Names Windows also accepts
+/// (`RPC`, `Teredo`...) are not ports and match nothing.
+pub(crate) fn ports_include(spec: &str, port: u16) -> bool {
+    let spec = spec.trim();
+    spec.is_empty()
+        || spec.split(',').any(|part| {
+            let part = part.trim();
+            let range = part.split_once('-').unwrap_or((part, part));
+            let number = |s: &str| s.trim().parse::<u16>().ok();
+            part == "*" || matches!((number(range.0), number(range.1)), (Some(a), Some(b)) if (a..=b).contains(&port))
+        })
 }
 
 /// Paths compare without regard to case or the kind of slash.
@@ -68,20 +100,43 @@ fn normal(path: &str) -> String {
         .to_lowercase()
 }
 
-/// Whether Mouser (`exe`) is kept out: for some network profile that is both
-/// current and has the firewall on, Mouser has no enabled inbound Allow rule
-/// or there is an enabled inbound Block rule (Block wins in Windows).
+/// Whether Mouser (`exe`, listening on UDP `port`) is kept out. For each
+/// network profile that is both current and has the firewall on:
+/// - an enabled inbound Block rule naming Mouser's program blocks it (Block
+///   wins in Windows), whatever else holds;
+/// - otherwise it is let in if the profile's default for inbound is Allow, or
+///   an enabled inbound Allow rule names Mouser's program, or an enabled
+///   inbound Allow rule for no program in particular covers UDP `port`
+///   (protocol UDP or any, `LocalPorts` including the port);
+/// - otherwise it is blocked.
+///
+/// A rule must cover the profile (its `Profiles` mask). A rule limited to a
+/// Windows service is not counted as letting Mouser in, since it is about
+/// that service's traffic; other restrictions (remote addresses, interface
+/// types) are not looked at, as they still let other computers in. Block
+/// rules that name no program (a port, a service) are ignored.
 /// `expand` turns `%VARIABLES%` in a rule's program path into their values.
-/// Only rules that name Mouser's program count; a rule about no program (a
-/// port, a service) is not read as letting Mouser in or keeping it out.
-pub(crate) fn is_blocked(policy: &Policy, exe: &Path, expand: impl Fn(&str) -> String) -> bool {
+pub(crate) fn is_blocked(
+    policy: &Policy,
+    exe: &Path,
+    port: u16,
+    expand: impl Fn(&str) -> String,
+) -> bool {
     let exe = normal(&exe.to_string_lossy());
-    let mine: Vec<&Rule> = policy
+    let inbound: Vec<&Rule> = policy
         .rules
         .iter()
-        .filter(|r| r.enabled && r.inbound && !r.program.is_empty())
-        .filter(|r| normal(&expand(&r.program)) == exe)
+        .filter(|r| r.enabled && r.inbound)
         .collect();
+    let named = |r: &&&Rule| normal(&expand(&r.program)) == exe;
+    let anywhere = |r: &&&Rule| {
+        let any = r.program.trim().is_empty() || r.program.trim().eq_ignore_ascii_case("any");
+        any && r.service.is_empty()
+            && [UDP, ANY_PROTOCOL].contains(&r.protocol)
+            && ports_include(&r.local_ports, port)
+    };
+    let mine: Vec<&Rule> = inbound.iter().filter(named).copied().collect();
+    let open: Vec<&Rule> = inbound.iter().filter(anywhere).copied().collect();
     [
         NET_FW_PROFILE2_DOMAIN,
         NET_FW_PROFILE2_PRIVATE,
@@ -91,11 +146,15 @@ pub(crate) fn is_blocked(policy: &Policy, exe: &Path, expand: impl Fn(&str) -> S
     .map(|p| p.0)
     .filter(|p| policy.current & policy.enabled & p != 0)
     .any(|p| {
-        let covering = || mine.iter().filter(move |r| r.profiles & p != 0);
-        covering().any(|r| !r.allow) || !covering().any(|r| r.allow)
+        let allows = |rules: &[&Rule], allow: bool| {
+            rules
+                .iter()
+                .any(|r| r.profiles & p != 0 && r.allow == allow)
+        };
+        let let_in = policy.default_allow & p != 0 || allows(&mine, true) || allows(&open, true);
+        allows(&mine, false) || !let_in
     })
 }
-
 /// Expands `%VARIABLES%` in `text`; a variable that is not set stays as written.
 pub(crate) fn expand_variables(text: &str) -> String {
     let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
@@ -115,6 +174,9 @@ fn rule_of(rule: &INetFwRule) -> Result<Rule> {
             allow: os("Action", rule.Action())? == NET_FW_ACTION_ALLOW,
             enabled: os("Enabled", rule.Enabled())?.as_bool(),
             profiles: os("Profiles", rule.Profiles())?,
+            protocol: os("Protocol", rule.Protocol())?,
+            local_ports: os("LocalPorts", rule.LocalPorts())?.to_string(),
+            service: os("ServiceName", rule.ServiceName())?.to_string(),
         })
     }
 }
@@ -134,31 +196,26 @@ unsafe fn rule_in(item: &VARIANT) -> Option<INetFwRule> {
 /// Reads the firewall policy. Needs no elevation; works from any thread.
 pub(crate) fn read_policy() -> Result<Policy> {
     let _com = Com::init();
-    let policy: INetFwPolicy2 = os("NetFwPolicy2", unsafe {
-        CoCreateInstance(&NetFwPolicy2, None, CLSCTX_ALL)
-    })?;
+    let made = unsafe { CoCreateInstance(&NetFwPolicy2, None, CLSCTX_ALL) };
+    let policy: INetFwPolicy2 = os("NetFwPolicy2", made)?;
     let current = os("CurrentProfileTypes", unsafe {
         policy.CurrentProfileTypes()
     })?;
-    let mut enabled = 0;
+    let (mut enabled, mut default_allow) = (0, 0);
     for profile in [
         NET_FW_PROFILE2_DOMAIN,
         NET_FW_PROFILE2_PRIVATE,
         NET_FW_PROFILE2_PUBLIC,
     ] {
-        if os("FirewallEnabled", unsafe {
-            policy.get_FirewallEnabled(profile)
-        })?
-        .as_bool()
-        {
-            enabled |= profile.0;
-        }
+        let on = unsafe { policy.get_FirewallEnabled(profile) };
+        let default = unsafe { policy.get_DefaultInboundAction(profile) };
+        enabled |= profile.0 * i32::from(os("FirewallEnabled", on)?.as_bool());
+        default_allow |=
+            profile.0 * i32::from(os("DefaultInboundAction", default)? == NET_FW_ACTION_ALLOW);
     }
     let rules = os("Rules", unsafe { policy.Rules() })?;
-    let walk: IEnumVARIANT = os(
-        "Rules enumeration",
-        unsafe { rules._NewEnum() }.and_then(|e| e.cast()),
-    )?;
+    let walk = unsafe { rules._NewEnum() }.and_then(|e| e.cast::<IEnumVARIANT>());
+    let walk = os("Rules enumeration", walk)?;
     let mut all = Vec::new();
     loop {
         let mut item = [VARIANT::default()];
@@ -176,14 +233,15 @@ pub(crate) fn read_policy() -> Result<Policy> {
     Ok(Policy {
         enabled,
         current,
+        default_allow,
         rules: all,
     })
 }
 
 /// Whether Mouser is blocked right now; `None` when the policy cannot be read.
-pub(crate) fn check_now(exe: &Path) -> Option<bool> {
+pub(crate) fn check_now(exe: &Path, port: u16) -> Option<bool> {
     let policy = read_policy().ok()?;
-    Some(is_blocked(&policy, exe, expand_variables))
+    Some(is_blocked(&policy, exe, port, expand_variables))
 }
 
 /// Re-checks on every event and every `period`, and tells `emit` when the
@@ -223,7 +281,7 @@ pub(crate) fn watch(
 ) -> Result<WatchHandle> {
     let (tx, rx) = channel();
     let network = netwatch::watch(tx)?;
-    let thread = std::thread::spawn(move || run(&rx, RECHECK, || check_now(&exe), emit));
+    let thread = std::thread::spawn(move || run(&rx, RECHECK, || check_now(&exe, PORT), emit));
     Ok(WatchHandle::new(move || {
         // Dropping the network watch ends the events, which ends the thread.
         drop(network);

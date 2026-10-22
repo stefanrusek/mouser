@@ -18,6 +18,18 @@ fn rule(program: &str, allow: bool, profiles: i32) -> Rule {
         allow,
         enabled: true,
         profiles,
+        protocol: 256,
+        local_ports: "*".into(),
+        service: String::new(),
+    }
+}
+
+/// An inbound rule for no program, as a port rule is.
+fn port_rule(allow: bool, protocol: i32, ports: &str, profiles: i32) -> Rule {
+    Rule {
+        protocol,
+        local_ports: ports.into(),
+        ..rule("", allow, profiles)
     }
 }
 
@@ -25,12 +37,13 @@ fn policy(enabled: i32, current: i32, rules: Vec<Rule>) -> Policy {
     Policy {
         enabled,
         current,
+        default_allow: 0,
         rules,
     }
 }
 
 fn blocked(policy: &Policy) -> bool {
-    is_blocked(policy, Path::new(EXE), |s| s.to_string())
+    is_blocked(policy, Path::new(EXE), PORT, |s| s.to_string())
 }
 
 #[test]
@@ -128,11 +141,10 @@ fn disabled_outbound_and_other_programs_rules_do_not_count() {
         out_block,
         rule(r"C:\other\app.exe", false, ALL)
     ])));
-    // A rule about no program (a port, a service) says nothing about Mouser.
-    assert!(blocked(&p(vec![rule("", true, ALL)])));
+    // A Block rule about no program (a port, a service) is ignored.
     assert!(!blocked(&p(vec![
         rule(EXE, true, ALL),
-        rule("", false, ALL)
+        port_rule(false, 256, "*", ALL)
     ])));
 }
 
@@ -149,7 +161,7 @@ fn rule_paths_match_without_regard_to_case_slashes_quotes_or_variables() {
     )));
     let with_variable = p(r"%LocalAppData%\Mouser\MOUSER-APP.exe");
     let expand = |s: &str| s.replace("%LocalAppData%", r"C:\Users\me\AppData\Local");
-    assert!(!is_blocked(&with_variable, Path::new(EXE), expand));
+    assert!(!is_blocked(&with_variable, Path::new(EXE), PORT, expand));
     // Unexpanded, it is some other path.
     assert!(blocked(&with_variable));
 }
@@ -174,6 +186,12 @@ fn the_real_policy_reads_and_is_consistent() {
     let policy = read_policy().expect("the firewall policy is readable without elevation");
     assert_eq!(policy.enabled & !7, 0, "{:?}", policy.enabled);
     assert_eq!(policy.current & !7, 0, "{:?}", policy.current);
+    // A default of Allow is only ever recorded for a real profile.
+    assert_eq!(policy.default_allow & !7, 0, "{:?}", policy.default_allow);
+    assert!(
+        policy.rules.iter().all(|r| r.protocol >= 0),
+        "protocols are numbers"
+    );
     assert!(
         policy.rules.iter().all(|r| r.profiles != 0),
         "a rule applies to some profile"
@@ -182,9 +200,9 @@ fn the_real_policy_reads_and_is_consistent() {
     assert!(!policy.rules.is_empty());
     // The answer for this very test binary agrees with judging what was read.
     let exe = std::env::current_exe().unwrap();
-    let judged = is_blocked(&policy, &exe, expand_variables);
+    let judged = is_blocked(&policy, &exe, PORT, expand_variables);
     // The policy can change between the two reads; it does not on a quiet PC.
-    assert_eq!(check_now(&exe), Some(judged));
+    assert_eq!(check_now(&exe, PORT), Some(judged));
 }
 
 #[test]
@@ -267,4 +285,154 @@ fn a_watch_starts_and_stops() {
         assert_eq!(p, PlatformProblem::Raised(BLOCKED.into()));
     }
     drop(watch);
+}
+
+fn with_default(allow: i32, rules: Vec<Rule>) -> Policy {
+    Policy {
+        default_allow: allow,
+        ..policy(PUBLIC, PUBLIC, rules)
+    }
+}
+
+#[test]
+fn a_default_of_allow_lets_mouser_in_unless_a_program_block_rule_says_no() {
+    assert!(!blocked(&with_default(PUBLIC, vec![])));
+    // Another profile's default does not help.
+    assert!(blocked(&with_default(PRIVATE | DOMAIN, vec![])));
+    assert!(!blocked(&with_default(ALL, vec![])));
+    // Block wins, with or without an allow rule beside it.
+    assert!(blocked(&with_default(
+        PUBLIC,
+        vec![rule(EXE, false, PUBLIC)]
+    )));
+    assert!(blocked(&with_default(
+        PUBLIC,
+        vec![rule(EXE, true, ALL), rule(EXE, false, ALL)]
+    )));
+    // A Block rule for another profile does not.
+    assert!(!blocked(&with_default(
+        PUBLIC,
+        vec![rule(EXE, false, PRIVATE)]
+    )));
+    // A port Block rule is ignored.
+    assert!(!blocked(&with_default(
+        PUBLIC,
+        vec![port_rule(false, 17, "*", ALL)]
+    )));
+}
+
+#[test]
+fn a_udp_port_allow_rule_for_no_program_lets_mouser_in() {
+    let p = |rule| policy(PUBLIC, PUBLIC, vec![rule]);
+    for ports in [
+        "*",
+        "",
+        "47801",
+        " 47801 ",
+        "1,47801",
+        "1, 47801 ,9",
+        "47000-48000",
+        "47801-47801",
+        "80,47000-48000",
+    ] {
+        assert!(!blocked(&p(port_rule(true, 17, ports, ALL))), "{ports}");
+        assert!(!blocked(&p(port_rule(true, 256, ports, ALL))), "{ports}");
+    }
+    // Any is the same as no program.
+    let mut any = port_rule(true, 17, "47801", PUBLIC);
+    any.program = " Any ".into();
+    assert!(!blocked(&p(any)));
+}
+
+#[test]
+fn a_port_allow_rule_that_does_not_cover_the_port_or_protocol_does_not_count() {
+    let p = |rule| policy(PUBLIC, PUBLIC, vec![rule]);
+    for ports in [
+        "47802",
+        "80",
+        "1-47800",
+        "47802-50000",
+        "47801x",
+        "RPC",
+        "70000",
+        "-",
+        "47801-",
+        "a-b",
+    ] {
+        assert!(blocked(&p(port_rule(true, 17, ports, ALL))), "{ports}");
+    }
+    // TCP only does not let UDP in.
+    assert!(blocked(&p(port_rule(true, 6, "47801", ALL))));
+    assert!(blocked(&p(port_rule(true, 6, "*", ALL))));
+    // Another protocol (ICMP is 1) neither.
+    assert!(blocked(&p(port_rule(true, 1, "*", ALL))));
+}
+
+#[test]
+fn a_port_rule_must_be_enabled_inbound_unrestricted_and_for_this_profile() {
+    let p = |rule| policy(PUBLIC, PUBLIC, vec![rule]);
+    let mut off = port_rule(true, 17, "47801", ALL);
+    off.enabled = false;
+    assert!(blocked(&p(off)));
+    let mut out = port_rule(true, 17, "47801", ALL);
+    out.inbound = false;
+    assert!(blocked(&p(out)));
+    // Limited to a Windows service, it is about that service.
+    let mut service = port_rule(true, 17, "47801", ALL);
+    service.service = "Dnscache".into();
+    assert!(blocked(&p(service)));
+    // A rule for some other program is about that program.
+    let mut other = port_rule(true, 17, "47801", ALL);
+    other.program = r"C:\other\app.exe".into();
+    assert!(blocked(&p(other)));
+    // Another profile.
+    assert!(blocked(&p(port_rule(true, 17, "47801", PRIVATE | DOMAIN))));
+    assert!(!blocked(&p(port_rule(true, 17, "47801", PUBLIC | DOMAIN))));
+    // Each current firewalled profile needs its own.
+    let both = policy(
+        PUBLIC | PRIVATE,
+        PUBLIC | PRIVATE,
+        vec![port_rule(true, 17, "47801", PUBLIC)],
+    );
+    assert!(blocked(&both));
+}
+
+#[test]
+fn a_program_block_rule_beats_a_port_allow_rule() {
+    let p = policy(
+        PUBLIC,
+        PUBLIC,
+        vec![port_rule(true, 17, "47801", ALL), rule(EXE, false, PUBLIC)],
+    );
+    assert!(blocked(&p));
+    // Only on the profile it covers.
+    let other = policy(
+        PUBLIC,
+        PUBLIC,
+        vec![port_rule(true, 17, "47801", ALL), rule(EXE, false, PRIVATE)],
+    );
+    assert!(!blocked(&other));
+}
+
+#[test]
+fn a_program_allow_rule_or_a_port_rule_each_suffice() {
+    assert!(!blocked(&policy(
+        PUBLIC,
+        PUBLIC,
+        vec![rule(EXE, true, PUBLIC)]
+    )));
+    // The VM after the owner chose Allow: a program rule for TCP and UDP, Public.
+    let mut tcp = rule(EXE, true, PUBLIC);
+    tcp.protocol = 6;
+    let mut udp = rule(EXE, true, PUBLIC);
+    udp.protocol = 17;
+    assert!(!blocked(&policy(PUBLIC, PUBLIC, vec![tcp, udp])));
+}
+
+#[test]
+fn the_configured_port_is_the_default_one() {
+    assert_eq!(PORT, 47801);
+    let p = policy(PUBLIC, PUBLIC, vec![port_rule(true, 17, "9000", ALL)]);
+    assert!(blocked(&p));
+    assert!(!is_blocked(&p, Path::new(EXE), 9000, |s| s.to_string()));
 }
