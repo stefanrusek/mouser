@@ -91,7 +91,7 @@ fn capture_and_injection_are_provided_and_elevation_is_asked_of_uipi() {
 
 #[test]
 fn problems_reach_the_listener_when_there_is_one() {
-    let p = WinPlatform::new();
+    let p = WinPlatform::new().without_firewall_watch();
     let sink = p.problem_sink();
     // Nobody listens yet.
     sink(Raised("unheard".into()));
@@ -115,7 +115,7 @@ fn problems_reach_the_listener_when_there_is_one() {
 
 #[test]
 fn a_listener_that_went_away_is_not_an_error() {
-    let p = WinPlatform::new();
+    let p = WinPlatform::new().without_firewall_watch();
     let sink = p.problem_sink();
     let (tx, rx) = std::sync::mpsc::channel();
     let _watch = Platform::watch_problems(&p, tx).unwrap();
@@ -125,7 +125,7 @@ fn a_listener_that_went_away_is_not_an_error() {
 
 #[test]
 fn a_newer_listener_replaces_an_older_one_and_outlives_its_handle() {
-    let p = WinPlatform::new();
+    let p = WinPlatform::new().without_firewall_watch();
     let sink = p.problem_sink();
     let (old_tx, old_rx) = std::sync::mpsc::channel();
     let old = Platform::watch_problems(&p, old_tx).unwrap();
@@ -156,4 +156,31 @@ fn starting_the_platform_undoes_a_pointer_hidden_by_an_earlier_run() {
     assert!(crate::cursor::arrow_is_blank());
     let _p = WinPlatform::new();
     assert!(!crate::cursor::arrow_is_blank());
+}
+
+#[test]
+fn watching_problems_also_watches_the_firewall_until_the_handle_is_dropped() {
+    let p = WinPlatform::new();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let watch = Platform::watch_problems(&p, tx).unwrap();
+    // Whatever the firewall says about this PC, it is only ever this problem.
+    if let Ok(problem) = rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        assert_eq!(problem, Raised(crate::firewall::BLOCKED.into()));
+    }
+    drop(watch);
+}
+
+#[test]
+fn a_replaced_listeners_sink_goes_quiet() {
+    let p = WinPlatform::new().without_firewall_watch();
+    let (old_tx, old_rx) = std::sync::mpsc::channel();
+    let _old = Platform::watch_problems(&p, old_tx).unwrap();
+    let old_sink = p.problem_sink_for(1);
+    let (new_tx, new_rx) = std::sync::mpsc::channel();
+    let _new = Platform::watch_problems(&p, new_tx).unwrap();
+    old_sink(Raised("stale".into()));
+    p.problem_sink_for(2)(Raised("current".into()));
+    assert!(old_rx.try_recv().is_err());
+    assert_eq!(new_rx.try_recv().unwrap(), Raised("current".into()));
+    assert!(new_rx.try_recv().is_err());
 }

@@ -20,6 +20,7 @@ mod dpi;
 mod drag;
 mod dropdir;
 mod edge;
+mod firewall;
 mod fullscreen;
 mod inject;
 mod keymap;
@@ -126,6 +127,8 @@ pub struct WinPlatform {
     settings: Settings,
     problems: Arc<Mutex<Option<Listener>>>,
     listeners: AtomicU64,
+    /// Whether `watch_problems` also watches the firewall.
+    firewall: bool,
     portable: Option<portable::Portable>,
 }
 
@@ -151,6 +154,25 @@ impl WinPlatform {
         })
     }
 
+    /// Like `problem_sink`, but only while listener `id` is still the one
+    /// that hears the problems.
+    fn problem_sink_for(&self, id: u64) -> capture::Problems {
+        let sink = self.problems.clone();
+        Arc::new(move |problem| {
+            if let Some(listener) = sink.lock().unwrap().as_ref()
+                && listener.id == id
+            {
+                let _ = listener.tx.send(problem);
+            }
+        })
+    }
+
+    #[cfg(test)]
+    fn without_firewall_watch(mut self) -> Self {
+        self.firewall = false;
+        self
+    }
+
     pub fn with_settings(settings: Settings) -> Self {
         // A crash while the pointer was hidden leaves it hidden; undo that.
         let _ = cursor::recover_at_startup();
@@ -158,6 +180,7 @@ impl WinPlatform {
             settings,
             problems: Arc::new(Mutex::new(None)),
             listeners: AtomicU64::new(0),
+            firewall: true,
             portable: None,
         }
     }
@@ -246,13 +269,22 @@ impl Platform for WinPlatform {
     }
 
     /// Where Mouser reports problems it noticed on this PC (a keyboard or
-    /// mouse hook the system took away); the app shows them. Replaces any
-    /// earlier listener; dropping the handle stops this one.
+    /// mouse hook the system took away, Windows Firewall keeping other
+    /// computers out); the app shows them. Replaces any earlier listener;
+    /// dropping the handle stops this one.
     fn watch_problems(&self, tx: Sender<PlatformProblem>) -> Result<WatchHandle> {
         let id = self.listeners.fetch_add(1, Ordering::SeqCst) + 1;
         *self.problems.lock().unwrap() = Some(Listener { id, tx });
+        let firewall = if self.firewall {
+            let sink = self.problem_sink_for(id);
+            let exe = std::env::current_exe().expect("current exe");
+            Some(firewall::watch(exe, move |p| sink(p))?)
+        } else {
+            None
+        };
         let slot = self.problems.clone();
         Ok(WatchHandle::new(move || {
+            drop(firewall);
             let mut current = slot.lock().unwrap();
             if current.as_ref().is_some_and(|l| l.id == id) {
                 *current = None;
@@ -299,6 +331,8 @@ mod cursor_tests;
 mod displays_tests;
 #[cfg(test)]
 mod drag_tests;
+#[cfg(test)]
+mod firewall_tests;
 #[cfg(test)]
 mod fullscreen_tests;
 #[cfg(test)]

@@ -119,3 +119,17 @@ Same VM (Windows 11 ARM64 under Parallels). The watchdog sometimes raised "Mouse
 So a probe that misses its 500 ms window is not evidence that the hooks were removed: the guest itself stalled for seconds, and the hook callback ran when it woke up. Nothing in the process can observe the difference by time or by input state (`GetLastInputInfo` counts the injected probe whether or not a hook saw it).
 
 The rule that does work counts probes, not time. A missed probe is remembered together with what the hooks had seen when it was sent. The hooks are judged lost only if, when the next cycle begins, the counters have not moved past that point, that is the earlier probe is still unseen after a whole further interval. A guest stall delays both the probe and the cycle, so the late probe has arrived by the time the next cycle looks. A failed `SendInput` is a separate outcome: it says nothing about the hooks, so it neither reinstalls nor raises. When a probe is seen after an alarm, the alarm is withdrawn. The cost is that a hook the system really removed is reinstalled about one interval (5 s) later than before.
+
+### Windows Firewall as seen from `INetFwPolicy2` (2026-10-22)
+
+Same VM. What the firewall detection (`src/firewall.rs`) reads and what it saw here:
+
+| Observation | Result |
+|---|---|
+| Private profile | firewall **disabled** on this VM |
+| Public profile | firewall **enabled** |
+| Current network after the Parallels resume | Public ("Network 2"), so `CurrentProfileTypes` is Public and the firewall is on for it |
+| Prompt from Windows when mouser-app first listened | opened (see the J1 section); until it is answered there is no Allow rule for mouser-app on Public and the app is unreachable |
+| Access | `CoCreateInstance(NetFwPolicy2)` and enumerating `Rules` work unelevated; reading is enough, no rule is written |
+
+Matching: a rule counts if it is enabled, inbound and names mouser-app's path (compared case-insensitively after expanding `%VARIABLES%`, ignoring quotes and the kind of slash). For each profile that is both current and firewalled, Mouser is let in only with an Allow rule covering that profile and no Block rule covering it (Block wins in Windows; cancelling the prompt leaves a Block rule). Rules that name no program (ports, services) are ignored in both directions, and the profile's default inbound action is not consulted; a PC configured to allow inbound by default would still be told Mouser is blocked. The check runs at start, on every network change (`netwatch`: interface and address changes, resume), and every 60 s. The periodic check is there because a switch of the profile of a network that stays connected (Public to Private in Settings) is not an interface or address change, so no notification is guaranteed for it; this was not verified here because changing the network category is a system setting.
