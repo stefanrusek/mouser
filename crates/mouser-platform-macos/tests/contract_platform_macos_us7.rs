@@ -137,6 +137,7 @@ impl Shown {
         let name = format!("mouser_us7_{tag}_{}", std::process::id());
         let dir = std::env::temp_dir().join(&name);
         std::fs::create_dir_all(&dir).unwrap();
+        SHOWN.lock().unwrap().push((name.clone(), dir.clone()));
         assert!(Command::new("open").arg(&dir).status().unwrap().success());
         let script = format!(
             "tell application \"Finder\" to get bounds of (first window whose name is \"{name}\")"
@@ -164,13 +165,30 @@ impl Shown {
     }
 }
 
+/// Folders whose Finder window is currently open, so the watchdog can clean up
+/// too (it exits the process, which skips destructors).
+static SHOWN: std::sync::Mutex<Vec<(String, PathBuf)>> = std::sync::Mutex::new(Vec::new());
+
+/// Closes every Finder window named `name` (unique per process and scenario, so
+/// it is only ever ours), retrying until none is left, then removes the folder.
+/// The window goes first: removing the folder under an open window would make
+/// Finder fall back to showing the parent ($TMPDIR, titled "T") instead.
+fn close_shown(name: &str, dir: &Path) {
+    let count = format!("count of (every window whose name is \"{name}\")");
+    let close = format!(
+        "tell application \"Finder\"\nif ({count}) > 0 then close (first window whose name is \"{name}\")\nreturn {count}\nend tell"
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while osascript(&close).as_deref() != Some("0") && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
+
 impl Drop for Shown {
     fn drop(&mut self) {
-        osascript(&format!(
-            "tell application \"Finder\"\nrepeat with w in (every window)\nif name of w is \"{}\" then close w\nend repeat\nend tell",
-            self.name
-        ));
-        std::fs::remove_dir_all(&self.dir).ok();
+        SHOWN.lock().unwrap().retain(|(n, _)| *n != self.name);
+        close_shown(&self.name, &self.dir);
     }
 }
 
@@ -289,6 +307,10 @@ fn main() {
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(150));
         eprintln!("FAILED: the drag scenarios did not finish within 150 s");
+        let open: Vec<_> = SHOWN.lock().unwrap().drain(..).collect();
+        for (name, dir) in open {
+            close_shown(&name, &dir);
+        }
         std::process::exit(1);
     });
 
