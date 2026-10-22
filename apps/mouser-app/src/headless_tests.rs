@@ -3,7 +3,7 @@ use std::sync::Arc;
 use mouser_platform::Os;
 use mouser_testkit::VirtualPlatform;
 
-use crate::headless::{is_headless, machine_dir, run, secrets_dir};
+use crate::headless::{check_supported, is_headless, machine_dir, run, secrets_dir};
 use crate::support_tests::{control_path_in, free_port};
 
 fn args(list: &[&str]) -> Vec<String> {
@@ -21,6 +21,14 @@ fn without_the_flag_the_normal_app_runs() {
     assert!(!is_headless(&args(&["mouser"])));
     assert!(!is_headless(&args(&["mouser", "headless"])));
     assert!(!is_headless(&[]));
+}
+
+#[test]
+fn headless_is_only_supported_on_macos() {
+    assert_eq!(check_supported(Os::MacOs), Ok(()));
+    let refusal = "headless mode is only supported on macOS in this version";
+    assert_eq!(check_supported(Os::Linux), Err(refusal));
+    assert_eq!(check_supported(Os::Windows), Err(refusal));
 }
 
 #[test]

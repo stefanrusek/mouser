@@ -42,7 +42,7 @@ Limitations shown in the app in portable mode: on macOS, permissions must be gra
 
 ## The login-screen (headless) copy
 
-`mouser-app --headless` runs the engine with no window and no tray. It is what the macOS login-window agent starts. It does not use your user's config folder; it reads a machine folder, and keeps its secrets in `secrets/` inside it:
+`mouser-app --headless` (macOS only in v1; on Linux and Windows it refuses to start) runs the engine with no window and no tray. It is what the macOS login-window agent starts. It does not use your user's config folder; it reads a machine folder, and keeps its secrets in `secrets/` inside it:
 
 | OS | Machine folder |
 |---|---|

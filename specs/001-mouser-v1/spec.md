@@ -230,7 +230,7 @@ One hotkey shows a large letter on every display across every computer on the de
 
 ### User Story 12 - As a desk user, I want to control a computer that is at its login or system security screen (Priority: P3)
 
-The shared mouse and keyboard keep working when a computer is at its login window, after a cold boot, at a permission elevation prompt, or when switching users, and the user can send the secure attention sequence to a Windows computer. (Deferred to a future feature, owner decision 2026-10-22: every Windows part of this story, that is the login screen, permission elevation prompts, user switching and Send Ctrl-Alt-Del. The macOS login window is in scope.)
+The shared mouse and keyboard keep working when a computer is at its login window, after a cold boot, at a permission elevation prompt, or when switching users, and the user can send the secure attention sequence to a Windows computer. (Deferred to a future feature, owner decision 2026-10-22: every Windows part of this story, that is the login screen, permission elevation prompts, user switching and Send Ctrl-Alt-Del. The macOS login window is in scope. Headless mode (`mouser-app --headless`) is macOS only in v1; Linux headless is deferred to a future feature, owner decision 2026-10-22, and on Linux and Windows `--headless` refuses to start.)
 
 **Why this priority**: Nice-to-have in the approved requirements; needed less often than everyday control.
 

@@ -1,5 +1,7 @@
+// Returning the code, rather than `std::process::exit`, lets the process end
+// normally, so exit-time work (such as writing coverage data) still runs.
 #[cfg(feature = "gui")]
-fn main() {
+fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
     #[cfg(target_os = "macos")]
     if let Some(staging) = mouser_app::login_screen::install_arg(&args) {
@@ -10,17 +12,22 @@ fn main() {
             &mouser_app::headless::machine_dir(mouser_platform::Os::MacOs),
             &mouser_platform_macos::login_agent::LoginAgent::system(exe),
         );
-        return;
+        return std::process::ExitCode::SUCCESS;
     }
     if mouser_app::headless::is_headless(&args) {
+        if let Err(refusal) =
+            mouser_app::headless::check_supported(mouser_app::platform_select::current_os())
+        {
+            eprintln!("{refusal}");
+            return std::process::ExitCode::from(2);
+        }
         mouser_app::shell::run_headless();
     } else {
         mouser_app::shell::run();
     }
+    std::process::ExitCode::SUCCESS
 }
 
-// Returning the code, rather than `std::process::exit`, lets the process end
-// normally, so exit-time work (such as writing coverage data) still runs.
 #[cfg(not(feature = "gui"))]
 fn main() -> std::process::ExitCode {
     eprintln!(

@@ -17,6 +17,15 @@ pub fn is_headless(args: &[String]) -> bool {
     args.iter().any(|a| a == "--headless")
 }
 
+/// Why headless mode cannot start on `os`, or `Ok` where it is supported.
+/// Only the macOS login-window agent runs headless in this version.
+pub fn check_supported(os: Os) -> Result<(), &'static str> {
+    match os {
+        Os::MacOs => Ok(()),
+        Os::Windows | Os::Linux => Err("headless mode is only supported on macOS in this version"),
+    }
+}
+
 /// The directory a headless Mouser reads its configuration and desk
 /// membership from.
 pub fn machine_dir(os: Os) -> PathBuf {
