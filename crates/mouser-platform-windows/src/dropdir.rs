@@ -11,7 +11,10 @@ use crate::inject::os;
 use mouser_platform::{Error, Result};
 use std::path::PathBuf;
 use windows::Win32::Foundation::{HWND, POINT};
-use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, IServiceProvider};
+use windows::Win32::System::Com::{
+    CLSCTX_ALL, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
+    CoUninitialize, IServiceProvider,
+};
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, IFolderView, IPersistFolder2, IShellBrowser, IShellWindows, IWebBrowserApp,
@@ -44,8 +47,33 @@ pub(crate) fn desktop_folder() -> Result<PathBuf> {
     Ok(folder)
 }
 
-/// The file-system folder the Explorer window `root` shows.
+/// COM on the calling thread for as long as this lives. A thread that already
+/// has COM keeps it as it was; one that had none gets an apartment, released
+/// on drop. Without it `ShellWindows` cannot be created, which on a machine
+/// where no other thread happens to have started COM (the CI runner) made a
+/// lookup from a plain thread fail as "not a folder".
+pub(crate) struct Com(bool);
+
+impl Com {
+    pub(crate) fn init() -> Self {
+        // S_OK and S_FALSE are each balanced by one CoUninitialize;
+        // RPC_E_CHANGED_MODE (already multithreaded) is not.
+        Com(unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok())
+    }
+}
+
+impl Drop for Com {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe { CoUninitialize() };
+        }
+    }
+}
+
+/// The file-system folder the Explorer window `root` shows. Works from any
+/// thread.
 pub(crate) fn folder_of_explorer(root: HWND) -> Option<PathBuf> {
+    let _com = Com::init();
     let windows: IShellWindows =
         unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_ALL) }.ok()?;
     let count = unsafe { windows.Count() }.ok()?;
@@ -72,7 +100,7 @@ pub(crate) fn folder_of_explorer(root: HWND) -> Option<PathBuf> {
 }
 
 /// The folder a drop at physical pixel `at` landed in: an Explorer window's
-/// folder, or the Desktop. Needs COM on the calling thread.
+/// folder, or the Desktop. Works from any thread.
 pub(crate) fn folder_at(at: POINT) -> Result<PathBuf> {
     let root = unsafe { GetAncestor(WindowFromPoint(at), GA_ROOT) };
     folder_for(&class_of(root), root)

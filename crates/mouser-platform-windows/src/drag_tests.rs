@@ -57,6 +57,50 @@ fn ole() {
 
 // ---- geometry and small decisions ------------------------------------------------
 
+/// What `CoInitializeEx` answers on this thread right now: S_OK means the
+/// thread had no COM (the probe call then leaves it with some, undone here).
+fn thread_had_no_com() -> bool {
+    use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if hr.is_ok() {
+        unsafe { CoUninitialize() };
+    }
+    hr == windows::Win32::Foundation::S_OK
+}
+
+#[test]
+fn a_folder_lookup_brings_its_own_com_and_leaves_the_thread_as_it_found_it() {
+    // A plain thread, like the one that failed on the CI runner.
+    std::thread::spawn(|| {
+        assert!(thread_had_no_com());
+        {
+            let _com = crate::dropdir::Com::init();
+            assert!(!thread_had_no_com(), "COM is up inside the lookup");
+        }
+        assert!(thread_had_no_com(), "and released afterwards");
+        // A whole lookup leaves the thread as it found it too.
+        assert_eq!(
+            crate::dropdir::folder_of_explorer(unsafe {
+                windows::Win32::UI::WindowsAndMessaging::GetDesktopWindow()
+            }),
+            None
+        );
+        assert!(thread_had_no_com());
+    })
+    .join()
+    .unwrap();
+    // A thread already in the multithreaded apartment keeps it.
+    std::thread::spawn(|| {
+        use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
+        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.unwrap();
+        drop(crate::dropdir::Com::init());
+        assert!(!thread_had_no_com());
+        unsafe { CoUninitialize() };
+    })
+    .join()
+    .unwrap();
+}
+
 #[test]
 fn four_strips_run_along_the_outer_border_of_the_desktop() {
     let desktop = RECT {
@@ -760,6 +804,7 @@ fn dropped_in(dir: &std::path::Path) -> String {
 
 /// Every `IShellWindows` entry: its window, and the folder it shows if that can be found.
 fn shell_windows() -> String {
+    let _com = crate::dropdir::Com::init();
     let windows = unsafe { CoCreateInstance::<_, IShellWindows>(&ShellWindows, None, CLSCTX_ALL) };
     let entry = |windows: &IShellWindows, i: i32| {
         let shown = unsafe { windows.Item(&VARIANT::from(i)) }
