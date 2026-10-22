@@ -57,9 +57,6 @@ fn system_settings_point_at_program_data_and_the_real_run_keys() {
 fn capabilities_of_later_phases_are_unsupported_not_panicking() {
     let p = WinPlatform::new();
     let (tx, _rx) = std::sync::mpsc::channel();
-    let (txd, _rxd) = std::sync::mpsc::channel();
-    assert_eq!(p.displays().unwrap_err(), Error::Unsupported);
-    assert!(matches!(p.watch_displays(txd), Err(Error::Unsupported)));
     assert!(matches!(p.watch_network(tx), Err(Error::Unsupported)));
     assert!(matches!(p.capture(), Err(Error::Unsupported)));
     assert!(matches!(p.inject(), Err(Error::Unsupported)));
@@ -105,4 +102,12 @@ fn delegates_permissions_interfaces_secrets_and_autostart() {
         )
     };
     assert_eq!(r, windows::Win32::Foundation::ERROR_SUCCESS);
+}
+
+#[test]
+fn delegates_displays_and_their_watch() {
+    let p = WinPlatform::new();
+    assert_eq!(p.displays().unwrap(), crate::displays::displays().unwrap());
+    let (tx, _rx) = std::sync::mpsc::channel();
+    drop(p.watch_displays(tx).unwrap());
 }

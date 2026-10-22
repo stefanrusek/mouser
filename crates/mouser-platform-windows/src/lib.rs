@@ -1,8 +1,8 @@
 //! Windows backend for the `mouser-platform` seam.
 //!
-//! Phase US1 provides interface classification, the machine-scope DPAPI secret
-//! store, Run-key autostart and (not applicable) permissions. Capture,
-//! injection, clipboard, displays and the rest arrive with their own phases;
+//! Interface classification, the machine-scope DPAPI secret store, Run-key
+//! autostart, (not applicable) permissions and displays. Capture, injection,
+//! clipboard and the rest arrive with their own phases;
 //! until then they report `Unsupported` and are declared as limitations
 //! (rule 9), which is the contract-conformant answer for a capability a
 //! backend does not yet have.
@@ -13,6 +13,8 @@
 #![cfg(windows)]
 
 mod autostart;
+mod displays;
+mod dpi;
 mod net;
 mod permissions;
 mod secrets;
@@ -161,11 +163,11 @@ impl Platform for WinPlatform {
     }
 
     fn displays(&self) -> Result<Vec<LocalDisplay>> {
-        Err(Error::Unsupported)
+        displays::displays()
     }
 
-    fn watch_displays(&self, _tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
-        Err(Error::Unsupported)
+    fn watch_displays(&self, tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
+        displays::watch(tx)
     }
 
     fn permissions(&self) -> Vec<(PermissionKind, PermissionState)> {
@@ -227,6 +229,8 @@ impl Platform for WinPlatform {
 
 #[cfg(test)]
 mod autostart_tests;
+#[cfg(test)]
+mod displays_tests;
 #[cfg(test)]
 mod lib_tests;
 #[cfg(test)]

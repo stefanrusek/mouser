@@ -21,6 +21,71 @@ fn set_get_overwrite_delete_round_trip_across_reopen() {
     store.delete("desk-key").unwrap();
 }
 
+/// The directory's DACL as SDDL, and the current user's SID.
+fn dacl_sddl(dir: &std::path::Path) -> (String, String) {
+    use windows::Win32::Foundation::{HLOCAL, LocalFree};
+    use windows::Win32::Security::Authorization::{
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
+        SDDL_REVISION_1, SE_FILE_OBJECT,
+    };
+    use windows::Win32::Security::{DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR};
+    let mut sd = PSECURITY_DESCRIPTOR::default();
+    let r = unsafe {
+        GetNamedSecurityInfoW(
+            &windows::core::HSTRING::from(dir.as_os_str()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            None,
+            None,
+            &mut sd,
+        )
+    };
+    assert!(r.is_ok(), "{r:?}");
+    let mut text = windows::core::PWSTR::null();
+    unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            sd,
+            SDDL_REVISION_1,
+            DACL_SECURITY_INFORMATION,
+            &mut text,
+            None,
+        )
+    }
+    .unwrap();
+    let sddl = unsafe { text.to_string() }.unwrap();
+    unsafe {
+        LocalFree(Some(HLOCAL(text.0.cast())));
+        LocalFree(Some(HLOCAL(sd.0)));
+    }
+    (sddl, crate::secrets::current_user_sid())
+}
+
+/// foundational-notes.md, 2026-10-22: only SYSTEM, Administrators and the
+/// installing user may open the secrets directory; nothing is inherited.
+#[test]
+fn a_new_secrets_directory_is_private_to_system_administrators_and_the_user() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = dir.path().join(r"Mouser\secrets");
+    DpapiStore::new(secrets.clone())
+        .set("desk-key", b"k")
+        .unwrap();
+    let (sddl, user) = dacl_sddl(&secrets);
+    assert!(user.starts_with("S-1-5-21-"), "{user}");
+    // P: protected (nothing inherited from ProgramData); AI: set by SetNamedSecurityInfoW.
+    assert_eq!(
+        sddl,
+        format!("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{user})")
+    );
+    // The secret file inherits exactly those entries.
+    let (file_sddl, _) = dacl_sddl(&secrets.join("desk-key"));
+    assert_eq!(
+        file_sddl,
+        format!("D:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;FA;;;{user})")
+    );
+}
+
 #[test]
 fn files_hold_dpapi_blobs_not_the_secret() {
     let dir = tempfile::tempdir().unwrap();
