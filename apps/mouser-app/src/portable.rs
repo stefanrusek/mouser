@@ -45,9 +45,20 @@ pub fn create_platform(paths: &Paths) -> Arc<dyn Platform> {
     }
 }
 
-/// The platform for this computer. (The Linux backend learns of portable mode
-/// through `paths.secrets()` in the engine parameters.)
-#[cfg(not(target_os = "macos"))]
+/// The platform for this computer, portable when `paths` say so.
+#[cfg(target_os = "linux")]
+pub fn create_platform(paths: &Paths) -> Arc<dyn Platform> {
+    if paths.portable {
+        Arc::new(mouser_platform_linux::LinuxPlatform::portable(
+            paths.dir.clone(),
+        ))
+    } else {
+        crate::platform_select::create()
+    }
+}
+
+/// The platform for this computer.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub fn create_platform(_paths: &Paths) -> Arc<dyn Platform> {
     crate::platform_select::create()
 }

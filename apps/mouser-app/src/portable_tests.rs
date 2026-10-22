@@ -123,6 +123,18 @@ fn linux_creates_the_linux_platform_for_either_mode() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_portable_run_installs_nothing_so_autostart_is_unsupported() {
+    let (_drive, paths) = drive();
+    let mut autostart = create_platform(&paths).autostart();
+    assert!(!autostart.enabled());
+    assert!(matches!(
+        autostart.set(true),
+        Err(mouser_platform::Error::Unsupported)
+    ));
+}
+
 #[cfg(target_os = "windows")]
 #[test]
 #[should_panic(expected = "platform backend is not implemented yet")]
