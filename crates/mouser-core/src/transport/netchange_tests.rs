@@ -134,6 +134,29 @@ async fn the_dialling_side_keeps_its_connection_through_an_address_change() {
     .await;
 }
 
+/// Push the pointer across from `from` until it arrives on the other
+/// computer. Right after an address change the peer may redial and replace the
+/// connection (`Ctx::adopt`), which hands a crossing already under way back to
+/// the computer it left; the user then pushes again, and so does this.
+async fn push_until_it_arrives(nodes: &[TestNode], from: usize) {
+    let arrived = || {
+        nodes[1 - from]
+            .platform
+            .injected()
+            .iter()
+            .any(|i| matches!(i, Injected::MotionAbs { .. }))
+    };
+    let end = std::time::Instant::now() + Duration::from_secs(15);
+    while !arrived() {
+        assert!(
+            std::time::Instant::now() < end,
+            "timed out waiting for the pointer arriving"
+        );
+        push_toward(nodes, from);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 #[tokio::test]
 async fn crossing_works_within_five_seconds_of_an_address_change() {
     let lab = Lab::simulated();
@@ -158,11 +181,7 @@ async fn crossing_works_within_five_seconds_of_an_address_change() {
             })
             .await;
             nodes[1 - from].platform.take_injected();
-            push_toward(&nodes, from);
-            injected_where(&nodes[1 - from].platform, "the pointer arriving", |i| {
-                matches!(i, Injected::MotionAbs { .. })
-            })
-            .await;
+            push_until_it_arrives(&nodes, from).await;
             // Hand the pointer back for the next round.
             let returns = nodes[from].platform.warps().len();
             push_back(&nodes, from);
