@@ -19,6 +19,7 @@ mod dpi;
 mod inject;
 mod keymap;
 mod net;
+mod netwatch;
 mod permissions;
 mod secrets;
 mod uipi;
@@ -228,8 +229,8 @@ impl Platform for WinPlatform {
         net::interfaces()
     }
 
-    fn watch_network(&self, _tx: Sender<()>) -> Result<WatchHandle> {
-        Err(Error::Unsupported)
+    fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle> {
+        netwatch::watch(tx)
     }
 
     fn foreground_elevated(&self) -> bool {
@@ -269,6 +270,8 @@ mod keymap_tests;
 mod lib_tests;
 #[cfg(test)]
 mod net_tests;
+#[cfg(test)]
+mod netwatch_tests;
 #[cfg(test)]
 mod permissions_tests;
 #[cfg(test)]

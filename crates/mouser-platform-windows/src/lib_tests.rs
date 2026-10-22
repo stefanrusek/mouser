@@ -29,8 +29,6 @@ fn system_settings_point_at_program_data_and_the_real_run_keys() {
 #[test]
 fn capabilities_of_later_phases_are_unsupported_not_panicking() {
     let p = WinPlatform::new();
-    let (tx, _rx) = std::sync::mpsc::channel();
-    assert!(matches!(p.watch_network(tx), Err(Error::Unsupported)));
     assert!(matches!(p.clipboard(), Err(Error::Unsupported)));
     assert!(p.file_drag().is_none());
     assert!(p.secure_input().is_none());
