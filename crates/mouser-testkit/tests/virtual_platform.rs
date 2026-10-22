@@ -197,7 +197,15 @@ fn reported_problems_reach_watchers_until_dropped() {
     let (tx, rx) = channel();
     let handle = vp.watch_problems(tx).unwrap();
     vp.report_problem("lost the keyboard");
-    assert_eq!(rx.try_recv().unwrap(), "lost the keyboard");
+    assert_eq!(
+        rx.try_recv().unwrap(),
+        PlatformProblem::Raised("lost the keyboard".into())
+    );
+    vp.clear_problem("lost the keyboard");
+    assert_eq!(
+        rx.try_recv().unwrap(),
+        PlatformProblem::Cleared("lost the keyboard".into())
+    );
     drop(handle);
     vp.report_problem("again");
     assert!(rx.try_recv().is_err());

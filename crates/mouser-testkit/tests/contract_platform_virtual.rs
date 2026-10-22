@@ -112,7 +112,7 @@ impl mouser_platform::Platform for NoGrab {
 
     fn watch_problems(
         &self,
-        tx: std::sync::mpsc::Sender<String>,
+        tx: std::sync::mpsc::Sender<mouser_platform::PlatformProblem>,
     ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
         self.0.watch_problems(tx)
     }

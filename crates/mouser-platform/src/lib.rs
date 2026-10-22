@@ -24,6 +24,14 @@ pub enum Error {
 
 pub use Error::Unsupported;
 
+/// A problem the platform notices by itself, or withdraws. The text is the
+/// key: `Cleared(t)` withdraws the problem raised as `Raised(t)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlatformProblem {
+    Raised(String),
+    Cleared(String),
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -171,9 +179,10 @@ pub trait Platform: Send + Sync + 'static {
     /// Fires on any address/interface change.
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle>;
     /// Plain-language text for each problem the platform notices by itself
-    /// (e.g. Windows took the capture hooks away and Mouser reinstalled them).
+    /// (e.g. Windows took the capture hooks away and Mouser reinstalled them),
+    /// and, with the same text, the later word that it is gone.
     /// Default: this platform never reports any.
-    fn watch_problems(&self, _tx: Sender<String>) -> Result<WatchHandle> {
+    fn watch_problems(&self, _tx: Sender<PlatformProblem>) -> Result<WatchHandle> {
         Ok(WatchHandle::new(|| {}))
     }
     /// Windows UIPI detection; `false` elsewhere.

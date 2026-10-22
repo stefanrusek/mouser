@@ -20,7 +20,7 @@ pub trait Platform: Send + Sync + 'static {
     fn foreground_is_fullscreen(&self) -> bool;
     fn interfaces(&self) -> Vec<NetInterface>;                    // with kind: PhysicalLan | Virtual | Loopback (research R3)
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle>; // fires on any address/interface change
-    fn watch_problems(&self, tx: Sender<String>) -> Result<WatchHandle>; // default: never fires
+    fn watch_problems(&self, tx: Sender<PlatformProblem>) -> Result<WatchHandle>; // default: never fires
     fn foreground_elevated(&self) -> bool;                        // Windows UIPI detection; false elsewhere
     fn secrets(&self) -> Box<dyn SecretStore>;                    // device key + desk keys (data-model.md)
     fn autostart(&self) -> Box<dyn Autostart>;

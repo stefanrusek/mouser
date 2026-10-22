@@ -97,7 +97,10 @@ fn problems_reach_the_listener_when_there_is_one() {
     let (tx, rx) = std::sync::mpsc::channel();
     let watch = Platform::watch_problems(&p, tx).unwrap();
     sink("heard".into());
-    assert_eq!(rx.try_recv().unwrap(), "heard");
+    assert_eq!(
+        rx.try_recv().unwrap(),
+        mouser_platform::PlatformProblem::Raised("heard".into())
+    );
     // Dropping the handle unregisters the listener.
     drop(watch);
     sink("after".into());
@@ -126,12 +129,18 @@ fn a_newer_listener_replaces_an_older_one_and_outlives_its_handle() {
     let (new_tx, new_rx) = std::sync::mpsc::channel();
     let _new = Platform::watch_problems(&p, new_tx).unwrap();
     sink("to the new".into());
-    assert_eq!(new_rx.try_recv().unwrap(), "to the new");
+    assert_eq!(
+        new_rx.try_recv().unwrap(),
+        mouser_platform::PlatformProblem::Raised("to the new".into())
+    );
     assert!(old_rx.try_recv().is_err());
     // Letting go of the replaced listener leaves the current one in place.
     drop(old);
     sink("still heard".into());
-    assert_eq!(new_rx.try_recv().unwrap(), "still heard");
+    assert_eq!(
+        new_rx.try_recv().unwrap(),
+        mouser_platform::PlatformProblem::Raised("still heard".into())
+    );
 }
 
 #[test]

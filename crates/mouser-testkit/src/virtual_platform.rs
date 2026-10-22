@@ -8,7 +8,7 @@ use crate::report;
 use mouser_platform::{
     Autostart, Capability, ClipRep, Clipboard, DropTarget, Error, FileDrag, InputCapture,
     InputInject, InterfaceKind, Limitation, LocalDisplay, LocalInput, NetInterface, Os,
-    PermissionKind, PermissionState, Platform, PlatformInfo, Result, SecretStore,
+    PermissionKind, PermissionState, Platform, PlatformInfo, PlatformProblem, Result, SecretStore,
     SecureInputHolder, SessionType, WatchHandle,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -56,7 +56,7 @@ struct State {
 
     interfaces: Vec<NetInterface>,
     network_watchers: Watchers<()>,
-    problem_watchers: Watchers<String>,
+    problem_watchers: Watchers<PlatformProblem>,
     next_watch: u64,
 
     fullscreen: bool,
@@ -266,8 +266,18 @@ impl VirtualPlatform {
     /// Tell every `watch_problems` subscriber about a problem the platform
     /// noticed by itself.
     pub fn report_problem(&self, text: &str) {
+        self.send_problem(PlatformProblem::Raised(text.to_string()));
+    }
+
+    /// Tell every `watch_problems` subscriber that a problem reported with
+    /// this text is gone.
+    pub fn clear_problem(&self, text: &str) {
+        self.send_problem(PlatformProblem::Cleared(text.to_string()));
+    }
+
+    fn send_problem(&self, problem: PlatformProblem) {
         for (_, tx) in &self.lock().problem_watchers {
-            let _ = tx.send(text.to_string());
+            let _ = tx.send(problem.clone());
         }
     }
 
@@ -447,7 +457,7 @@ impl Platform for VirtualPlatform {
         Ok(self.watch(|s| &mut s.network_watchers, tx))
     }
 
-    fn watch_problems(&self, tx: Sender<String>) -> Result<WatchHandle> {
+    fn watch_problems(&self, tx: Sender<PlatformProblem>) -> Result<WatchHandle> {
         Ok(self.watch(|s| &mut s.problem_watchers, tx))
     }
 

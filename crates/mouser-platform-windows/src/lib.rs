@@ -34,7 +34,7 @@ mod vfiles;
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
-    Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
+    PlatformProblem, Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
 };
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -133,7 +133,7 @@ pub struct WinPlatform {
 /// it, so a stale handle does not unregister its successor.
 struct Listener {
     id: u64,
-    tx: Sender<String>,
+    tx: Sender<PlatformProblem>,
 }
 
 impl WinPlatform {
@@ -146,7 +146,7 @@ impl WinPlatform {
         Arc::new(move |text| {
             if let Some(listener) = sink.lock().unwrap().as_ref() {
                 // A listener that has gone away just means nobody is listening.
-                let _ = listener.tx.send(text);
+                let _ = listener.tx.send(PlatformProblem::Raised(text));
             }
         })
     }
@@ -248,7 +248,7 @@ impl Platform for WinPlatform {
     /// Where Mouser reports problems it noticed on this PC (a keyboard or
     /// mouse hook the system took away); the app shows them. Replaces any
     /// earlier listener; dropping the handle stops this one.
-    fn watch_problems(&self, tx: Sender<String>) -> Result<WatchHandle> {
+    fn watch_problems(&self, tx: Sender<PlatformProblem>) -> Result<WatchHandle> {
         let id = self.listeners.fetch_add(1, Ordering::SeqCst) + 1;
         *self.problems.lock().unwrap() = Some(Listener { id, tx });
         let slot = self.problems.clone();

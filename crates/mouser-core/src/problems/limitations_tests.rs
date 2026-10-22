@@ -99,3 +99,36 @@ async fn a_problem_the_platform_notices_is_raised_once_with_its_text() {
             .all(|p| p.computer == node.engine.computer_id())
     );
 }
+
+#[tokio::test]
+async fn a_platform_problem_is_withdrawn_by_its_text_and_may_come_back() {
+    let lab = Lab::new();
+    let platform = VirtualPlatform::new();
+    let node = lab.start_with("Alpha", platform.clone(), |_| {}).await;
+    let mut notes = node.engine.control().notifications();
+    let text = "Mouser lost its hold on the keyboard and mouse and took it back.";
+    let prefix = "platform_limitation:platform_problem:";
+    let open = |s: &mouser_proto::control::Status| {
+        s.problems
+            .iter()
+            .filter(|p| p.problem_id.starts_with(prefix))
+            .count()
+    };
+    // Clearing text that was never raised does nothing.
+    platform.clear_problem("never raised");
+    platform.report_problem(text);
+    let raised = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
+    assert!(raised["cleared_at"].is_null());
+    assert_eq!(open(&status(&node).await), 1);
+    platform.clear_problem(text);
+    let cleared = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
+    assert_eq!(cleared["problem_id"], raised["problem_id"]);
+    assert!(!cleared["cleared_at"].is_null());
+    assert_eq!(open(&status(&node).await), 0);
+    // Cleared twice: still nothing more to say; raised again: announced again.
+    platform.clear_problem(text);
+    platform.report_problem(text);
+    let again = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
+    assert!(again["cleared_at"].is_null());
+    assert_eq!(open(&status(&node).await), 1);
+}

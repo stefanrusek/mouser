@@ -23,6 +23,10 @@ fn fnv1a(text: &str) -> u64 {
     })
 }
 
+fn platform_problem_subject(text: &str) -> String {
+    format!("platform_problem:{:016x}", fnv1a(text))
+}
+
 impl Ctx {
     /// Raise a `platform_limitation` problem for each limitation the
     /// platform reports. They are facts about the platform, so once at start.
@@ -41,13 +45,21 @@ impl Ctx {
     /// Raise a problem the platform noticed by itself while running.
     pub(crate) fn raise_platform_problem(&self, text: String) {
         // Problems de-duplicate by id, so each distinct text gets its own.
-        let subject = format!("platform_problem:{:016x}", fnv1a(&text));
         self.problems.raise(
             ProblemKind::PlatformLimitation,
-            &subject,
+            &platform_problem_subject(&text),
             self.me(),
             text,
             None,
+        );
+    }
+
+    /// The platform says a problem it raised with this text is gone. Clearing
+    /// one that is not open does nothing, like every other problem.
+    pub(crate) fn clear_platform_problem(&self, text: &str) {
+        self.problems.clear(
+            ProblemKind::PlatformLimitation,
+            &platform_problem_subject(text),
         );
     }
 }

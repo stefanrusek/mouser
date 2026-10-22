@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use mouser_platform::{Platform, SecretStore};
+use mouser_platform::{Platform, PlatformProblem, SecretStore};
 use mouser_proto::config::Config;
 use mouser_proto::control::Notification;
 use mouser_proto::ids::{ComputerId, DeskId};
@@ -561,8 +561,11 @@ impl Engine {
             .name("mouser-platform-problems".into())
             .spawn(move || {
                 // Ends when the watch is dropped.
-                for text in problem_rx {
-                    reporter.raise_platform_problem(text);
+                for problem in problem_rx {
+                    match problem {
+                        PlatformProblem::Raised(text) => reporter.raise_platform_problem(text),
+                        PlatformProblem::Cleared(text) => reporter.clear_platform_problem(&text),
+                    }
                 }
             })
             .expect("platform problem watcher starts");
