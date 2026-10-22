@@ -140,6 +140,20 @@ fn linux_portable_run_installs_nothing_so_autostart_is_unsupported() {
 fn windows_creates_the_windows_platform() {
     use mouser_platform::Os;
     assert_eq!(create_platform(&installed()).info().os, Os::Windows);
+    let (_drive, paths) = drive();
+    assert_eq!(create_platform(&paths).info().os, Os::Windows);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn windows_portable_run_installs_nothing_so_autostart_is_unsupported() {
+    let (_drive, paths) = drive();
+    let mut autostart = create_platform(&paths).autostart();
+    assert!(!autostart.enabled());
+    assert!(matches!(
+        autostart.set(true),
+        Err(mouser_platform::Error::Unsupported)
+    ));
 }
 
 #[tokio::test(flavor = "multi_thread")]

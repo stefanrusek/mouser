@@ -214,3 +214,7 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Owner (2026-10-22): the landing highlight on crossing stays as is in v1 ("I love the little indicator"). Future (v2): add a config key to toggle it, together with a config and onboarding update.
 
 - Fixed (2026-10-22; was open): every platform-reported problem uses the one id `platform_limitation:platform_problem`, and problems de-duplicate by id, so while Windows's "lost its hold" problem is open a different text (e.g. "could not change the pointer") was not shown. Core now derives the id from the text: `platform_limitation:platform_problem:<16 hex digits of FNV-1a 64 of the text>`, so the same text is one problem and different texts are separate ones (no contract change; the schema does not constrain problem_id).
+
+- Windows clipboard (T404; accepted by orchestrator): `ClipRep::Files` carries local paths only (the files themselves arrive through core's transfer); virtual-file data objects are used only for drag. Change detection polls `GetClipboardSequenceNumber` instead of `AddClipboardFormatListener`.
+
+- Open (2026-10-22, not fixed): core's incoming-drag thread (`crates/mouser-core/src/transfer/mod.rs`, `Out::Drag`) does `begin_incoming(names).expect("the drag begins")`, but the macOS and Windows backends return `Err` when the user cancels the drag or drops on something that is not a folder, which would panic core. Spec Story 7 and data-model Transfer define no cancelled-drop case or `Cancelled` state, so the fix awaits an owner decision.

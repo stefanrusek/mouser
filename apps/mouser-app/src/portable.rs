@@ -57,8 +57,20 @@ pub fn create_platform(paths: &Paths) -> Arc<dyn Platform> {
     }
 }
 
+/// The platform for this computer, portable when `paths` say so.
+#[cfg(windows)]
+pub fn create_platform(paths: &Paths) -> Arc<dyn Platform> {
+    if paths.portable {
+        Arc::new(mouser_platform_windows::WinPlatform::portable(
+            paths.dir.clone(),
+        ))
+    } else {
+        crate::platform_select::create()
+    }
+}
+
 /// The platform for this computer.
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub fn create_platform(_paths: &Paths) -> Arc<dyn Platform> {
     crate::platform_select::create()
 }
