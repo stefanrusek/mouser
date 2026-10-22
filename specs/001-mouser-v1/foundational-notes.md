@@ -195,3 +195,5 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 
 - Open: a crossing started within moments of a local address change is handed straight back (`Ctx::adopt` → refresh_map → set_map → drop_lost → `return_local(Return::Lost)`) while the peer redials, although status already says connected; the user has to push again. The core test now re-pushes (6afb385); the product fix is open.
 - Open: layout `details_tests` once saw only Beta's display listed at startup. The test now waits for both computers' displays by name; the root cause (startup ordering) is unconfirmed.
+
+- Decision (2026-10-22, orchestrator): Windows secrets directory `%ProgramData%\Mouser\secrets` gets an explicit ACL granting access only to SYSTEM, Administrators and the installing user (inheritance off). Machine-scope DPAPI alone lets any local user who can read the file decrypt it; this matches the Linux 0600 file and the macOS keychain intent that only the owner and the system service can read desk secrets.
