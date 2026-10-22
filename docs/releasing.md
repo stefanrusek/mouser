@@ -7,7 +7,7 @@ A release is produced entirely by `.github/workflows/release.yml` when a tag mat
 1. Set the same version in the workspace `Cargo.toml` (`version`) and `apps/mouser-app/tauri.conf.json` (`version`). The workflow fails if the tag is not `v` + the `tauri.conf.json` version.
 2. Merge to `main`, make sure CI is green.
 3. `git tag v<version> && git push origin v<version>` (for example `v0.2.0`).
-4. Watch the `release` workflow. When it finishes, the pre-release `v<version>` has the assets below. Published so far: v0.1.0, v0.1.1, v0.2.0, v0.2.1 and v0.2.2.
+4. Watch the `release` workflow. When it finishes, the pre-release `v<version>` has the assets below. Published so far: v0.1.0, v0.1.1, v0.2.0, v0.2.1, v0.2.2 and v0.2.3.
 5. To promote to a normal release, untick "pre-release" on GitHub. Note that `releases/latest/download/latest.json` only resolves for non-pre-releases. The app's default `updates.release_url` reads the GitHub releases list instead (pre-releases included), so installed apps still find pre-releases.
 
 ## Repository secrets (Settings > Secrets and variables > Actions)
