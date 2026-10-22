@@ -42,7 +42,7 @@ Updater key: generated with `npx @tauri-apps/cli@2.12.4 signer generate`. The pu
 The CLI ships inside every bundle (a Tauri `externalBin` sidecar, signed with the app on macOS):
 
 - macOS: `/Applications/Mouser.app/Contents/MacOS/mouser`. Put it on your PATH with `sudo ln -s /Applications/Mouser.app/Contents/MacOS/mouser /usr/local/bin/mouser`.
-- Windows: `mouser.exe` next to `Mouser.exe` in `%LOCALAPPDATA%\Mouser`. Add that folder to PATH (Settings > System > About > Advanced system settings > Environment Variables).
+- Windows: `mouser.exe` next to `mouser-app.exe` in `%LOCALAPPDATA%\Mouser`. Add that folder to PATH (Settings > System > About > Advanced system settings > Environment Variables).
 - Linux: the deb installs it as `/usr/bin/mouser`. From the AppImage, run `./Mouser_*.AppImage` with the extracted `usr/bin/mouser` (`--appimage-extract`).
 
 ## Building a bundle locally (macOS, signed, not notarized)

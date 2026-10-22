@@ -8,7 +8,7 @@ Where to find the program:
 
 - macOS: `/Applications/Mouser.app/Contents/MacOS/mouser`. To put it on your PATH: `sudo ln -s /Applications/Mouser.app/Contents/MacOS/mouser /usr/local/bin/mouser`.
 - Linux: the `.deb` installs `/usr/bin/mouser`. From the AppImage, extract it (`--appimage-extract`) and use `usr/bin/mouser`.
-- Windows: `mouser.exe` next to `Mouser.exe` in `%LOCALAPPDATA%\Mouser`. There is no Windows backend in v1, so Mouser itself does not run there.
+- Windows: `mouser.exe` next to `mouser-app.exe` in `%LOCALAPPDATA%\Mouser`. The Windows backend is experimental.
 
 ## Global options
 
