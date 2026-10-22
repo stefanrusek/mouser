@@ -652,10 +652,10 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 43: US6-platform-windows — As a desk user, I want copy and paste to work between computers (P2)
 
-- [ ] T403 [P] [US6-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us6.rs` running conformance rule 5 for Text (CF_UNICODETEXT), Html ("HTML Format"), Rtf ("Rich Text Format"), Png ("PNG" + CF_DIBV5) and Files
-- [ ] T404 [US6-platform-windows] Implement `Clipboard` with `AddClipboardFormatListener`, delayed rendering, and a virtual-file data object (`CFSTR_FILEDESCRIPTORW` + `CFSTR_FILECONTENTS`) for remote files in `crates/mouser-platform-windows/src/clipboard.rs`
-- [ ] T405 [US6-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T406 [US6-platform-windows] Commit: phase boundary "US6-platform-windows" (5.3)
+- [X] T403 [P] [US6-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us6.rs` running conformance rule 5 for Text (CF_UNICODETEXT), Html ("HTML Format"), Rtf ("Rich Text Format"), Png ("PNG" + CF_DIBV5) and Files
+- [X] T404 [US6-platform-windows] Implement `Clipboard` with `AddClipboardFormatListener`, delayed rendering, and a virtual-file data object (`CFSTR_FILEDESCRIPTORW` + `CFSTR_FILECONTENTS`) for remote files in `crates/mouser-platform-windows/src/clipboard.rs`
+- [X] T405 [US6-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T406 [US6-platform-windows] Commit: phase boundary "US6-platform-windows" (5.3)
 
 #### Phase 44: US7-platform-windows — As a desk user, I want to drag files from one computer to another (P2)
 
