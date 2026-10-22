@@ -1,0 +1,11 @@
+[package]
+name = "spike_lock_drag_x11"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone probe: not part of the Mouser workspace.
+[workspace]
+
+[dependencies]
+x11rb = { version = "=0.14.0", features = ["xfixes", "xtest", "xinput", "randr"] }

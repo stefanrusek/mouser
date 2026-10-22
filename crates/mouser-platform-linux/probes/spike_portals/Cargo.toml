@@ -1,0 +1,14 @@
+[package]
+name = "spike_portals"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone probe: not part of the Mouser workspace.
+[workspace]
+
+[dependencies]
+ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "input_capture", "remote_desktop", "clipboard", "screencast"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+futures-util = "0.3"
+reis = { version = "=0.7.1", features = ["tokio"] }
