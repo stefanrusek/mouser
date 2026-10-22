@@ -604,20 +604,20 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 39: US1-platform-windows — As a desk owner, I want to put my computers on a desk (P1)
 
-- [ ] T366 [US1-platform-windows] Run hardware probe 1 from FINDINGS-windows-linux "Probes to schedule" on the owner's Windows 11 machine as `crates/mouser-platform-windows/probes/spike_hooks/` (LL hooks vs Raw Input for swallowed events; LL hooks with an elevated foreground window; ClipCursor across a desktop switch) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
+- [X] T366 [US1-platform-windows] Run hardware probe 1 from FINDINGS-windows-linux "Probes to schedule" on the owner's Windows 11 machine as `crates/mouser-platform-windows/probes/spike_hooks/` (LL hooks vs Raw Input for swallowed events; LL hooks with an elevated foreground window; ClipCursor across a desktop switch) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
 - [ ] T367 [US1-platform-windows] Run hardware probe 2 as `crates/mouser-platform-windows/probes/spike_service/` (winlogon-token agent at cold boot, on UAC and fast user switching; SendSAS with SoftwareSASGeneration 1 vs 3) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
-- [ ] T368 [US1-platform-windows] Run hardware probe 3 as `crates/mouser-platform-windows/probes/spike_drag/` (DoDragDrop started by an injected button-down; virtual-file drop into Explorer with IDataObjectAsyncCapability) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
-- [ ] T369 [P] [US1-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us1.rs` running conformance rules 6, 8, 9 against `WinPlatform`
-- [ ] T370 [P] [US1-platform-windows] Write unit tests for interface classification in `crates/mouser-platform-windows/src/net_tests.rs`: `GetAdaptersAddresses` IfType Ethernet/Wi-Fi → `PhysicalLan`; vEthernet, Hyper-V, VMware, VirtualBox, TAP, WireGuard, Tailscale, tunnel types → `Virtual`; loopback → `Loopback`
-- [ ] T371 [US1-platform-windows] Implement `interfaces()` in `crates/mouser-platform-windows/src/net.rs`
-- [ ] T372 [P] [US1-platform-windows] Write unit tests for the DPAPI secret store in `crates/mouser-platform-windows/src/secrets_tests.rs`: machine-scope DPAPI blobs under `%ProgramData%\Mouser\secrets\` round-trip (readable by the service before login, W4)
-- [ ] T373 [US1-platform-windows] Implement `SecretStore` with machine-scope DPAPI in `crates/mouser-platform-windows/src/secrets.rs`
-- [ ] T374 [P] [US1-platform-windows] Write unit tests for autostart in `crates/mouser-platform-windows/src/autostart_tests.rs`: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Mouser` set/removed; `enabled()` honours `StartupApproved` (FR-011)
-- [ ] T375 [US1-platform-windows] Implement `Autostart` in `crates/mouser-platform-windows/src/autostart.rs`
-- [ ] T376 [P] [US1-platform-windows] Write unit tests for permissions in `crates/mouser-platform-windows/src/permissions_tests.rs`: `permissions()` returns `not_applicable` for every kind; `open_permission_settings` returns `Unsupported`
-- [ ] T377 [US1-platform-windows] Implement permissions in `crates/mouser-platform-windows/src/permissions.rs`
-- [ ] T378 [US1-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T379 [US1-platform-windows] Commit: phase boundary "US1-platform-windows" (5.3)
+- [X] T368 [US1-platform-windows] Run hardware probe 3 as `crates/mouser-platform-windows/probes/spike_drag/` (DoDragDrop started by an injected button-down; virtual-file drop into Explorer with IDataObjectAsyncCapability) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
+- [X] T369 [P] [US1-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us1.rs` running conformance rules 6, 8, 9 against `WinPlatform`
+- [X] T370 [P] [US1-platform-windows] Write unit tests for interface classification in `crates/mouser-platform-windows/src/net_tests.rs`: `GetAdaptersAddresses` IfType Ethernet/Wi-Fi → `PhysicalLan`; vEthernet, Hyper-V, VMware, VirtualBox, TAP, WireGuard, Tailscale, tunnel types → `Virtual`; loopback → `Loopback`
+- [X] T371 [US1-platform-windows] Implement `interfaces()` in `crates/mouser-platform-windows/src/net.rs`
+- [X] T372 [P] [US1-platform-windows] Write unit tests for the DPAPI secret store in `crates/mouser-platform-windows/src/secrets_tests.rs`: machine-scope DPAPI blobs under `%ProgramData%\Mouser\secrets\` round-trip (readable by the service before login, W4)
+- [X] T373 [US1-platform-windows] Implement `SecretStore` with machine-scope DPAPI in `crates/mouser-platform-windows/src/secrets.rs`
+- [X] T374 [P] [US1-platform-windows] Write unit tests for autostart in `crates/mouser-platform-windows/src/autostart_tests.rs`: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Mouser` set/removed; `enabled()` honours `StartupApproved` (FR-011)
+- [X] T375 [US1-platform-windows] Implement `Autostart` in `crates/mouser-platform-windows/src/autostart.rs`
+- [X] T376 [P] [US1-platform-windows] Write unit tests for permissions in `crates/mouser-platform-windows/src/permissions_tests.rs`: `permissions()` returns `not_applicable` for every kind; `open_permission_settings` returns `Unsupported`
+- [X] T377 [US1-platform-windows] Implement permissions in `crates/mouser-platform-windows/src/permissions.rs`
+- [X] T378 [US1-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T379 [US1-platform-windows] Commit: phase boundary "US1-platform-windows" (5.3)
 
 #### Phase 40: US2-platform-windows — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
