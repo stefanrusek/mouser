@@ -3376,6 +3376,7 @@ name = "mouser-platform-windows"
 version = "0.2.0"
 dependencies = [
  "mouser-platform",
+ "png",
  "tempfile",
  "windows 0.62.2",
 ]

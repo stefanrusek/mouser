@@ -47,7 +47,7 @@ fn mouse_events_carry_their_data_and_tag() {
 #[test]
 fn a_failed_call_is_an_os_error_that_names_it() {
     assert_eq!(os("Call", Ok(())), Ok(()));
-    let Err(Error::Os(text)) = os(
+    let Err(Error::Os(text)) = os::<()>(
         "Call",
         Err(windows::core::Error::from_hresult(windows::core::HRESULT(
             -1,

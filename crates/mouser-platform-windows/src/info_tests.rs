@@ -21,7 +21,6 @@ fn info_reports_windows_with_its_version_and_declared_limitations() {
         [
             Capability::Inject,
             Capability::SecureAttention,
-            Capability::Clipboard,
             Capability::FileDrag
         ]
     );

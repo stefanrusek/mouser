@@ -65,7 +65,7 @@ pub(crate) fn key_input(scan: u16, extended: bool, down: bool, tag: usize) -> IN
 }
 
 /// A failed Win32 call as an [`Error::Os`] naming it.
-pub(crate) fn os(call: &str, result: windows::core::Result<()>) -> Result<()> {
+pub(crate) fn os<T>(call: &str, result: windows::core::Result<T>) -> Result<T> {
     result.map_err(|e| Error::Os(format!("{call}: {e}")))
 }
 

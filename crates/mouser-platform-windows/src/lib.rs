@@ -1,11 +1,10 @@
 //! Windows backend for the `mouser-platform` seam.
 //!
-//! Interface classification, the machine-scope DPAPI secret store, Run-key
-//! autostart, (not applicable) permissions, displays, input capture and
-//! injection, and elevation detection. Clipboard and the rest arrive with
-//! their own phases; until then they report `Unsupported` and are declared as
-//! limitations (rule 9), which is the contract-conformant answer for a
-//! capability a backend does not yet have.
+//! Interface classification and network watch, the machine-scope DPAPI secret
+//! store, Run-key autostart, displays, input capture and injection, elevation
+//! detection, full-screen detection and the clipboard. File drag and portable
+//! mode arrive with their own phases; a capability a backend does not yet
+//! have reports `Unsupported` and is declared as a limitation (rule 9).
 //!
 //! Windows only: on any other system this crate is an empty library, so the
 //! workspace builds everywhere.
@@ -14,6 +13,7 @@
 
 mod autostart;
 mod capture;
+mod clipboard;
 mod displays;
 mod dpi;
 mod fullscreen;
@@ -26,7 +26,7 @@ mod secrets;
 mod uipi;
 
 use mouser_platform::{
-    Autostart, Capability, Clipboard, Error, FileDrag, InputCapture, InputInject, Limitation,
+    Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
     Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
 };
@@ -179,10 +179,6 @@ impl Platform for WinPlatform {
                     "Ctrl-Alt-Del can't be sent to this PC yet.",
                 ),
                 limitation(
-                    Capability::Clipboard,
-                    "Clipboard sharing is not available yet.",
-                ),
-                limitation(
                     Capability::FileDrag,
                     "Dragging files between computers is not available yet.",
                 ),
@@ -215,7 +211,7 @@ impl Platform for WinPlatform {
     }
 
     fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
-        Err(Error::Unsupported)
+        Ok(Box::new(clipboard::WinClipboard::new()))
     }
 
     fn secure_input(&self) -> Option<SecureInputHolder> {
@@ -259,6 +255,8 @@ impl Platform for WinPlatform {
 mod autostart_tests;
 #[cfg(test)]
 mod capture_tests;
+#[cfg(test)]
+mod clipboard_tests;
 #[cfg(test)]
 mod displays_tests;
 #[cfg(test)]
