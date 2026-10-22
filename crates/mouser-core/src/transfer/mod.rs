@@ -12,6 +12,7 @@
 pub mod conflict;
 pub mod drag;
 pub mod engine;
+pub mod interrupt;
 pub mod progress;
 pub mod space;
 pub mod streams;
@@ -22,6 +23,8 @@ mod conflict_tests;
 mod drag_tests;
 #[cfg(test)]
 mod engine_tests;
+#[cfg(test)]
+mod interrupt_tests;
 #[cfg(test)]
 mod progress_tests;
 #[cfg(test)]
@@ -74,8 +77,13 @@ impl Ctx {
         transfer: TransferId,
         files: Vec<(TransferItem, std::path::PathBuf)>,
     ) {
+        let commands = self.xfer.clone();
         self.spawn(async move {
-            let _ = streams::send(&conn, transfer, &files).await;
+            let sent = || {
+                // No transfer task means the files are pasted, not dragged.
+                let _ = commands.send(Command::Sent { id: transfer });
+            };
+            let _ = streams::send(&conn, transfer, &files, sent).await;
         });
     }
 
@@ -136,6 +144,12 @@ impl Ctx {
                     // The stream may have been cut while the user decided.
                     let _ = waiting.expect("a stream waits for this").send(decision);
                 }
+                Out::Forget { id } => {
+                    self.xfer_waiters
+                        .lock()
+                        .unwrap()
+                        .retain(|(waiting, _), _| *waiting != id);
+                }
                 Out::Notify(params) => {
                     // No subscribers is fine.
                     let _ = self.notify.send(Notification {
@@ -160,12 +174,15 @@ impl Ctx {
         self.xfer_waiters.lock().unwrap().insert((id, index), tell);
         // The engine runs whenever a transfer id is known.
         let _ = self.xfer.send(Command::ItemStart { id, index });
-        let decision = told.await.expect("the engine decides");
+        // The engine gives up on the transfer when its computer goes offline.
+        let Ok(decision) = told.await else {
+            return;
+        };
         let commands = self.xfer.clone();
         let copied = async {
-            match decision {
+            match &decision {
                 Decision::Write(path) => {
-                    let mut file = tokio::fs::File::create(&path).await?;
+                    let mut file = tokio::fs::File::create(path).await?;
                     let mut buffer = vec![0u8; CHUNK];
                     loop {
                         let Some(read) = stream
@@ -188,9 +205,12 @@ impl Ctx {
                     .map(|_| ()),
             }
         };
-        // A stream cut short by a lost connection is a transfer that did not finish.
+        // A stream cut short by a lost connection is a transfer that did not
+        // finish: what was written of the file is not kept.
         if copied.await.is_ok() {
             let _ = self.xfer.send(Command::ItemDone { id });
+        } else if let Decision::Write(path) = &decision {
+            let _ = tokio::fs::remove_file(path).await;
         }
     }
 }

@@ -27,14 +27,10 @@ async fn links() -> (Identity, Identity, Link, Link) {
     let (ia, ib) = (Identity::from_seed([1; 32]), Identity::from_seed([2; 32]));
     let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
     let to = std::net::SocketAddr::from(([127, 0, 0, 1], b.local_addr().port()));
-    let (dialed, accepted) = tokio::join!(a.connect(to, Some(ib.computer_id())), async {
-        Transport::complete(b.accept().await.unwrap())
-            .await
-            .unwrap()
-    });
+    let (dialed, accepted) = crate::testing::handshake(&a, &b, to, Some(ib.computer_id())).await;
     // Keep the endpoints alive for the whole test.
     Box::leak(Box::new((a, b)));
-    let mut dialer = Link::open(dialed.unwrap()).await;
+    let mut dialer = Link::open(dialed).await;
     // The control stream becomes visible to the peer with its first frame.
     dialer.writer.send(&ControlMessage::Panic).await.unwrap();
     let mut acceptor = Link::accepted(accepted).await.unwrap();

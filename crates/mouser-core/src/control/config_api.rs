@@ -6,9 +6,9 @@
 //! applied to the running engine, and, for the desk-shared keys, replicated
 //! to the desk with a new epoch.
 
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 
-use mouser_proto::config::{Config, DESK_SHARED_KEYS};
+use mouser_proto::config::{Config, ConfigError, DESK_SHARED_KEYS};
 use mouser_proto::control::RpcError;
 use mouser_proto::wire::ControlMessage;
 use serde_json::Value;
@@ -32,6 +32,23 @@ fn lookup<'a>(tree: &'a Value, key: &str) -> Result<&'a Value, RpcError> {
         .ok_or_else(|| rejected(key, "unknown key"))
 }
 
+/// Everything a config must satisfy beyond its shape: `Config::validate`,
+/// and the hotkeys the engine parses (the panic gesture and the
+/// targeted-paste chord, which are returned parsed).
+pub(crate) fn check(next: &Config) -> Result<(PanicSpec, Chord), ConfigError> {
+    next.validate()?;
+    let panic = PanicSpec::parse(&next.hotkeys.panic).map_err(|reason| ConfigError {
+        key: "hotkeys.panic".into(),
+        reason,
+    })?;
+    let targeted_paste =
+        Chord::parse(&next.hotkeys.targeted_paste).map_err(|reason| ConfigError {
+            key: "hotkeys.targeted_paste".into(),
+            reason,
+        })?;
+    Ok((panic, targeted_paste))
+}
+
 impl Ctx {
     /// `config.get`: the value at `key`, or the whole config.
     pub(crate) fn get_config(&self, key: Option<&str>) -> Result<Value, RpcError> {
@@ -46,7 +63,7 @@ impl Ctx {
     /// `config.set`: change one key, or refuse with `key: reason` and keep
     /// the previous value.
     pub(crate) fn set_config(self: &Arc<Self>, key: &str, value: Value) -> Result<(), RpcError> {
-        let mut core = self.core.lock().unwrap();
+        let core = self.core.lock().unwrap();
         let mut tree = serde_json::to_value(&core.config).expect("config serializes");
         if key == "schema" {
             return Err(rejected(key, "read-only"));
@@ -58,14 +75,28 @@ impl Ctx {
         tree[section][name] = value;
         let next: Config =
             serde_json::from_value(tree).map_err(|e| rejected(key, e.to_string()))?;
-        next.validate().map_err(|e| rejected(&e.key, e.reason))?;
-        let panic =
-            PanicSpec::parse(&next.hotkeys.panic).map_err(|e| rejected("hotkeys.panic", e))?;
-        let targeted_paste = Chord::parse(&next.hotkeys.targeted_paste)
-            .map_err(|e| rejected("hotkeys.targeted_paste", e))?;
+        let hotkeys = check(&next).map_err(|e| rejected(&e.key, e.reason))?;
+        let shared = DESK_SHARED_KEYS.contains(&key);
+        self.apply_config(core, next, hotkeys, shared, true);
+        Ok(())
+    }
+
+    /// `next` (valid, its hotkeys parsed) becomes the config: saved if it
+    /// was not read from the file, applied to the running engine, and, when
+    /// `shared`, replicated to the desk with a new epoch.
+    pub(crate) fn apply_config(
+        self: &Arc<Self>,
+        mut core: MutexGuard<'_, Core>,
+        next: Config,
+        (panic, targeted_paste): (PanicSpec, Chord),
+        shared: bool,
+        save: bool,
+    ) {
         let name_changed = next.general.computer_name != core.config.general.computer_name;
         core.config = next;
-        config::save(&self.config_dir, &core.config);
+        if save {
+            config::save(&self.config_dir, &core.config);
+        }
         self.log.apply(
             core.config.diagnostics.logging,
             core.config.diagnostics.max_log_mb,
@@ -85,7 +116,7 @@ impl Ctx {
                 .set(core.config.general.start_at_login)
                 .expect("autostart can be set");
         }
-        if DESK_SHARED_KEYS.contains(&key) {
+        if shared {
             self.share_config(&mut core);
         }
         drop(core);
@@ -93,7 +124,6 @@ impl Ctx {
             self.announce();
         }
         self.notify_status();
-        Ok(())
     }
 
     /// The desk-shared settings changed here: the desk's state takes them

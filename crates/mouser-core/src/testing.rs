@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 
 use crate::discovery::{Advert, Discovery, Found};
 use crate::engine::{Engine, EngineParams};
+use crate::transport::Transport;
 
 /// In-process stand-in for the network's mDNS. On a simulated network each
 /// advert also knows its computer's `SimNode`, so a browser hands out the
@@ -663,4 +664,37 @@ pub(crate) fn epoch_of(node: &TestNode) -> u64 {
         .expect("on a desk")
         .state
         .epoch
+}
+
+/// How long a handshake between two endpoints on this machine may take
+/// before a test gives up. The transport's own 3 s idle timeout ends a
+/// handshake that stalls, so this is only the backstop for a side that is
+/// never told.
+const HANDSHAKE: Duration = Duration::from_secs(30);
+
+/// `dialer` connects to `to` and `acceptor` accepts: the dialled and the
+/// accepted connection. Never waits forever: if either side fails or the
+/// handshake stalls, the test fails saying so (a side that never sees the
+/// attempt would otherwise be waited for indefinitely).
+pub(crate) async fn handshake(
+    dialer: &Transport,
+    acceptor: &Transport,
+    to: SocketAddr,
+    expected: Option<ComputerId>,
+) -> (quinn::Connection, quinn::Connection) {
+    let dial = async {
+        dialer
+            .connect(to, expected)
+            .await
+            .expect("the dialling side connects")
+    };
+    let accept = async {
+        let incoming = acceptor.accept().await.expect("the endpoint is open");
+        Transport::complete(incoming)
+            .await
+            .expect("the accepting side completes the handshake")
+    };
+    tokio::time::timeout(HANDSHAKE, async { tokio::join!(dial, accept) })
+        .await
+        .expect("the handshake finishes in time")
 }

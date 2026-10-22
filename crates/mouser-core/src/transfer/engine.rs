@@ -29,6 +29,8 @@ pub enum State {
     AwaitingOverwriteDecision,
     Completed,
     Rejected,
+    /// The other computer went offline before the copy finished.
+    Failed,
 }
 
 impl State {
@@ -41,7 +43,16 @@ impl State {
             State::AwaitingOverwriteDecision => "awaiting_overwrite_decision",
             State::Completed => "completed",
             State::Rejected => "rejected",
+            State::Failed => "failed",
         }
+    }
+
+    /// Whether the copy is still going on (or waiting to start).
+    pub fn in_progress(self) -> bool {
+        matches!(
+            self,
+            State::Pending | State::Checking | State::Copying | State::AwaitingOverwriteDecision
+        )
     }
 }
 
@@ -89,8 +100,12 @@ pub enum Command {
         transfer_id: String,
         overwrite: bool,
     },
-    /// A desk member's connection ended.
-    PeerGone(ComputerId),
+    /// A file of the transfer being sent was received in full by the
+    /// destination.
+    Sent { id: TransferId },
+    /// A desk member's connection ended; the name is how the user knows
+    /// that computer.
+    PeerGone(ComputerId, String),
 }
 
 /// What to do with a stream that has arrived.
@@ -123,6 +138,11 @@ pub enum Out {
         index: usize,
         decision: Decision,
     },
+    /// Drop what is waiting to be told what to do with a stream of the
+    /// transfer: its computer is gone.
+    Forget {
+        id: TransferId,
+    },
     /// A `transfer` notification for the user interface.
     Notify(Value),
 }
@@ -131,6 +151,8 @@ pub(super) struct Outbound {
     pub to: ComputerId,
     pub files: Vec<(TransferItem, PathBuf)>,
     pub state: State,
+    /// Files the destination has received in full.
+    pub sent: usize,
 }
 
 pub(super) struct Inbound {
@@ -144,6 +166,10 @@ pub(super) struct Inbound {
     pub remaining: usize,
     /// The item waiting for the user's answer. Items arrive one at a time.
     pub awaiting: Option<usize>,
+    /// Files the user chose not to replace whose streams have ended.
+    pub skipped: usize,
+    /// The file now arriving is one the user chose not to replace.
+    pub skipping: bool,
 }
 
 pub struct Transfers {
@@ -152,10 +178,18 @@ pub struct Transfers {
     pub(super) ids: Ids,
     pub(super) outbound: HashMap<TransferId, Outbound>,
     pub(super) inbound: HashMap<TransferId, Inbound>,
+    /// Transfers that ended because their computer went offline; what still
+    /// arrives for them is of no interest.
+    pub(super) failed: HashSet<TransferId>,
+}
+
+/// How many files (not folders) are among `items`.
+pub(super) fn file_count(items: &[TransferItem]) -> usize {
+    items.iter().filter(|item| !item.is_dir).count()
 }
 
 /// The bytes of the files among `items`.
-fn total_size(items: &[TransferItem]) -> u64 {
+pub(super) fn total_size(items: &[TransferItem]) -> u64 {
     items
         .iter()
         .filter(|item| !item.is_dir)
@@ -170,6 +204,7 @@ impl Transfers {
             ids,
             outbound: HashMap::new(),
             inbound: HashMap::new(),
+            failed: HashSet::new(),
         }
     }
 
@@ -191,10 +226,11 @@ impl Transfers {
                 transfer_id,
                 overwrite,
             } => self.resolve_named(&transfer_id, overwrite, now),
-            Command::PeerGone(peer) => {
-                self.peer_gone(peer);
+            Command::Sent { id } => {
+                self.on_sent(id);
                 Ok(Vec::new())
             }
+            Command::PeerGone(peer, name) => Ok(self.peer_gone(peer, &name, now)),
         }
     }
 
@@ -247,6 +283,7 @@ impl Transfers {
                 to,
                 files,
                 state: State::Pending,
+                sent: 0,
             },
         );
         vec![Out::To(
@@ -281,8 +318,10 @@ impl Transfers {
                 dir: PathBuf::new(),
                 state: State::Pending,
                 progress: Progress::new(total_size(&items)),
-                remaining: items.iter().filter(|item| !item.is_dir).count(),
+                remaining: file_count(&items),
                 awaiting: None,
+                skipped: 0,
+                skipping: false,
                 items,
             },
         );
@@ -345,6 +384,9 @@ impl Transfers {
         dir: PathBuf,
         now: Instant,
     ) -> Result<Vec<Out>, String> {
+        if self.failed.contains(&id) {
+            return Ok(Vec::new());
+        }
         let free = (self.free)(&dir);
         let Some(transfer) = self.inbound.get_mut(&id) else {
             return Err("a drop for files nobody offered".into());
@@ -396,6 +438,9 @@ impl Transfers {
             return Vec::new();
         };
         transfer.remaining -= 1;
+        if std::mem::take(&mut transfer.skipping) {
+            transfer.skipped += 1;
+        }
         if transfer.remaining > 0 {
             return vec![self.report(id, now)];
         }
@@ -425,23 +470,5 @@ impl Transfers {
             transfer.state,
             &transfer.progress.snapshot(now),
         ))
-    }
-
-    /// Forget what was going on with a computer that is gone.
-    fn peer_gone(&mut self, peer: ComputerId) {
-        self.outbound.retain(|id, t| {
-            let keep = t.to != peer;
-            if !keep {
-                self.ids.remove(id);
-            }
-            keep
-        });
-        self.inbound.retain(|id, t| {
-            let keep = t.from != peer;
-            if !keep {
-                self.ids.remove(id);
-            }
-            keep
-        });
     }
 }

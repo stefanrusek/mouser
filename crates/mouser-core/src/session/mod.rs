@@ -281,7 +281,7 @@ impl Ctx {
 
     /// Forget a peer whose link ended (unless a newer link replaced it).
     pub(crate) fn on_link_closed(&self, peer: ComputerId, link_id: u64) {
-        let waiting = {
+        let (waiting, name) = {
             let mut core = self.core.lock().unwrap();
             if core.peers.get(&peer).is_none_or(|p| p.link_id != link_id) {
                 return;
@@ -294,7 +294,10 @@ impl Ctx {
             }
             core.requests.drop_peer(peer);
             self.refresh_map(&core);
-            gone.phase == Phase::AwaitingDecision
+            (
+                gone.phase == Phase::AwaitingDecision,
+                gone.hello.display_name,
+            )
         };
         self.problems
             .clear(ProblemKind::SecureInput, &peer.to_string());
@@ -303,7 +306,7 @@ impl Ctx {
         // Likewise for dragged files.
         let _ = self
             .xfer
-            .send(crate::transfer::engine::Command::PeerGone(peer));
+            .send(crate::transfer::engine::Command::PeerGone(peer, name));
         if waiting {
             self.fail_pending("The request to join the desk was not answered.");
         }

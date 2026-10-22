@@ -19,6 +19,9 @@ impl Transfers {
         index: usize,
         now: Instant,
     ) -> Result<Vec<Out>, String> {
+        if self.failed.contains(&id) {
+            return Ok(vec![Out::Forget { id }]);
+        }
         let Some(transfer) = self.inbound.get_mut(&id) else {
             return Err("a file of a transfer nobody offered".into());
         };
@@ -88,6 +91,7 @@ impl Transfers {
             Decision::Write(transfer.dir.join(&item.relative_path))
         } else {
             transfer.progress.skip(item.size);
+            transfer.skipping = true;
             Decision::Skip
         };
         transfer.state = State::Copying;

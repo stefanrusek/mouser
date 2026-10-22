@@ -560,8 +560,11 @@ async fn network_loop(ctx: Arc<Ctx>, mut changed: mpsc::UnboundedReceiver<()>) {
 
 async fn reconcile_loop(ctx: Arc<Ctx>) {
     let mut tick = tokio::time::interval(RECONCILE);
+    // The first look at the file finds out whether it was edited since start.
+    let mut config_text = String::new();
     loop {
         tick.tick().await;
+        ctx.reload_config(&mut config_text);
         ctx.reconcile();
         ctx.redial_pending();
         ctx.check_liveness();

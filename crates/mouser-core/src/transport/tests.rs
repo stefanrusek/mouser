@@ -41,13 +41,9 @@ async fn connected() -> (
 ) {
     let (ia, ib) = (identity(1), identity(2));
     let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
-    let dial = a.connect(loopback(&b), Some(ib.computer_id()));
-    let (dialed, accepted) = tokio::join!(dial, async {
-        Transport::complete(b.accept().await.unwrap())
-            .await
-            .unwrap()
-    });
-    (ia, ib, a, b, dialed.unwrap(), accepted)
+    let (dialed, accepted) =
+        crate::testing::handshake(&a, &b, loopback(&b), Some(ib.computer_id())).await;
+    (ia, ib, a, b, dialed, accepted)
 }
 
 #[tokio::test]
@@ -84,7 +80,10 @@ async fn a_peer_whose_key_is_not_the_expected_computer_is_rejected() {
     let to = loopback(&b);
     let server = tokio::spawn(async move { Transport::complete(b.accept().await.unwrap()).await });
     let err = a.connect(to, Some(wrong)).await.unwrap_err();
-    assert!(server.await.unwrap().is_err(), "the dialler hung up");
+    let server = tokio::time::timeout(Duration::from_secs(30), server)
+        .await
+        .expect("the attempt reached the accepting side");
+    assert!(server.unwrap().is_err(), "the dialler hung up");
     assert!(err.to_string().contains("expected computer"), "{err}");
 }
 
@@ -92,12 +91,8 @@ async fn a_peer_whose_key_is_not_the_expected_computer_is_rejected() {
 async fn an_unknown_peer_can_be_dialled_without_an_expected_id() {
     let (ia, ib) = (identity(1), identity(2));
     let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
-    let (dialed, _accepted) = tokio::join!(a.connect(loopback(&b), None), async {
-        Transport::complete(b.accept().await.unwrap())
-            .await
-            .unwrap()
-    });
-    assert_eq!(peer_id(&dialed.unwrap()), ib.computer_id());
+    let (dialed, _accepted) = crate::testing::handshake(&a, &b, loopback(&b), None).await;
+    assert_eq!(peer_id(&dialed), ib.computer_id());
 }
 
 #[tokio::test]

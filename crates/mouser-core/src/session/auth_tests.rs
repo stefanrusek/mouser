@@ -44,12 +44,7 @@ async fn both_ends_of_a_connection_derive_the_same_transcript() {
     let (ia, ib) = (Identity::from_seed([1; 32]), Identity::from_seed([2; 32]));
     let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
     let to = std::net::SocketAddr::from(([127, 0, 0, 1], b.local_addr().port()));
-    let (dialed, accepted) = tokio::join!(a.connect(to, None), async {
-        Transport::complete(b.accept().await.unwrap())
-            .await
-            .unwrap()
-    });
-    let dialed = dialed.unwrap();
+    let (dialed, accepted) = crate::testing::handshake(&a, &b, to, None).await;
     assert_eq!(export(&dialed), export(&accepted));
     assert_ne!(export(&dialed), [0; 32]);
 }

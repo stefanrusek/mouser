@@ -60,5 +60,9 @@ fn dir_from(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     }
 }
 
+pub(crate) mod watch;
+
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod watch_tests;

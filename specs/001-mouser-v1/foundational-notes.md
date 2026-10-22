@@ -93,4 +93,10 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - `crossing_blocked` is per edge: `problem_id = crossing_blocked:<computer id>/<display key>/<side>`; it clears on fix, on a double-bump crossing, and when the edge stops blocking. The app parses the id to open that edge.
 - Diagnostic log: `<config_dir>/logs/mouser.log` (JSONL per log-record.schema.json), rotates at `diagnostics.max_log_mb` to `mouser.log.1`; `logging.set{enabled}` persists `diagnostics.logging`; `status.logging{enabled,path}` always present. Events: logging.enabled/disabled, problem.raised/cleared, peer.connected/disconnected (crossing events not yet).
 - Open: transfers are still dropped silently on peer disconnect (spec has no failed state; decided below).
-- Known flaky hang (seen twice): `transport::tests::an_idle_connection_outlives_the_idle_timeout_thanks_to_keep_alive` can hang under llvm-cov; to be diagnosed.
+- The test hang was a helper defect (join! on connect+accept waits forever when a handshake is lost); fixed by `testing::handshake` with 30 s timeouts.
+
+## core US9 decisions (for cli US9)
+
+- The config file is re-read on the 250 ms reconcile tick; a valid edit applies through the same `apply_config` path as `config.set` (shared keys get a new epoch and go to the desk); an invalid file is refused whole, previous values kept, one `config.rejected` warn record in the diagnostic log (not a problem).
+- `transfer` notifications: state `failed`, `reason: "peer_offline"`, message "The copy stopped because <name> went offline. N of M files were copied." (drags only; clipboard-file fetches publish no transfer notifications).
+- Open items: a computer rename reaches desk-mates only on reconnect (name travels in Hello/Member; needs a DeskState/wire update); `advanced.port` changes need a restart.

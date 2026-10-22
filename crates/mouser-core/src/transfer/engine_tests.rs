@@ -282,7 +282,9 @@ fn a_computer_that_leaves_takes_its_transfers_with_it() {
             paths: vec![],
         },
     );
-    assert!(run(&mut t, Command::PeerGone(peer())).is_empty());
+    // Both of its transfers fail (see interrupt_tests); the other stays.
+    let outs = run(&mut t, Command::PeerGone(peer(), "Alpha".into()));
+    assert_eq!(outs.len(), 3, "{outs:?}");
     assert_eq!(t.state_of(&id()), None);
     // Only the transfer with the other computer is left.
     assert_eq!(t.outbound.len(), 1);

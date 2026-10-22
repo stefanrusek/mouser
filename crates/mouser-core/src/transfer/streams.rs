@@ -69,11 +69,13 @@ pub fn hex(id: &TransferId) -> String {
     id.0.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// Send the files of a transfer, one unidirectional stream each.
+/// Send the files of a transfer, one unidirectional stream each;
+/// `received` is called when the peer has a file in full.
 pub async fn send(
     conn: &quinn::Connection,
     id: TransferId,
     files: &[(TransferItem, PathBuf)],
+    received: impl Fn(),
 ) -> std::io::Result<()> {
     for (index, (item, path)) in files.iter().enumerate() {
         if item.is_dir {
@@ -86,6 +88,8 @@ pub async fn send(
         let mut file = tokio::fs::File::open(path).await?;
         tokio::io::copy(&mut file, &mut stream).await?;
         stream.finish().map_err(std::io::Error::other)?;
+        stream.stopped().await.map_err(std::io::Error::other)?;
+        received();
     }
     Ok(())
 }
