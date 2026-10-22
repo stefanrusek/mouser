@@ -349,7 +349,9 @@ async fn automatic_desk(world: &mut UpdateWorld) {
     world.desk(true).await;
 }
 
-#[given("a desk where every computer updates automatically and one other computer's first install fails")]
+#[given(
+    "a desk where every computer updates automatically and one other computer's first install fails"
+)]
 async fn failing_desk(world: &mut UpdateWorld) {
     world.desk(true).await;
     let failing = others(world)[0].to_string();
@@ -412,7 +414,9 @@ async fn updated_over_lan(world: &mut UpdateWorld) {
     world.installed.lock().unwrap().clear();
 }
 
-#[when("one that was not the elected computer restarts as the new version and an older one rejoins")]
+#[when(
+    "one that was not the elected computer restarts as the new version and an older one rejoins"
+)]
 async fn relay_restarts(world: &mut UpdateWorld) {
     let (fetcher, others) = (world.fetcher(), others(world));
     let (updated, older) = (others[0], others[1]);

@@ -404,7 +404,10 @@ async fn the_fetcher_waits_for_offered_desk_mates_to_finish_fetching() {
     assert!(start.elapsed() < grace);
 
     // Offered but not asking: given the grace to start, no longer.
-    ctx.release_serving.lock().unwrap().insert(peer, serve(false));
+    ctx.release_serving
+        .lock()
+        .unwrap()
+        .insert(peer, serve(false));
     let start = now();
     ctx.settle_fetches_within(grace, limit).await;
     assert!(start.elapsed() >= grace && start.elapsed() < limit);
@@ -416,7 +419,10 @@ async fn the_fetcher_waits_for_offered_desk_mates_to_finish_fetching() {
         },
         |ctx: std::sync::Arc<crate::engine::Ctx>, peer| ctx.drop_release_waiters(peer),
     ] {
-        ctx.release_serving.lock().unwrap().insert(peer, serve(true));
+        ctx.release_serving
+            .lock()
+            .unwrap()
+            .insert(peer, serve(true));
         let later = ctx.clone();
         let done = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -429,9 +435,14 @@ async fn the_fetcher_waits_for_offered_desk_mates_to_finish_fetching() {
     }
 
     // A fetch that never ends is waited for no longer than the limit.
-    ctx.release_serving.lock().unwrap().insert(peer, serve(true));
+    ctx.release_serving
+        .lock()
+        .unwrap()
+        .insert(peer, serve(true));
     let start = now();
     ctx.settle_fetches_within(grace, Duration::from_millis(400))
         .await;
-    assert!(start.elapsed() >= Duration::from_millis(400) && start.elapsed() < Duration::from_secs(2));
+    assert!(
+        start.elapsed() >= Duration::from_millis(400) && start.elapsed() < Duration::from_secs(2)
+    );
 }
