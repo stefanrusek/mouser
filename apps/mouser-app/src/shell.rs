@@ -10,11 +10,13 @@ use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_updater::UpdaterExt;
 
-use crate::host::Host;
+use crate::host::{Host, Updates};
 use crate::hotkeys::{Hotkey, Hotkeys, Press, Shortcuts};
 use crate::notify::Notifier;
 use crate::tray::{self, TrayController, TrayPort, TrayView};
+use crate::updater::{self, Applier};
 use crate::{app, commands, host, overlay, platform_select};
 
 struct LiveTray<R: Runtime> {
@@ -91,6 +93,44 @@ impl<R: Runtime> Shortcuts for LiveShortcuts<R> {
     }
 }
 
+/// Installs an update through `tauri-plugin-updater`, then restarts Mouser.
+struct LiveApplier<R: Runtime>(AppHandle<R>);
+
+impl<R: Runtime> Applier for LiveApplier<R> {
+    fn install(&self, endpoint: &str, target: &str, pubkey: &str) -> Result<(), String> {
+        let (app, endpoint, target, pubkey) = (
+            self.0.clone(),
+            endpoint.to_string(),
+            target.to_string(),
+            pubkey.to_string(),
+        );
+        // The engine calls the installer from inside the async runtime.
+        std::thread::spawn(move || {
+            tauri::async_runtime::block_on(async move {
+                let update = app
+                    .updater_builder()
+                    .target(target)
+                    .pubkey(pubkey)
+                    .endpoints(vec![endpoint.parse().expect("the endpoint is a URL")])
+                    .map_err(|e| e.to_string())?
+                    .build()
+                    .map_err(|e| e.to_string())?
+                    .check()
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .ok_or("the updater found no newer version")?;
+                update
+                    .download_and_install(|_, _| {}, || {})
+                    .await
+                    .map_err(|e| e.to_string())
+            })
+        })
+        .join()
+        .expect("the installer thread ends")?;
+        self.0.restart()
+    }
+}
+
 /// Show the folder that holds `path` in the system file manager.
 #[tauri::command]
 fn open_folder(path: String) {
@@ -112,6 +152,7 @@ pub fn run() {
             host::on_second_launch(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::control,
@@ -132,6 +173,12 @@ pub fn run() {
                     .into_string()
                     .expect("computer name is valid UTF-8"),
                 env!("CARGO_PKG_VERSION").to_string(),
+                Updates {
+                    installer: Some(updater::installer(Arc::new(LiveApplier(
+                        app.handle().clone(),
+                    )))),
+                    check_schedule: Some(mouser_core::release::CheckSchedule::DEFAULT),
+                },
             ));
             let control = host.control();
             app.manage(host);
@@ -172,6 +219,12 @@ pub fn run() {
                     tray::Action::Health => {
                         crate::windows::show(app, crate::windows::Which::Health)
                     }
+                    tray::Action::Update => {
+                        let control = menu_control.clone();
+                        tauri::async_runtime::spawn(async move {
+                            updater::apply(&control).await;
+                        });
+                    }
                     tray::Action::Quit => app.exit(0),
                 })
                 .build(app)?;
@@ -183,6 +236,7 @@ pub fn run() {
                 platform_select::current_os(),
                 appearance,
             ));
+            tauri::async_runtime::spawn(updater::poll(control.clone(), controller.clone()));
             let theme_controller = controller.clone();
             app.get_webview_window("main")
                 .expect("main window exists")

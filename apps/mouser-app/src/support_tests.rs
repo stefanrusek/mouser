@@ -62,9 +62,33 @@ pub async fn fixture() -> Fixture {
 
 /// A host running on `shared`, a platform the test also keeps a handle to.
 pub async fn fixture_on(platform: VirtualPlatform, shared: Arc<dyn Platform>) -> Fixture {
+    fixture_with(platform, shared, |_| {}).await
+}
+
+/// A host whose release location refuses connections, so `update.check`
+/// never leaves this computer.
+pub async fn fixture_offline() -> Fixture {
+    fixture_releasing_at("http://127.0.0.1:1/latest.json").await
+}
+
+/// A host that looks for releases at `release_url`, a loopback address.
+pub async fn fixture_releasing_at(release_url: &str) -> Fixture {
+    let platform = VirtualPlatform::new();
+    fixture_with(platform.clone(), Arc::new(platform), |config| {
+        config.updates.release_url = release_url.into();
+    })
+    .await
+}
+
+async fn fixture_with(
+    platform: VirtualPlatform,
+    shared: Arc<dyn Platform>,
+    tweak: impl FnOnce(&mut mouser_proto::config::Config),
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let mut config = mouser_proto::config::Config::default();
     config.advanced.port = u32::from(free_port());
+    tweak(&mut config);
     mouser_core::config::save(dir.path(), &config);
     let host = Host::start(
         shared,
@@ -72,6 +96,7 @@ pub async fn fixture_on(platform: VirtualPlatform, shared: Arc<dyn Platform>) ->
         control_path(&dir),
         "Desk Mac".into(),
         "1.2.3".into(),
+        crate::host::Updates::default(),
     )
     .await;
     Fixture {

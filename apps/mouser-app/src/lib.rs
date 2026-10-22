@@ -8,6 +8,7 @@ pub mod notify;
 pub mod overlay;
 pub mod platform_select;
 pub mod tray;
+pub mod updater;
 pub mod windows;
 
 #[cfg(feature = "gui")]
@@ -31,5 +32,7 @@ mod platform_select_tests;
 mod support_tests;
 #[cfg(test)]
 mod tray_model_tests;
+#[cfg(test)]
+mod updater_tests;
 #[cfg(test)]
 mod windows_tests;

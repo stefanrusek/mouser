@@ -238,6 +238,21 @@ async fn a_landing_flashes_the_overlay_and_a_review_offer_is_a_notification() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn quickjump_events_are_left_to_the_quickjump_overlay() {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let notifier = FakeNotifier::default();
+    let show = mouser_core::EngineEvent::QuickJumpShow { letters: vec![] };
+    handle_event(app.handle(), &notifier, show);
+    handle_event(
+        app.handle(),
+        &notifier,
+        mouser_core::EngineEvent::QuickJumpHide,
+    );
+    assert!(notifier.shown.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn the_event_pump_ends_when_the_engine_stops() {
     let f = fixture().await;
     let app = app_with(f.host);

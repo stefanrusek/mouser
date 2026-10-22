@@ -78,6 +78,8 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
             );
             windows::show(app, Which::Arranger);
         }
+        // The QuickJump overlay (US11-app) is what shows these.
+        EngineEvent::QuickJumpShow { .. } | EngineEvent::QuickJumpHide => {}
     }
 }
 

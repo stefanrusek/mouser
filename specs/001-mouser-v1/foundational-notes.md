@@ -131,3 +131,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Core detects `hotkeys.quickjump` from captured input; letters A-Z then 0-9, left to right; `QuickJumpShow`/`QuickJumpHide` go to all desk-mates and every computer emits in-process `EngineEvent::QuickJumpShow { letters }` / `QuickJumpHide` for the app overlay.
 - A letter on a local display warps without a grab; Esc or any unshown key cancels; the hotkey is ignored while paused; keys pressed while letters show are consumed only when the pointer is remote (local keys still reach the focused app). The Esc that cancels letters does not count toward the panic double-Esc.
 - Orchestrator decisions (fix in core US12 phase): (a) a letter whose display has left the layout since the letters were shown cancels the jump (hides letters) instead of panicking; (b) when the computer that showed the letters goes offline, desk-mates hide their letters; (c) Wayland: the Linux backend lists the limitation "QuickJump and hotkey crossings can't start from this computer on Wayland; push the pointer off the screen edge instead." under Capability::Capture, and core does not send `Enter` for a QuickJump when the local platform cannot grab (`set_grabbed` unsupported).
+
+## app US10 decisions
+
+- The tray polls `update.check` every 15 min (`updater::POLL`) and shows "Version X — Update to Y available" (click = `update.apply`); `updates.automatic` is handled by the engine.
+- The gui shell sets `installer` + `check_schedule = Some(CheckSchedule::DEFAULT)`; tests use `Updates::default()`.
+- Installer: core's `Bundle {version, bytes}` has no signature, so the app re-signs the core-verified bundle with a one-time minisign key, serves `latest.json` + bundle on 127.0.0.1, and drives tauri-plugin-updater 2.14.0 (runtime `pubkey()`, `target("lan")`), then restarts. Needs `dangerousInsecureTransportProtocol: true` (loopback only). Open item: carry the original signature in `Bundle` instead.

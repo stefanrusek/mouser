@@ -438,10 +438,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: updater tests pass: the tray shows versions and installs a verified LAN bundle.
 
-- [ ] T273 [P] [US10-app] Write unit tests for the updater bridge in `apps/mouser-app/src/updater_tests.rs`: the tray menu shows "Version X — Update to Y available" from `update.check`; applying installs the verified bundle with tauri-plugin-updater 2.14.0 pointed at the fetcher's LAN endpoint, then restarts; with `updates.automatic = true` it applies without asking (Story 10 sc. 1, 4)
-- [ ] T274 [US10-app] Implement the updater bridge in `apps/mouser-app/src/updater.rs`
-- [ ] T275 [US10-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T276 [US10-app] Commit: phase boundary "US10-app" (5.3)
+- [X] T273 [P] [US10-app] Write unit tests for the updater bridge in `apps/mouser-app/src/updater_tests.rs`: the tray menu shows "Version X — Update to Y available" from `update.check`; applying installs the verified bundle with tauri-plugin-updater 2.14.0 pointed at the fetcher's LAN endpoint, then restarts; with `updates.automatic = true` it applies without asking (Story 10 sc. 1, 4)
+- [X] T274 [US10-app] Implement the updater bridge in `apps/mouser-app/src/updater.rs`
+- [X] T275 [US10-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T276 [US10-app] Commit: phase boundary "US10-app" (5.3)
 
 #### Phase 23: US11-app — As a desk user, I want to jump the pointer straight to any display (P3)
 

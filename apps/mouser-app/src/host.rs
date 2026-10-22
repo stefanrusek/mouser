@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use mouser_core::release::{CheckSchedule, Installer};
 use mouser_core::{ControlHandle, Engine, EngineParams};
 use mouser_platform::Platform;
 use serde_json::Value;
@@ -21,6 +22,14 @@ pub struct Host {
     arranger_edge: Mutex<Option<String>>,
 }
 
+/// How this host takes part in updates. The default takes no part: no
+/// installer, and no looking for releases by itself (what tests run with).
+#[derive(Default)]
+pub struct Updates {
+    pub installer: Option<Installer>,
+    pub check_schedule: Option<CheckSchedule>,
+}
+
 impl Host {
     /// Start an engine on `platform`.
     pub async fn start(
@@ -29,15 +38,18 @@ impl Host {
         control_path: PathBuf,
         computer_name: String,
         version: String,
+        updates: Updates,
     ) -> Self {
-        let engine = Engine::start(EngineParams::new(
+        let mut params = EngineParams::new(
             platform.clone(),
             config_dir,
             control_path,
             computer_name,
             version,
-        ))
-        .await;
+        );
+        params.installer = updates.installer;
+        params.check_schedule = updates.check_schedule;
+        let engine = Engine::start(params).await;
         Self {
             control: engine.control(),
             _engine: Mutex::new(engine),

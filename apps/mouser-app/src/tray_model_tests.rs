@@ -61,7 +61,7 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     status.computers.push(one);
     status.computers[1].displays = 2;
 
-    let active = view(&status, Os::MacOs, Appearance::Dark);
+    let active = view(&status, Os::MacOs, Appearance::Dark, None);
     assert_eq!(active.summary, "Mouser is active: 2 computers, 5 displays");
     assert!(!active.icon.paused);
     assert_eq!(active.entries[0].label, active.summary);
@@ -80,7 +80,7 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     status.state = EngineState::Paused;
     status.computers.pop();
     status.computers[0].displays = 1;
-    let paused = view(&status, Os::Windows, Appearance::Dark);
+    let paused = view(&status, Os::Windows, Appearance::Dark, None);
     assert_eq!(paused.summary, "Mouser is paused: 1 computer, 1 display");
     assert!(paused.icon.paused);
     assert_eq!(paused.icon.variant, Variant::Dark);
@@ -98,8 +98,8 @@ async fn the_controller_redraws_on_new_status_and_on_a_theme_change() {
     controller.update_appearance(Appearance::Dark);
     let views = port.views.lock().unwrap();
     assert_eq!(views.len(), 2);
-    assert_eq!(views[0], view(&status, Os::Linux, Appearance::Light));
-    assert_eq!(views[1], view(&status, Os::Linux, Appearance::Dark));
+    assert_eq!(views[0], view(&status, Os::Linux, Appearance::Light, None));
+    assert_eq!(views[1], view(&status, Os::Linux, Appearance::Dark, None));
 }
 
 #[tokio::test(flavor = "multi_thread")]

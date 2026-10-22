@@ -6,10 +6,10 @@ use std::sync::Mutex;
 use mouser_core::ControlHandle;
 use mouser_core::control::status::tray_summary;
 use mouser_platform::Os;
-use mouser_proto::control::{EngineState, Method, Status};
+use mouser_proto::control::{EngineState, Method, Status, UpdateResult};
 use tauri::{AppHandle, Manager, Runtime, Theme};
 
-use crate::windows;
+use crate::{updater, windows};
 
 /// The system's light or dark appearance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +67,7 @@ pub const PAUSE_ID: &str = "pause";
 pub const RESUME_ID: &str = "resume";
 pub const ARRANGE_ID: &str = "arrange";
 pub const HEALTH_ID: &str = "health";
+pub const UPDATE_ID: &str = "update";
 pub const QUIT_ID: &str = "quit";
 
 /// One tray menu line; a line without an id is a heading that does nothing.
@@ -92,8 +93,13 @@ fn count(n: u32, noun: &str) -> String {
     }
 }
 
-/// The tray for `status`.
-pub fn view(status: &Status, os: Os, appearance: Appearance) -> TrayView {
+/// The tray for `status`, with the version line when `update.check` has answered.
+pub fn view(
+    status: &Status,
+    os: Os,
+    appearance: Appearance,
+    update: Option<&UpdateResult>,
+) -> TrayView {
     let summary = tray_summary(status);
     let paused = summary.state == EngineState::Paused;
     let words = if paused { "paused" } else { "active" };
@@ -102,41 +108,47 @@ pub fn view(status: &Status, os: Os, appearance: Appearance) -> TrayView {
         count(summary.computers, "computer"),
         count(summary.displays, "display")
     );
+    let version = update.map(|update| {
+        let (id, label) = updater::line(update);
+        Entry { id, label }
+    });
+    let mut entries = vec![
+        Entry {
+            id: None,
+            label: summary.clone(),
+        },
+        Entry {
+            id: Some(OPEN_ID),
+            label: "Open Mouser".into(),
+        },
+        if paused {
+            Entry {
+                id: Some(RESUME_ID),
+                label: "Resume Mouser".into(),
+            }
+        } else {
+            Entry {
+                id: Some(PAUSE_ID),
+                label: "Pause Mouser".into(),
+            }
+        },
+        Entry {
+            id: Some(ARRANGE_ID),
+            label: "Arrange displays".into(),
+        },
+        Entry {
+            id: Some(HEALTH_ID),
+            label: "Mouser health".into(),
+        },
+        Entry {
+            id: Some(QUIT_ID),
+            label: "Quit Mouser".into(),
+        },
+    ];
+    entries.splice(1..1, version);
     TrayView {
         icon: Icon::choose(os, appearance, paused),
-        entries: vec![
-            Entry {
-                id: None,
-                label: summary.clone(),
-            },
-            Entry {
-                id: Some(OPEN_ID),
-                label: "Open Mouser".into(),
-            },
-            if paused {
-                Entry {
-                    id: Some(RESUME_ID),
-                    label: "Resume Mouser".into(),
-                }
-            } else {
-                Entry {
-                    id: Some(PAUSE_ID),
-                    label: "Pause Mouser".into(),
-                }
-            },
-            Entry {
-                id: Some(ARRANGE_ID),
-                label: "Arrange displays".into(),
-            },
-            Entry {
-                id: Some(HEALTH_ID),
-                label: "Mouser health".into(),
-            },
-            Entry {
-                id: Some(QUIT_ID),
-                label: "Quit Mouser".into(),
-            },
-        ],
+        entries,
         summary,
     }
 }
@@ -146,11 +158,17 @@ pub trait TrayPort: Send + Sync {
     fn apply(&self, view: &TrayView);
 }
 
+struct Last {
+    status: Option<Status>,
+    appearance: Appearance,
+    update: Option<UpdateResult>,
+}
+
 /// Keeps the tray current: the last status and the system appearance.
 pub struct TrayController {
     port: Box<dyn TrayPort>,
     os: Os,
-    last: Mutex<(Option<Status>, Appearance)>,
+    last: Mutex<Last>,
 }
 
 impl TrayController {
@@ -158,24 +176,52 @@ impl TrayController {
         Self {
             port,
             os,
-            last: Mutex::new((None, appearance)),
+            last: Mutex::new(Last {
+                status: None,
+                appearance,
+                update: None,
+            }),
         }
     }
 
     pub fn update_status(&self, status: Status) {
         let mut last = self.last.lock().unwrap();
-        self.port.apply(&view(&status, self.os, last.1));
-        last.0 = Some(status);
+        self.port.apply(&view(
+            &status,
+            self.os,
+            last.appearance,
+            last.update.as_ref(),
+        ));
+        last.status = Some(status);
     }
 
     pub fn update_appearance(&self, appearance: Appearance) {
         let mut last = self.last.lock().unwrap();
-        last.1 = appearance;
+        last.appearance = appearance;
+        self.redraw(&last);
+    }
+
+    /// What `update.check` found. The tray shows it with the next status if
+    /// none has arrived yet.
+    pub fn update_update(&self, update: UpdateResult) {
+        let mut last = self.last.lock().unwrap();
+        last.update = Some(update);
+        if last.status.is_some() {
+            self.redraw(&last);
+        }
+    }
+
+    fn redraw(&self, last: &Last) {
         let status = last
-            .0
+            .status
             .as_ref()
             .expect("a status arrived before any theme change");
-        self.port.apply(&view(status, self.os, appearance));
+        self.port.apply(&view(
+            status,
+            self.os,
+            last.appearance,
+            last.update.as_ref(),
+        ));
     }
 }
 
@@ -200,6 +246,7 @@ pub enum Action {
     Resume,
     Arrange,
     Health,
+    Update,
     Quit,
 }
 
@@ -210,6 +257,7 @@ pub fn action(id: &str) -> Action {
         RESUME_ID => Action::Resume,
         ARRANGE_ID => Action::Arrange,
         HEALTH_ID => Action::Health,
+        UPDATE_ID => Action::Update,
         QUIT_ID => Action::Quit,
         other => panic!("the tray has no menu line \"{other}\""),
     }
