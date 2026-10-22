@@ -666,10 +666,10 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 45: US13-platform-windows — As a desk owner, I want to run Mouser without installing it (P3)
 
-- [ ] T411 [P] [US13-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/portable_tests.rs`: in portable mode `secrets()` is file-backed under `MouserData/`, no registry writes occur, and `limitations` states that portable Mouser cannot control the login screen, permission prompts, Ctrl-Alt-Del or apps running as administrator (D3 item 4)
-- [ ] T412 [US13-platform-windows] Implement portable mode in `crates/mouser-platform-windows/src/portable.rs`
-- [ ] T413 [US13-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T414 [US13-platform-windows] Commit: phase boundary "US13-platform-windows" (5.3)
+- [X] T411 [P] [US13-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/portable_tests.rs`: in portable mode `secrets()` is file-backed under `MouserData/`, no registry writes occur, and `limitations` states that portable Mouser cannot control the login screen, permission prompts, Ctrl-Alt-Del or apps running as administrator (D3 item 4)
+- [X] T412 [US13-platform-windows] Implement portable mode in `crates/mouser-platform-windows/src/portable.rs`
+- [X] T413 [US13-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T414 [US13-platform-windows] Commit: phase boundary "US13-platform-windows" (5.3)
 
 ### Lane: service-win
 
