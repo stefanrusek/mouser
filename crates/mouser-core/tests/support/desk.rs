@@ -170,6 +170,11 @@ pub struct Node {
 
 static PIPES: AtomicU64 = AtomicU64::new(0);
 
+/// The port a default-configured engine listens on. Tests that start an
+/// engine without choosing a port take it, so a probe that finds it free is
+/// wrong a moment later.
+const DEFAULT_PORT: u16 = 32121;
+
 /// A UDP port nobody is using. Taken from a range the operating system never
 /// hands out as an ephemeral port (the relay sockets of other computers
 /// would otherwise take it between the probe and the engine's bind), at an
@@ -180,7 +185,7 @@ fn free_port() -> u16 {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
     })
-    .find(|port| std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .find(|port| *port != DEFAULT_PORT && std::net::UdpSocket::bind(("::", *port)).is_ok())
     .expect("an endless iterator")
 }
 

@@ -121,6 +121,11 @@ pub(crate) struct TestNode {
     pub sim: Option<SimNode>,
 }
 
+/// The port a default-configured engine listens on. Tests that start an
+/// engine without choosing a port take it, so a probe that finds it free is
+/// wrong a moment later.
+const DEFAULT_PORT: u16 = 32121;
+
 /// A UDP port nobody is using. Taken from a range the operating system never
 /// hands out as an ephemeral port (the relay sockets of other computers
 /// would otherwise take it between the probe and the engine's bind), at an
@@ -131,7 +136,7 @@ pub(crate) fn free_port() -> u16 {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
     })
-    .find(|port| std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .find(|port| *port != DEFAULT_PORT && std::net::UdpSocket::bind(("::", *port)).is_ok())
     .expect("an endless iterator")
 }
 
@@ -735,6 +740,16 @@ pub(crate) fn epoch_of(node: &TestNode) -> u64 {
 /// handshake that stalls, so this is only the backstop for a side that is
 /// never told.
 const HANDSHAKE: Duration = Duration::from_secs(30);
+
+/// An endpoint on an ephemeral IPv4 loopback port, for a test that dials
+/// 127.0.0.1. On macOS, datagrams to an IPv4 address through the
+/// dual-stack `[::]` socket the product binds are now and then lost in both
+/// directions for a whole handshake (about 1 in 400 runs, measured), which
+/// has nothing to do with what such a test checks; a plain IPv4 socket is
+/// not affected.
+pub(crate) fn bind_loopback(identity: &crate::identity::Identity) -> Transport {
+    Transport::bind_first(identity, &[std::net::Ipv4Addr::LOCALHOST.into()], 0)
+}
 
 /// `dialer` connects to `to` and `acceptor` accepts: the dialled and the
 /// accepted connection. Never waits forever: if either side fails or the

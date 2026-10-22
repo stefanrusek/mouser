@@ -103,8 +103,14 @@ pub struct Node {
 /// socket can make the engine's own bind fail.
 fn free_port() -> u16 {
     static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+    // 32121 is the default port, which every engine started without a chosen
+    // port takes.
+    std::iter::repeat_with(|| {
+        let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+    })
+    .find(|port| *port != 32121)
+    .expect("an endless iterator")
 }
 
 /// A user's home with the environment that makes the default control path

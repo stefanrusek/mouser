@@ -36,6 +36,9 @@ pub struct UpdateWorld {
     elected: &'static str,
     /// Computers whose next install fails.
     failing: Arc<Mutex<Vec<String>>>,
+    /// The computer whose first install was made to fail (it leaves
+    /// `failing` as soon as that install has failed).
+    failed: Option<String>,
 }
 
 impl fmt::Debug for UpdateWorld {
@@ -54,6 +57,7 @@ impl UpdateWorld {
             bundles: BTreeMap::new(),
             elected: "",
             failing: Arc::default(),
+            failed: None,
         }
     }
 
@@ -116,6 +120,30 @@ impl UpdateWorld {
             assert!(
                 Instant::now() < end,
                 "timed out waiting for {count} installs"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    /// Wait until every computer in `names` has been given the 0.2.0 bundle.
+    /// The suite's installer does not restart anyone, so a computer still on
+    /// 0.1.0 can be offered the release again and install it a second time:
+    /// how many installs there are, and in which order, is not an outcome.
+    async fn installed_by(&self, names: &[&str]) {
+        let end = Instant::now() + WAIT;
+        loop {
+            let installed = self.installed.lock().unwrap().clone();
+            let done = names.iter().all(|name| {
+                installed
+                    .iter()
+                    .any(|(who, bundle)| who == name && bundle.version == "0.2.0")
+            });
+            if done {
+                return;
+            }
+            assert!(
+                Instant::now() < end,
+                "{names:?} did not all install 0.2.0: {installed:?}"
             );
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
@@ -274,13 +302,11 @@ async fn next_check(world: &mut UpdateWorld) {
     "it downloads the release and the other desk computers update from it over the local network without downloading it themselves"
 )]
 async fn downloaded_once(world: &mut UpdateWorld) {
-    world.installs(3).await;
+    world.installed_by(&NAMES).await;
     let installed = world.installed.lock().unwrap().clone();
-    for name in NAMES {
-        let mine: Vec<_> = installed.iter().filter(|(who, _)| who == name).collect();
-        assert_eq!(mine.len(), 1, "{name} installs once: {installed:?}");
-        assert_eq!(mine[0].1.version, "0.2.0");
-        assert!(mine[0].1.bytes.starts_with(b"Mouser 0.2.0 for "));
+    for (who, bundle) in &installed {
+        assert_eq!(bundle.version, "0.2.0", "{who}: {installed:?}");
+        assert!(bundle.bytes.starts_with(b"Mouser 0.2.0 for "), "{who}");
     }
     let requests = world.host().requests.lock().unwrap().clone();
     let count = |path: &str| requests.iter().filter(|r| r.as_str() == path).count();
@@ -355,7 +381,8 @@ async fn automatic_desk(world: &mut UpdateWorld) {
 async fn failing_desk(world: &mut UpdateWorld) {
     world.desk(true).await;
     let failing = others(world)[0].to_string();
-    world.failing.lock().unwrap().push(failing);
+    world.failing.lock().unwrap().push(failing.clone());
+    world.failed = Some(failing);
 }
 
 #[when("the elected computer finds the release and restarts as the new version")]
@@ -367,27 +394,27 @@ async fn fetcher_restarts(world: &mut UpdateWorld) {
         .call(Method::UpdateCheck, json!({}))
         .await;
     // The failing computer's install is not recorded.
-    let expected = if world.failing.lock().unwrap().is_empty() {
-        3
-    } else {
-        2
-    };
-    world.installs(expected).await;
+    let expected: Vec<_> = NAMES
+        .into_iter()
+        .filter(|name| world.failed.as_deref() != Some(*name))
+        .collect();
+    world.installed_by(&expected).await;
     world.lab.node(fetcher).set_version("0.2.0");
     world.lab.restart(fetcher).await;
 }
 
 #[then("every computer installed it, the elected one restarting only after the others fetched it")]
 async fn others_first(world: &mut UpdateWorld) {
-    let installed = world.installed.lock().unwrap().clone();
-    assert_eq!(installed.len(), 3, "{installed:?}");
     // The fetcher waits until the others have fetched, not until they have
     // finished installing, so the order of the installs is not fixed.
-    for name in NAMES {
-        let mine: Vec<_> = installed.iter().filter(|(who, _)| *who == name).collect();
-        assert_eq!(mine.len(), 1, "{name}: {installed:?}");
-        assert_eq!(mine[0].1.version, "0.2.0");
-    }
+    world.installed_by(&NAMES).await;
+    let installed = world.installed.lock().unwrap().clone();
+    assert!(
+        installed
+            .iter()
+            .all(|(_, bundle)| bundle.version == "0.2.0"),
+        "{installed:?}"
+    );
 }
 
 #[then("the computer whose install failed updates without the owner visiting it")]
@@ -423,7 +450,7 @@ async fn updated_over_lan(world: &mut UpdateWorld) {
         .node(fetcher)
         .call(Method::UpdateCheck, json!({}))
         .await;
-    world.installs(3).await;
+    world.installed_by(&NAMES).await;
     world.installed.lock().unwrap().clear();
 }
 
@@ -443,11 +470,13 @@ async fn relay_restarts(world: &mut UpdateWorld) {
 
 #[then("the older one updates from it")]
 async fn older_updates(world: &mut UpdateWorld) {
-    world.installs(1).await;
-    let installed = world.installed.lock().unwrap().clone();
     let older = others(world)[1];
-    assert_eq!(installed.len(), 1, "{installed:?}");
-    assert_eq!(installed[0].0, older);
-    assert_eq!(installed[0].1.version, "0.2.0");
-    assert!(installed[0].1.bytes.starts_with(b"Mouser 0.2.0 for "));
+    world.installed_by(&[older]).await;
+    let installed = world.installed.lock().unwrap().clone();
+    assert!(
+        installed
+            .iter()
+            .any(|(who, bundle)| *who == older && bundle.bytes.starts_with(b"Mouser 0.2.0 for ")),
+        "{installed:?}"
+    );
 }

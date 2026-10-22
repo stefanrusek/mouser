@@ -40,7 +40,10 @@ async fn connected() -> (
     Connection,
 ) {
     let (ia, ib) = (identity(1), identity(2));
-    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
+    let (a, b) = (
+        crate::testing::bind_loopback(&ia),
+        crate::testing::bind_loopback(&ib),
+    );
     let (dialed, accepted) =
         crate::testing::handshake(&a, &b, loopback(&b), Some(ib.computer_id())).await;
     (ia, ib, a, b, dialed, accepted)
@@ -75,7 +78,10 @@ async fn the_connection_speaks_the_mouser_alpn_and_identifies_both_peers() {
 #[tokio::test]
 async fn a_peer_whose_key_is_not_the_expected_computer_is_rejected() {
     let (ia, ib) = (identity(1), identity(2));
-    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
+    let (a, b) = (
+        crate::testing::bind_loopback(&ia),
+        crate::testing::bind_loopback(&ib),
+    );
     let wrong = ComputerId([0xee; 16]);
     let to = loopback(&b);
     let server = tokio::spawn(async move { Transport::complete(b.accept().await.unwrap()).await });
@@ -90,7 +96,10 @@ async fn a_peer_whose_key_is_not_the_expected_computer_is_rejected() {
 #[tokio::test]
 async fn an_unknown_peer_can_be_dialled_without_an_expected_id() {
     let (ia, ib) = (identity(1), identity(2));
-    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
+    let (a, b) = (
+        crate::testing::bind_loopback(&ia),
+        crate::testing::bind_loopback(&ib),
+    );
     let (dialed, _accepted) = crate::testing::handshake(&a, &b, loopback(&b), None).await;
     assert_eq!(peer_id(&dialed), ib.computer_id());
 }

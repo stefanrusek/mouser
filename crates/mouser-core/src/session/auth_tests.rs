@@ -2,7 +2,6 @@ use mouser_proto::ids::{ComputerId, DeskId};
 
 use super::auth::{export, proof, verify};
 use crate::identity::Identity;
-use crate::transport::Transport;
 
 const KEY: [u8; 32] = [7; 32];
 const EXPORTER: [u8; 32] = [9; 32];
@@ -42,7 +41,10 @@ fn the_proof_is_bound_to_the_connection_the_desk_and_the_sender() {
 #[tokio::test]
 async fn both_ends_of_a_connection_derive_the_same_transcript() {
     let (ia, ib) = (Identity::from_seed([1; 32]), Identity::from_seed([2; 32]));
-    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
+    let (a, b) = (
+        crate::testing::bind_loopback(&ia),
+        crate::testing::bind_loopback(&ib),
+    );
     let to = std::net::SocketAddr::from(([127, 0, 0, 1], b.local_addr().port()));
     let (dialed, accepted) = crate::testing::handshake(&a, &b, to, None).await;
     assert_eq!(export(&dialed), export(&accepted));
