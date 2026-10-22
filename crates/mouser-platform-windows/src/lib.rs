@@ -143,10 +143,10 @@ impl WinPlatform {
 
     fn problem_sink(&self) -> capture::Problems {
         let sink = self.problems.clone();
-        Arc::new(move |text| {
+        Arc::new(move |problem| {
             if let Some(listener) = sink.lock().unwrap().as_ref() {
                 // A listener that has gone away just means nobody is listening.
-                let _ = listener.tx.send(PlatformProblem::Raised(text));
+                let _ = listener.tx.send(problem);
             }
         })
     }

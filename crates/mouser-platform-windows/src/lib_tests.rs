@@ -1,5 +1,6 @@
 use super::*;
 use mouser_platform::Error;
+use mouser_platform::PlatformProblem::{Cleared, Raised};
 
 fn private_settings(dir: &std::path::Path) -> Settings {
     let root = format!(r"Software\MouserTest\lib-{}", std::process::id());
@@ -93,17 +94,19 @@ fn problems_reach_the_listener_when_there_is_one() {
     let p = WinPlatform::new();
     let sink = p.problem_sink();
     // Nobody listens yet.
-    sink("unheard".into());
+    sink(Raised("unheard".into()));
     let (tx, rx) = std::sync::mpsc::channel();
     let watch = Platform::watch_problems(&p, tx).unwrap();
-    sink("heard".into());
+    sink(Raised("heard".into()));
     assert_eq!(
         rx.try_recv().unwrap(),
         mouser_platform::PlatformProblem::Raised("heard".into())
     );
+    sink(Cleared("heard".into()));
+    assert_eq!(rx.try_recv().unwrap(), Cleared("heard".into()));
     // Dropping the handle unregisters the listener.
     drop(watch);
-    sink("after".into());
+    sink(Raised("after".into()));
     assert_eq!(
         rx.try_recv(),
         Err(std::sync::mpsc::TryRecvError::Disconnected)
@@ -117,7 +120,7 @@ fn a_listener_that_went_away_is_not_an_error() {
     let (tx, rx) = std::sync::mpsc::channel();
     let _watch = Platform::watch_problems(&p, tx).unwrap();
     drop(rx);
-    sink("gone".into());
+    sink(Raised("gone".into()));
 }
 
 #[test]
@@ -128,7 +131,7 @@ fn a_newer_listener_replaces_an_older_one_and_outlives_its_handle() {
     let old = Platform::watch_problems(&p, old_tx).unwrap();
     let (new_tx, new_rx) = std::sync::mpsc::channel();
     let _new = Platform::watch_problems(&p, new_tx).unwrap();
-    sink("to the new".into());
+    sink(Raised("to the new".into()));
     assert_eq!(
         new_rx.try_recv().unwrap(),
         mouser_platform::PlatformProblem::Raised("to the new".into())
@@ -136,7 +139,7 @@ fn a_newer_listener_replaces_an_older_one_and_outlives_its_handle() {
     assert!(old_rx.try_recv().is_err());
     // Letting go of the replaced listener leaves the current one in place.
     drop(old);
-    sink("still heard".into());
+    sink(Raised("still heard".into()));
     assert_eq!(
         new_rx.try_recv().unwrap(),
         mouser_platform::PlatformProblem::Raised("still heard".into())

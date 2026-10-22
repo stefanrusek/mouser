@@ -1,6 +1,8 @@
 use crate::capture::*;
 use crate::inject::WinInject;
-use mouser_platform::{Error, InputCapture, InputInject, LocalDisplay, LocalInput};
+use mouser_platform::{
+    Error, InputCapture, InputInject, LocalDisplay, LocalInput, PlatformProblem,
+};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
@@ -483,7 +485,9 @@ fn the_watchdog_reinstalls_a_hook_the_system_removed_and_raises_a_problem() {
     let mut capture = WinCapture::with_interval(sink, Duration::from_millis(100));
     capture.start(tx).unwrap();
     capture.drop_hooks();
-    let problem = prx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let PlatformProblem::Raised(problem) = prx.recv_timeout(Duration::from_secs(5)).unwrap() else {
+        panic!("a lost hook is raised");
+    };
     assert!(problem.contains("Mouser lost its hold"), "{problem}");
     // The hooks are back: input reaches them again.
     let end = Instant::now() + Duration::from_secs(5);
@@ -557,6 +561,8 @@ fn a_pointer_that_cannot_be_hidden_is_a_problem_not_a_failed_grab() {
     set_pointer_hidden(false, &problems, |_| Ok(()));
     assert_eq!(
         *seen.lock().unwrap(),
-        ["Mouser could not change the pointer on this PC: CreateCursor: denied"]
+        [PlatformProblem::Raised(
+            "Mouser could not change the pointer on this PC: CreateCursor: denied".into()
+        )]
     );
 }

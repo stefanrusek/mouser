@@ -20,7 +20,7 @@
 use crate::displays::{self, DisplayCache};
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
 use crate::{dpi, keymap};
-use mouser_platform::{Error, InputCapture, LocalDisplay, LocalInput, Result};
+use mouser_platform::{Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -56,7 +56,7 @@ const WATCHDOG_INTERVAL: Duration = Duration::from_secs(5);
 const PROBE_WAIT: Duration = Duration::from_millis(500);
 
 /// Reports a Problem to whoever listens (the app shows it).
-pub(crate) type Problems = Arc<dyn Fn(String) + Send + Sync>;
+pub(crate) type Problems = Arc<dyn Fn(PlatformProblem) + Send + Sync>;
 
 /// Input as the hooks see it, in physical pixels and wheel units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,11 +315,11 @@ fn watchdog_thread(
         if !probe_hooks(&shared, PROBE_WAIT) {
             unsafe { PostThreadMessageW(hook_thread_id, WM_REINSTALL, WPARAM(0), LPARAM(0)) }
                 .expect("reinstall hooks");
-            problems(
+            problems(PlatformProblem::Raised(
                 "Mouser lost its hold on the keyboard and mouse and took it back; \
                  input may have briefly leaked to this PC."
                     .into(),
-            );
+            ));
         }
     }
 }
@@ -342,9 +342,9 @@ pub(crate) fn set_pointer_hidden(
     change: impl FnOnce(bool) -> Result<()>,
 ) {
     if let Err(e) = change(hidden) {
-        problems(format!(
+        problems(PlatformProblem::Raised(format!(
             "Mouser could not change the pointer on this PC: {e}"
-        ));
+        )));
     }
 }
 
