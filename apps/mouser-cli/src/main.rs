@@ -5,6 +5,7 @@ mod desk;
 mod logs;
 mod pause;
 mod status;
+mod update;
 
 use std::fmt;
 use std::process::ExitCode;
@@ -137,6 +138,11 @@ enum Command {
         #[command(subcommand)]
         action: config::ConfigCommand,
     },
+    /// Check for, or install, a Mouser update.
+    Update {
+        #[command(subcommand)]
+        action: Option<update::UpdateCommand>,
+    },
     /// Diagnostic logging (path and tail work when Mouser is not running).
     Logs {
         #[command(subcommand)]
@@ -151,6 +157,7 @@ async fn run(cli: Cli) -> Result<(), Failure> {
     match cli.command {
         Command::Config { action } => config::run(connection.ok(), json, action).await,
         Command::Logs { action } => logs::run(connection.ok(), json, action).await,
+        Command::Update { action } => update::run(&mut connection?, action).await,
         Command::Status => status::run(&mut connection?).await,
         Command::Pause => pause::run(&mut connection?, true).await,
         Command::Resume => pause::run(&mut connection?, false).await,

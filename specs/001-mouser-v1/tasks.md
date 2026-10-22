@@ -508,10 +508,10 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 29: US10-cli — As a desk owner, I want every computer on my desk to stay up to date without visiting each one (P3)
 
-- [ ] T308 [P] [US10-cli] Write tests `apps/mouser-cli/tests/contract_cli_update.rs`: `mouser update check` prints current/available versions; `mouser update apply` calls `update.apply` (Story 10 sc. 4)
-- [ ] T309 [US10-cli] Implement `update` in `apps/mouser-cli/src/update.rs`
-- [ ] T310 [US10-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T311 [US10-cli] Commit: phase boundary "US10-cli" (5.3)
+- [X] T308 [P] [US10-cli] Write tests `apps/mouser-cli/tests/contract_cli_update.rs`: `mouser update check` prints current/available versions; `mouser update apply` calls `update.apply` (Story 10 sc. 4)
+- [X] T309 [US10-cli] Implement `update` in `apps/mouser-cli/src/update.rs`
+- [X] T310 [US10-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T311 [US10-cli] Commit: phase boundary "US10-cli" (5.3)
 
 #### Phase 30: US12-cli — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 

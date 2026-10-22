@@ -20,6 +20,8 @@ use mouser_testkit::{SimNet, SimNode, VirtualPlatform};
 use serde_json::{Value, json};
 use tokio::process::{Child, Command};
 
+pub mod release;
+
 const WAIT: Duration = Duration::from_secs(20);
 
 /// In-process stand-in for the network's mDNS (as in mouser-core's harness).
@@ -267,10 +269,22 @@ impl Lab {
 
     /// Like `add`, on a platform the test has already set up.
     pub async fn add_with(&self, name: &str, platform: VirtualPlatform) -> Node {
+        self.add_tuned(name, platform, |_| {}, |_| {}).await
+    }
+
+    /// Like `add`, with the config and engine parameters adjusted first.
+    pub async fn add_tuned(
+        &self,
+        name: &str,
+        platform: VirtualPlatform,
+        tune_config: impl FnOnce(&mut Config),
+        tune_params: impl FnOnce(&mut EngineParams),
+    ) -> Node {
         let mut node = self.offline(name);
         let port = free_port();
         let mut config = Config::default();
         config.advanced.port = u32::from(port);
+        tune_config(&mut config);
         mouser_core::config::save(node._config.path(), &config);
         let sim = self
             .net
@@ -288,6 +302,7 @@ impl Lab {
             me: sim.clone(),
             own: Mutex::new(None),
         }));
+        tune_params(&mut params);
         node.sim = sim;
         let engine = Engine::start(params).await;
         node.id = Some(engine.computer_id());

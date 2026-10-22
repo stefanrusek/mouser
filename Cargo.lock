@@ -3201,8 +3201,11 @@ dependencies = [
 name = "mouser-cli"
 version = "0.1.1"
 dependencies = [
+ "base64 0.22.1",
+ "blake2",
  "clap",
  "cucumber",
+ "ed25519-dalek",
  "jsonschema",
  "mouser-core",
  "mouser-platform",
