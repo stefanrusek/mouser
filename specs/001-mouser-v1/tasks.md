@@ -787,6 +787,10 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 - [X] T487 Configure Linux packaging in `apps/mouser-app/linux/com.mouser.app.desktop` and the AppImage/deb targets in `tauri.conf.json` with app ID `com.mouser.app`
 - [X] T488 Create `.github/workflows/release.yml`: on tag `v*`, build and bundle on macOS (signed + notarized + stapled, D4), Windows (unsigned until Authenticode is provided, D4) and Ubuntu; sign updater bundles with the minisign key from secret `TAURI_SIGNING_PRIVATE_KEY`; generate `latest.json` matching `contracts/release-manifest.schema.json`; upload all assets to the GitHub release
 - [X] T489 Generate the minisign updater key pair with `cargo tauri signer generate`, store the private key as repository secret `TAURI_SIGNING_PRIVATE_KEY` (owner confirms), and set the public key in `crates/mouser-core/src/release/pubkey.rs` and `apps/mouser-app/tauri.conf.json`
+- [ ] T506 [P] Write tests for the app's `--headless` mode in `apps/mouser-app/src/headless_tests.rs`: argument parsing selects headless; headless starts the engine with `EngineParams.secrets = Some(FileSecrets)` and the machine config dir (macOS `/Library/Application Support/Mouser`), creates no window or tray, and runs until signalled (foundational-notes "core US12 decisions")
+- [ ] T507 Implement `--headless` in `apps/mouser-app/src/headless.rs` and the binary entry point (the macOS LaunchAgent runs `[exe, "--headless"]`)
+- [ ] T508 [P] Write tests for "Allow control at the login screen" (macOS): a settings action that runs `Engine::export_machine_scope` and `LoginAgent::system(exe).install()` through one OS administrator prompt; refusal leaves nothing changed and is explained; the action is offered only on macOS
+- [ ] T509 Implement "Allow control at the login screen" in `apps/mouser-app/src/login_screen.rs` and the settings UI (never run the privileged step in tests)
 - [ ] T490 Run `cargo xtask gate --all --lane convergence` after the packaging changes (verification only; must stay green before E2E)
 
 ### E2E — J1 "two real computers on a LAN"
