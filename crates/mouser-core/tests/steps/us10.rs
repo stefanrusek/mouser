@@ -389,15 +389,25 @@ async fn others_first(world: &mut UpdateWorld) {
 
 #[then("the computer whose install failed updates without the owner visiting it")]
 async fn failed_one_updates(world: &mut UpdateWorld) {
-    world.installs(3).await;
-    let installed = world.installed.lock().unwrap().clone();
     let failed = others(world)[0];
-    assert!(
-        installed
+    // Computers that did install stay on the old version in this suite (the
+    // installer does not restart them), so they may be offered the release
+    // again too: wait for this computer's own install.
+    let end = Instant::now() + WAIT;
+    loop {
+        let installed = world.installed.lock().unwrap().clone();
+        if installed
             .iter()
-            .any(|(who, bundle)| who == failed && bundle.version == "0.2.0"),
-        "{failed} never updated: {installed:?}"
-    );
+            .any(|(who, bundle)| who == failed && bundle.version == "0.2.0")
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < end,
+            "{failed} never updated: {installed:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
     assert!(world.failing.lock().unwrap().is_empty());
 }
 
