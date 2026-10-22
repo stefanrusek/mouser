@@ -3253,6 +3253,7 @@ dependencies = [
  "mouser-platform",
  "mouser-platform-linux",
  "mouser-platform-macos",
+ "mouser-platform-windows",
  "mouser-proto",
  "mouser-testkit",
  "serde",

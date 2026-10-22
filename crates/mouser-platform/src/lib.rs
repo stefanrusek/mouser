@@ -170,6 +170,12 @@ pub trait Platform: Send + Sync + 'static {
     fn interfaces(&self) -> Vec<NetInterface>;
     /// Fires on any address/interface change.
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle>;
+    /// Plain-language text for each problem the platform notices by itself
+    /// (e.g. Windows took the capture hooks away and Mouser reinstalled them).
+    /// Default: this platform never reports any.
+    fn watch_problems(&self, _tx: Sender<String>) -> Result<WatchHandle> {
+        Ok(WatchHandle::new(|| {}))
+    }
     /// Windows UIPI detection; `false` elsewhere.
     fn foreground_elevated(&self) -> bool;
     /// Device key + desk keys (data-model.md).

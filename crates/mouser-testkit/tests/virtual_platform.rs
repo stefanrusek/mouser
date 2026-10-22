@@ -192,6 +192,18 @@ fn network_changes_fire_watchers_and_replace_interfaces() {
 }
 
 #[test]
+fn reported_problems_reach_watchers_until_dropped() {
+    let vp = VirtualPlatform::new();
+    let (tx, rx) = channel();
+    let handle = vp.watch_problems(tx).unwrap();
+    vp.report_problem("lost the keyboard");
+    assert_eq!(rx.try_recv().unwrap(), "lost the keyboard");
+    drop(handle);
+    vp.report_problem("again");
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
 fn state_flags_secure_input_secrets_autostart() {
     let vp = VirtualPlatform::default();
     assert!(!vp.foreground_is_fullscreen());

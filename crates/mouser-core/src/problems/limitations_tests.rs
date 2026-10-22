@@ -58,3 +58,29 @@ async fn every_limitation_is_a_problem_and_listed_on_the_computer() {
     texts.sort();
     assert_eq!(listed, texts);
 }
+
+#[tokio::test]
+async fn a_problem_the_platform_notices_is_raised_once_with_its_text() {
+    let lab = Lab::new();
+    let platform = VirtualPlatform::new();
+    let node = lab.start_with("Alpha", platform.clone(), |_| {}).await;
+    let mut notes = node.engine.control().notifications();
+    let text = "Mouser lost its hold on the keyboard and mouse and took it back.";
+    platform.report_problem(text);
+    platform.report_problem(text);
+    let problem = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
+    assert_eq!(problem["kind"], "platform_limitation");
+    assert_eq!(
+        problem["problem_id"],
+        "platform_limitation:platform_problem"
+    );
+    assert_eq!(problem["message"], text);
+    let s = status(&node).await;
+    let raised: Vec<_> = s
+        .problems
+        .iter()
+        .filter(|p| p.problem_id == "platform_limitation:platform_problem")
+        .collect();
+    assert_eq!(raised.len(), 1);
+    assert_eq!(raised[0].computer, node.engine.computer_id());
+}

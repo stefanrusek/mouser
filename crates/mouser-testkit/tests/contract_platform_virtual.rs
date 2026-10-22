@@ -110,6 +110,13 @@ impl mouser_platform::Platform for NoGrab {
         self.0.watch_network(tx)
     }
 
+    fn watch_problems(
+        &self,
+        tx: std::sync::mpsc::Sender<String>,
+    ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
+        self.0.watch_problems(tx)
+    }
+
     fn foreground_elevated(&self) -> bool {
         self.0.foreground_elevated()
     }

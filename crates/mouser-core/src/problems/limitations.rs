@@ -30,4 +30,15 @@ impl Ctx {
             );
         }
     }
+
+    /// Raise a problem the platform noticed by itself while running.
+    pub(crate) fn raise_platform_problem(&self, text: String) {
+        self.problems.raise(
+            ProblemKind::PlatformLimitation,
+            "platform_problem",
+            self.me(),
+            text,
+            None,
+        );
+    }
 }

@@ -56,6 +56,7 @@ struct State {
 
     interfaces: Vec<NetInterface>,
     network_watchers: Watchers<()>,
+    problem_watchers: Watchers<String>,
     next_watch: u64,
 
     fullscreen: bool,
@@ -142,6 +143,7 @@ impl VirtualPlatform {
             clipboard_count: 0,
             interfaces: default_interfaces(),
             network_watchers: Vec::new(),
+            problem_watchers: Vec::new(),
             next_watch: 0,
             fullscreen: false,
             elevated: false,
@@ -256,6 +258,14 @@ impl VirtualPlatform {
     pub fn trigger_network_change(&self) {
         for (_, tx) in &self.lock().network_watchers {
             let _ = tx.send(());
+        }
+    }
+
+    /// Tell every `watch_problems` subscriber about a problem the platform
+    /// noticed by itself.
+    pub fn report_problem(&self, text: &str) {
+        for (_, tx) in &self.lock().problem_watchers {
+            let _ = tx.send(text.to_string());
         }
     }
 
@@ -427,6 +437,10 @@ impl Platform for VirtualPlatform {
 
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle> {
         Ok(self.watch(|s| &mut s.network_watchers, tx))
+    }
+
+    fn watch_problems(&self, tx: Sender<String>) -> Result<WatchHandle> {
+        Ok(self.watch(|s| &mut s.problem_watchers, tx))
     }
 
     fn foreground_elevated(&self) -> bool {

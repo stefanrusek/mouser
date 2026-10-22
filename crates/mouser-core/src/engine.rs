@@ -385,6 +385,8 @@ pub struct Engine {
     watch: mouser_platform::WatchHandle,
     /// Dropping it stops watching the network.
     _network: mouser_platform::WatchHandle,
+    /// Dropping it stops listening for problems the platform notices.
+    _problems: mouser_platform::WatchHandle,
 }
 
 impl Engine {
@@ -544,6 +546,21 @@ impl Engine {
                 }
             })
             .expect("network watcher starts");
+        let (problem_tx, problem_rx) = std::sync::mpsc::channel();
+        let problems = ctx
+            .platform
+            .watch_problems(problem_tx)
+            .expect("platform problems can be watched");
+        let reporter = ctx.clone();
+        std::thread::Builder::new()
+            .name("mouser-platform-problems".into())
+            .spawn(move || {
+                // Ends when the watch is dropped.
+                for text in problem_rx {
+                    reporter.raise_platform_problem(text);
+                }
+            })
+            .expect("platform problem watcher starts");
         ctx.spawn(network_loop(ctx.clone(), changed));
         ctx.spawn(accept_loop(ctx.clone()));
         ctx.spawn(reconcile_loop(ctx.clone(), seen));
@@ -557,6 +574,7 @@ impl Engine {
             control_path: params.control_path,
             watch,
             _network: network,
+            _problems: problems,
         }
     }
 
