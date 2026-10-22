@@ -115,6 +115,12 @@ fn create_private_dir(dir: &Path) {
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{})",
         current_user_sid()
     );
+    protect_dir(dir, &sddl);
+}
+
+/// Replaces the DACL of `dir` with the one `sddl` describes. Existing files
+/// and folders below pick up the inheritable entries.
+pub(crate) fn protect_dir(dir: &Path, sddl: &str) {
     unsafe {
         let mut sd = PSECURITY_DESCRIPTOR::default();
         ConvertStringSecurityDescriptorToSecurityDescriptorW(

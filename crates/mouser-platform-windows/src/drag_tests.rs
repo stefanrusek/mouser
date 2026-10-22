@@ -35,7 +35,7 @@ use windows::core::{PCWSTR, w};
 
 /// Drags use the machine's one pointer and button, so tests that move it take
 /// turns with every other test that does.
-fn live() -> std::sync::MutexGuard<'static, ()> {
+fn live() -> crate::LiveInput {
     crate::live_input()
 }
 

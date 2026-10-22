@@ -64,7 +64,7 @@ fn sddl_trustee(sid: &str) -> String {
 }
 
 /// The directory's DACL as SDDL, and the current user as SDDL writes them.
-fn dacl_sddl(dir: &std::path::Path) -> (String, String) {
+pub(crate) fn dacl_sddl(dir: &std::path::Path) -> (String, String) {
     use windows::Win32::Foundation::{HLOCAL, LocalFree};
     use windows::Win32::Security::Authorization::{
         ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,

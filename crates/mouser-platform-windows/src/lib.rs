@@ -26,6 +26,7 @@ mod keymap;
 mod net;
 mod netwatch;
 mod permissions;
+mod portable;
 mod secrets;
 mod uipi;
 mod vfiles;
@@ -125,6 +126,7 @@ pub struct WinPlatform {
     settings: Settings,
     problems: Arc<Mutex<Option<Listener>>>,
     listeners: AtomicU64,
+    portable: Option<portable::Portable>,
 }
 
 /// Who hears the problems; `id` tells a listener from the one that replaced
@@ -156,6 +158,7 @@ impl WinPlatform {
             settings,
             problems: Arc::new(Mutex::new(None)),
             listeners: AtomicU64::new(0),
+            portable: None,
         }
     }
 }
@@ -166,7 +169,7 @@ impl Default for WinPlatform {
     }
 }
 
-fn limitation(capability: Capability, text: &str) -> Limitation {
+pub(crate) fn limitation(capability: Capability, text: &str) -> Limitation {
     Limitation {
         capability,
         text: text.into(),
@@ -175,20 +178,26 @@ fn limitation(capability: Capability, text: &str) -> Limitation {
 
 impl Platform for WinPlatform {
     fn info(&self) -> PlatformInfo {
+        let mut limitations = vec![
+            limitation(
+                Capability::Inject,
+                "Some games and remote-desktop apps ignore Mouser's input on this PC.",
+            ),
+            limitation(
+                Capability::SecureAttention,
+                "Ctrl-Alt-Del can't be sent to this PC yet.",
+            ),
+        ];
+        limitations.extend(
+            self.portable
+                .iter()
+                .flat_map(portable::Portable::limitations),
+        );
         PlatformInfo {
             os: Os::Windows,
             version: windows_version(),
             session: SessionType::Native,
-            limitations: vec![
-                limitation(
-                    Capability::Inject,
-                    "Some games and remote-desktop apps ignore Mouser's input on this PC.",
-                ),
-                limitation(
-                    Capability::SecureAttention,
-                    "Ctrl-Alt-Del can't be sent to this PC yet.",
-                ),
-            ],
+            limitations,
         }
     }
 
@@ -256,10 +265,16 @@ impl Platform for WinPlatform {
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
-        Box::new(secrets::DpapiStore::new(self.settings.secrets_dir.clone()))
+        match &self.portable {
+            Some(p) => Box::new(portable::FileSecrets::new(&p.data_dir)),
+            None => Box::new(secrets::DpapiStore::new(self.settings.secrets_dir.clone())),
+        }
     }
 
     fn autostart(&self) -> Box<dyn Autostart> {
+        if self.portable.is_some() {
+            return Box::new(portable::NoAutostart);
+        }
         Box::new(autostart::RunKey::new(
             &self.settings.run_key,
             &self.settings.approved_key,
@@ -301,6 +316,8 @@ mod netwatch_tests;
 #[cfg(test)]
 mod permissions_tests;
 #[cfg(test)]
+mod portable_tests;
+#[cfg(test)]
 mod secrets_tests;
 
 #[cfg(test)]
@@ -309,8 +326,23 @@ mod uipi_tests;
 /// Tests that send or capture real input share the machine's one input queue
 /// and one set of hooks, so they take turns.
 #[cfg(test)]
-pub(crate) fn live_input() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn live_input() -> LiveInput {
     static LIVE: Mutex<()> = Mutex::new(());
-    LIVE.lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    LiveInput(
+        LIVE.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
+/// Holds the input lock; on release it waits a moment before letting the next
+/// test have the input, so pointer movement the system is still delivering
+/// (the VM's mouse integration among it) is not mistaken for that test's.
+#[cfg(test)]
+pub(crate) struct LiveInput(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+#[cfg(test)]
+impl Drop for LiveInput {
+    fn drop(&mut self) {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
 }

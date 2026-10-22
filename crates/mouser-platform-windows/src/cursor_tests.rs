@@ -1,6 +1,6 @@
 use crate::cursor::*;
 
-fn pointer() -> std::sync::MutexGuard<'static, ()> {
+fn pointer() -> crate::LiveInput {
     crate::live_input()
 }
 
