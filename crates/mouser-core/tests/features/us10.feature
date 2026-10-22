@@ -9,7 +9,7 @@ Feature: As a desk owner, I want every computer on my desk to stay up to date wi
   Scenario: Story 10 scenario 1: the elected computer restarting does not cut the others off
     Given a desk where every computer updates automatically
     When the elected computer finds the release and restarts as the new version
-    Then the others have installed it before the elected computer restarted
+    Then every computer installed it, the elected one restarting only after the others fetched it
 
   Scenario: Story 10 scenario 1: an update that failed is retried when the elected computer is back
     Given a desk where every computer updates automatically and one other computer's first install fails

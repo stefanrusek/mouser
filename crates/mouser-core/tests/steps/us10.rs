@@ -377,13 +377,16 @@ async fn fetcher_restarts(world: &mut UpdateWorld) {
     world.lab.restart(fetcher).await;
 }
 
-#[then("the others have installed it before the elected computer restarted")]
+#[then("every computer installed it, the elected one restarting only after the others fetched it")]
 async fn others_first(world: &mut UpdateWorld) {
     let installed = world.installed.lock().unwrap().clone();
     assert_eq!(installed.len(), 3, "{installed:?}");
-    assert_eq!(installed[2].0, world.fetcher(), "{installed:?}");
-    for (_, bundle) in &installed {
-        assert_eq!(bundle.version, "0.2.0");
+    // The fetcher waits until the others have fetched, not until they have
+    // finished installing, so the order of the installs is not fixed.
+    for name in NAMES {
+        let mine: Vec<_> = installed.iter().filter(|(who, _)| *who == name).collect();
+        assert_eq!(mine.len(), 1, "{name}: {installed:?}");
+        assert_eq!(mine[0].1.version, "0.2.0");
     }
 }
 
