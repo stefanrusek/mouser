@@ -59,7 +59,15 @@ pub async fn pump<R: Runtime>(
 ) {
     loop {
         match notes.recv().await {
-            Ok(note) => handle(&app, &tray, notifier.as_ref(), note),
+            Ok(note) => {
+                let control = app.state::<Host>().control();
+                handle(
+                    &app,
+                    &tray,
+                    notify::gated(&control, notifier.as_ref()).await,
+                    note,
+                );
+            }
             Err(RecvError::Closed) => break,
             Err(RecvError::Lagged(n)) => panic!("the app fell {n} notifications behind the engine"),
         }
@@ -116,7 +124,14 @@ pub async fn pump_events<R: Runtime>(
 ) {
     loop {
         match events.recv().await {
-            Ok(event) => handle_event(&app, notifier.as_ref(), event),
+            Ok(event) => {
+                let control = app.state::<Host>().control();
+                handle_event(
+                    &app,
+                    notify::gated(&control, notifier.as_ref()).await,
+                    event,
+                );
+            }
             Err(RecvError::Closed) => break,
             Err(RecvError::Lagged(n)) => {
                 panic!("the app fell {n} engine events behind the engine")

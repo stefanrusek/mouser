@@ -1,7 +1,7 @@
 use mouser_proto::control::{Notification, Problem, ProblemKind, Topic};
 use serde_json::json;
 
-use crate::notify::{Notice, bridge, notice};
+use crate::notify::{Notice, bridge, gated, notice};
 use crate::support_tests::FakeNotifier;
 
 pub(crate) fn problem_note(cleared: bool) -> Notification {
@@ -54,5 +54,37 @@ fn only_new_problems_reach_the_notifier() {
             "Mouser needs your attention".to_string(),
             "Mouser needs Accessibility access.".to_string()
         )]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn turning_notifications_off_silences_the_notifier_live() {
+    let f = crate::support_tests::fixture().await;
+    let control = f.host.control();
+    let notifier = FakeNotifier::default();
+    gated(&control, &notifier).await.show("on", "1");
+    control
+        .call(
+            mouser_proto::control::Method::ConfigSet,
+            Some(json!({"key": "general.notifications", "value": false})),
+        )
+        .await
+        .unwrap();
+    gated(&control, &notifier).await.show("off", "2");
+    control
+        .call(
+            mouser_proto::control::Method::ConfigSet,
+            Some(json!({"key": "general.notifications", "value": true})),
+        )
+        .await
+        .unwrap();
+    gated(&control, &notifier).await.show("on again", "3");
+    let shown = notifier.shown.lock().unwrap();
+    assert_eq!(
+        *shown,
+        vec![
+            ("on".to_string(), "1".to_string()),
+            ("on again".to_string(), "3".to_string())
+        ]
     );
 }

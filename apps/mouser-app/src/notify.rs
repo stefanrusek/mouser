@@ -1,7 +1,9 @@
 //! The OS-notification bridge: raised problems also reach the owner as a
 //! system notification.
 
-use mouser_proto::control::{Notification, Problem, Topic};
+use mouser_core::ControlHandle;
+use mouser_proto::control::{Method, Notification, Problem, Topic};
+use serde_json::json;
 
 /// Shows a system notification.
 pub trait Notifier: Send + Sync {
@@ -33,5 +35,30 @@ pub fn notice(note: &Notification) -> Option<Notice> {
 pub fn bridge(note: &Notification, notifier: &dyn Notifier) {
     if let Some(notice) = notice(note) {
         notifier.show(&notice.title, &notice.body);
+    }
+}
+
+/// Shows nothing: `general.notifications` is off.
+struct Silent;
+
+impl Notifier for Silent {
+    fn show(&self, _title: &str, _body: &str) {}
+}
+
+/// `notifier`, or a silent one when `general.notifications` is false right
+/// now (read each time, so `config.set` and file edits apply live).
+/// Problems and join requests still show in their own windows.
+pub async fn gated<'a>(control: &ControlHandle, notifier: &'a dyn Notifier) -> &'a dyn Notifier {
+    let on = control
+        .call(
+            Method::ConfigGet,
+            Some(json!({"key": "general.notifications"})),
+        )
+        .await
+        .expect("the notifications setting can be read");
+    if on.as_bool().expect("notifications is a boolean") {
+        notifier
+    } else {
+        &Silent
     }
 }

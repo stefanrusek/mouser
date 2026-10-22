@@ -297,3 +297,23 @@ async fn falling_behind_on_engine_events_is_a_bug() {
     }
     pump_events(app.handle().clone(), dynamic, receiver).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_pump_shows_no_system_notification_when_notifications_are_off() {
+    let f = fixture().await;
+    f.host
+        .control()
+        .call(
+            Method::ConfigSet,
+            Some(json!({"key": "general.notifications", "value": false})),
+        )
+        .await
+        .unwrap();
+    let app = app_with(f.host);
+    let (tray, _port, notifier, dynamic) = pump_parts();
+    let (sender, receiver) = tokio::sync::broadcast::channel(4);
+    sender.send(problem_note(false)).unwrap();
+    drop(sender);
+    pump(app.handle().clone(), tray, dynamic, receiver).await;
+    assert!(notifier.shown.lock().unwrap().is_empty());
+}

@@ -296,7 +296,11 @@ pub fn run() {
                         let (control, app) = (menu_control.clone(), app.clone());
                         tauri::async_runtime::spawn(async move {
                             let result = crate::tray_sas::send(&control).await;
-                            crate::tray_sas::report(result, &LiveNotifier(app));
+                            let live = LiveNotifier(app);
+                            crate::tray_sas::report(
+                                result,
+                                crate::notify::gated(&control, &live).await,
+                            );
                         });
                     }
                     tray::Action::Quit => app.exit(0),
