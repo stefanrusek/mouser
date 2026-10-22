@@ -162,10 +162,10 @@ impl Shared {
 }
 
 /// What the hook callbacks work with; they run on the hook thread.
-struct HookCtx {
-    raw: Sender<Raw>,
-    shared: Arc<Shared>,
-    last: Option<(i32, i32)>,
+pub(crate) struct HookCtx {
+    pub(crate) raw: Sender<Raw>,
+    pub(crate) shared: Arc<Shared>,
+    pub(crate) last: Option<(i32, i32)>,
 }
 
 thread_local! {
@@ -173,7 +173,7 @@ thread_local! {
 }
 
 /// Whether to swallow a mouse event.
-fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
+pub(crate) fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
     match info.dwExtraInfo {
         PROBE_TAG => {
             ctx.shared.probed_mouse.fetch_add(1, Ordering::SeqCst);

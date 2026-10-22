@@ -794,3 +794,24 @@ fn the_watchdog_withdraws_its_alarm_once_the_hooks_are_back() {
     assert_eq!(second, PlatformProblem::Cleared(lost_hold()));
     capture.stop();
 }
+
+#[test]
+fn a_mouse_message_that_means_nothing_is_not_forwarded_and_passes_through() {
+    use windows::Win32::UI::WindowsAndMessaging::MSLLHOOKSTRUCT;
+    let (raw, forwarded) = channel();
+    let mut ctx = HookCtx {
+        raw,
+        shared: Arc::new(shared()),
+        last: None,
+    };
+    let info = MSLLHOOKSTRUCT::default();
+    // Not grabbed: swallowed never, and a message with no meaning sends nothing.
+    assert!(!on_mouse(&mut ctx, 0x9999, &info));
+    assert!(forwarded.try_recv().is_err());
+    // Grabbed: swallowed, still nothing sent.
+    ctx.shared
+        .grabbed
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(on_mouse(&mut ctx, 0x9999, &info));
+    assert!(forwarded.try_recv().is_err());
+}
