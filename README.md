@@ -26,7 +26,7 @@ What is built (in source, and in v0.2.0 unless noted):
 
 What is not done yet (tracked in `specs/001-mouser-v1/tasks.md`):
 
-- The Windows backend. The crate is empty, so Mouser does not run on Windows. `mouser-service-win` (the service for the login screen and UAC) is a stub.
+- The Windows backend. The crate is empty, so Mouser does not run on Windows. `mouser-service-win` (the service for the Windows login screen, UAC and Ctrl-Alt-Del) is a stub, and that work is deferred to a future feature (owner decision 2026-10-22).
 - Portable zip packaging.
 - Running the macOS login-screen agent on a real login screen.
 
@@ -139,7 +139,7 @@ Apps:
 
 - `apps/mouser-app` - the Tauri tray/menu bar app and its web UI (`ui/`): arranger, first run, join prompt, settings, transfer window.
 - `apps/mouser-cli` - the `mouser` command-line client.
-- `apps/mouser-service-win` - Windows service for the login screen and UAC (stub).
+- `apps/mouser-service-win` - Windows service for the login screen and UAC (stub; deferred to a future feature).
 
 Crates:
 

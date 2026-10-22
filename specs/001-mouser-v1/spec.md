@@ -230,18 +230,18 @@ One hotkey shows a large letter on every display across every computer on the de
 
 ### User Story 12 - As a desk user, I want to control a computer that is at its login or system security screen (Priority: P3)
 
-The shared mouse and keyboard keep working when a computer is at its login window, after a cold boot, at a permission elevation prompt, or when switching users, and the user can send the secure attention sequence to a Windows computer.
+The shared mouse and keyboard keep working when a computer is at its login window, after a cold boot, at a permission elevation prompt, or when switching users, and the user can send the secure attention sequence to a Windows computer. (Deferred to a future feature, owner decision 2026-10-22: every Windows part of this story, that is the login screen, permission elevation prompts, user switching and Send Ctrl-Alt-Del. The macOS login window is in scope.)
 
 **Why this priority**: Nice-to-have in the approved requirements; needed less often than everyday control.
 
-**Independent Test**: Restart a Windows computer and log in using the shared keyboard; lock a Mac and unlock it from the shared keyboard.
+**Independent Test**: (Windows deferred, 2026-10-22: restart a Windows computer and log in using the shared keyboard;) lock a Mac and unlock it from the shared keyboard.
 
 **Acceptance Scenarios**:
 
 1. **Given** a Mac on the desk is at its login window, **When** the desk user crosses to it, **Then** they can type their password and log in.
-2. **Given** a Windows computer has just started and shows its login screen, **When** the desk user crosses to it, **Then** they can log in with the shared mouse and keyboard.
-3. **Given** a Windows computer shows a permission elevation prompt or a user-switching screen, **When** the desk user crosses to it, **Then** they can operate that screen.
-4. **Given** the active computer runs Windows, **When** the desk user chooses Send Ctrl-Alt-Del from the tray menu, **Then** that computer responds as if Ctrl-Alt-Del had been pressed on its own keyboard.
+2. *(Deferred to a future feature, 2026-10-22.)* **Given** a Windows computer has just started and shows its login screen, **When** the desk user crosses to it, **Then** they can log in with the shared mouse and keyboard.
+3. *(Deferred to a future feature, 2026-10-22.)* **Given** a Windows computer shows a permission elevation prompt or a user-switching screen, **When** the desk user crosses to it, **Then** they can operate that screen.
+4. *(Deferred to a future feature, 2026-10-22.)* **Given** the active computer runs Windows, **When** the desk user chooses Send Ctrl-Alt-Del from the tray menu, **Then** that computer responds as if Ctrl-Alt-Del had been pressed on its own keyboard.
 
 ---
 
@@ -332,7 +332,7 @@ The owner can run Mouser from a folder or removable drive on a computer where th
 
 Non-binding hypotheses for the plan phase to confirm, refute, or supersede (constitution Principle 2.6).
 
-- Stack per docs/technical-decisions.md: Rust core, Tauri UI, QUIC transport, per-OS input crates (macOS CGEvent tap + IOHID injection; Windows Raw Input + SendInput, with a Windows service for login/UAC/Ctrl-Alt-Del; Linux libei / InputCapture portal on Wayland and X11).
+- Stack per docs/technical-decisions.md: Rust core, Tauri UI, QUIC transport, per-OS input crates (macOS CGEvent tap + IOHID injection; Windows Raw Input + SendInput, with a Windows service for login/UAC/Ctrl-Alt-Del, deferred to a future feature (owner decision 2026-10-22); Linux libei / InputCapture portal on Wayland and X11).
 - QUIC connection migration is the expected mechanism for surviving address and adapter changes (Story 3). The VPN/VM breakage in ShareMouse is suspected to come from binding to one adapter or advertising adapter-specific addresses; Mouser should listen on all suitable interfaces, prefer LAN routes, and ignore virtual/VPN adapters for discovery.
 - The "disconnects as soon as I start typing" symptom in ShareMouse may come from keep-alive design, VPN route changes, or macOS Secure Input being treated as a failure; Story 3 scenario 1 and Story 2 scenario 10 should be tested against each.
 - Discovery is expected to use LAN service advertisement (e.g. mDNS/DNS-SD) carrying the desk name, with per-desk keys exchanged at join; ShareMouse defaults were TCP 6555 / UDP 1046, which Mouser need not reuse.

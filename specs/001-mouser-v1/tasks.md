@@ -842,7 +842,7 @@ A story is complete when all its `USn-*` phases and Convergence have passed (5.2
 ## Parallel Example: after Foundational
 
 ```bash
-# Six active lanes (service-win is deferred) (separate worktrees, each bootstrapped with
+# Six active lanes, service-win deferred (separate worktrees, each bootstrapped with
 #   cargo fetch --locked && cargo xtask bootstrap):
 lane core              → Phase 3  (US1-core)
 lane app               → Phase 16 (US1-app)          # after US1-core merged

@@ -131,7 +131,7 @@ No extra limitations are listed. Behaviour to know: Mouser cannot take the point
 
 ### Windows
 
-The Windows backend is not implemented. Starting Mouser on Windows stops with "the Windows platform backend is not implemented yet". Nothing else about Windows can be diagnosed in v1. When it exists, the installer is unsigned, so SmartScreen will warn ("More info", then "Run anyway"), and portable mode will carry this limitation: "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator."
+The Windows backend is not implemented. Starting Mouser on Windows stops with "the Windows platform backend is not implemented yet". Nothing else about Windows can be diagnosed in v1. Windows login-screen, UAC and Ctrl-Alt-Del support is deferred to a future feature (owner decision 2026-10-22). When it exists, the installer is unsigned, so SmartScreen will warn ("More info", then "Run anyway"), and portable mode will carry this limitation: "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator."
 
 ## The diagnostic log
 

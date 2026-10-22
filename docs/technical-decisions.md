@@ -7,7 +7,7 @@ Decided 2026-10-21; updated for the as-built v1 (below the table). See [product-
 | Core language | Rust | One engine for discovery, desks, transport, layout, clipboard, file transfer. |
 | UI | Tauri | Tray/menu bar app, display arranger, health panel; one UI codebase for macOS, Windows, Linux. |
 | Transport | QUIC | Connection migration survives Wi-Fi/Ethernet/IP changes; targets the "drops while typing" failure. |
-| Input layers | Per-OS crates behind one trait | macOS: HID-level CGEvent tap with cursor disassociation, CGEventPost injection. Windows: low-level hooks + SendInput, SYSTEM service for login/UAC/Ctrl-Alt-Del. Linux: XInput2 + XTest on X11; InputCapture + RemoteDesktop portals with libei on GNOME/KDE Wayland. |
+| Input layers | Per-OS crates behind one trait | macOS: HID-level CGEvent tap with cursor disassociation, CGEventPost injection. Windows: low-level hooks + SendInput, SYSTEM service for login/UAC/Ctrl-Alt-Del (the service is deferred to a future feature (owner decision 2026-10-22)). Linux: XInput2 + XTest on X11; InputCapture + RemoteDesktop portals with libei on GNOME/KDE Wayland. |
 | Linux targets | X11, GNOME Wayland, KDE Wayland | User's machines are mixed. |
 | macOS signing | Developer ID, signed and notarized | Keeps Accessibility permission across updates; required for LAN auto-update. |
 | Process | Spec-kit (SDD) pipeline | specify → plan → tasks → implement, in phases. |
@@ -36,7 +36,7 @@ Decided 2026-10-21; updated for the as-built v1 (below the table). See [product-
 | `crates/mouser-platform-windows` | **Empty.** No Windows backend exists. |
 | `apps/mouser-app` | Tauri 2.12.5 (tray-icon, image-png, macos-private-api), plugins: updater 2.14.0, single-instance 2.5.4, notification 2.7.0, global-shortcut 2.4.1; tauri-build 2.7.4. Plain HTML/JS UI in `ui/`, tested with `node --test`. Builds without a window or tray unless the `gui` feature is on. |
 | `apps/mouser-cli` | The `mouser` command: clap 4 (derive), tokio 1.54. |
-| `apps/mouser-service-win` | A 13-line stub. |
+| `apps/mouser-service-win` | A 13-line stub; the service is deferred to a future feature (owner decision 2026-10-22). |
 | `xtask` | `bootstrap` and `gate`. |
 
 The pins in `Cargo.lock` are exact; versions written `=` above are also exact in `Cargo.toml`. Tests: cucumber 0.23.0 for the behaviour suites, jsonschema 0.59.0 for contract tests.

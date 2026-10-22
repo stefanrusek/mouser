@@ -54,4 +54,4 @@ Revoke a permission on B → health panel names it with **Open settings**. Run `
 
 ## 8. Updates, secure screens, portable (Stories 10, 12, 13)
 
-Publish a test release with `latest.json` (contracts/release-manifest.schema.json); confirm one computer downloads and the other updates from it over the LAN with permissions intact. On Windows: restart and log in with the shared keyboard; use **Send Ctrl-Alt-Del**. Run the portable build from a USB drive, join the desk, remove the drive, and confirm no Mouser files remain on the computer.
+Publish a test release with `latest.json` (contracts/release-manifest.schema.json); confirm one computer downloads and the other updates from it over the LAN with permissions intact. On Windows: restart and log in with the shared keyboard; use **Send Ctrl-Alt-Del**. (Deferred to a future feature, owner decision 2026-10-22; skip these Windows steps. On a Mac, lock it and unlock it from the shared keyboard.) Run the portable build from a USB drive, join the desk, remove the drive, and confirm no Mouser files remain on the computer.

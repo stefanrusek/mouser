@@ -59,7 +59,7 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: ..." \
 
 ## Not included yet
 
-- Windows: there is no backend (`crates/mouser-platform-windows` is empty), so the Windows installer starts an app that stops with "the Windows platform backend is not implemented yet". `mouser-service-win` is a stub, so there is no `MouserService` install and no `SoftwareSASGeneration` registry value.
+- Windows: there is no backend (`crates/mouser-platform-windows` is empty), so the Windows installer starts an app that stops with "the Windows platform backend is not implemented yet". `mouser-service-win` is a stub (deferred to a future feature, owner decision 2026-10-22), so there is no `MouserService` install and no `SoftwareSASGeneration` registry value.
 - A portable zip. Portable mode itself is built (a `MouserData/` folder beside the program), but `release.yml` does not package one.
 - Windows Authenticode signing (D4). Linux packages are not signed.
 - The macOS login-window agent is built (the "Allow control at the login screen" option), but it has never been run on a real login screen.

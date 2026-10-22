@@ -159,7 +159,7 @@ Available version: none
 
 ### `mouser send-cad`
 
-Sends Ctrl-Alt-Del to the Windows computer you are currently controlling. Text `Sent Ctrl-Alt-Del`; JSON `{}`. In v1 there is no Windows backend, so this exits 1 with `Ctrl-Alt-Del cannot be sent to <name>.`; it also does that when the computer you control is not Windows or input is not running.
+Sends Ctrl-Alt-Del to the Windows computer you are currently controlling. Text `Sent Ctrl-Alt-Del`; JSON `{}`. In v1 there is no Windows backend (Windows login-screen, UAC and Ctrl-Alt-Del support is deferred to a future feature (owner decision 2026-10-22)), so this exits 1 with `Ctrl-Alt-Del cannot be sent to <name>.`; it also does that when the computer you control is not Windows or input is not running.
 
 ### `mouser logs enable` and `mouser logs disable`
 

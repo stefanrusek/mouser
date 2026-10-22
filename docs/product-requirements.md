@@ -161,11 +161,11 @@ The exact texts are in [troubleshooting.md](troubleshooting.md). Operator refere
 - Control the Mac login window [mac-login-control]
   - Delivered: code built (a login-window agent plus an "Allow control at the login screen" admin prompt). **Never run for real**: the admin prompt, the root install and a real login window are unverified. The machine-scope copy of the desk keys is not refreshed automatically after joining, leaving or key rotation.
 - Windows login screen after cold boot [win-cold-login]
-  - Delivered: **not delivered** (no Windows backend; `mouser-service-win` is a stub).
+  - Delivered: **not delivered**; deferred to a future feature (owner decision 2026-10-22) (no Windows backend; `mouser-service-win` is a stub).
 - Windows UAC prompts and user switching [win-uac]
-  - Delivered: **not delivered** (same reason).
+  - Delivered: **not delivered**; deferred to a future feature (owner decision 2026-10-22).
 - Send Ctrl-Alt-Del [cad]
-  - Delivered: the command and wire message exist (`mouser send-cad`). It can only target Windows computers, and there is no Windows backend, so in v1 it always answers "Ctrl-Alt-Del cannot be sent to <name>.".
+  - Delivered: the command and wire message exist (`mouser send-cad`). It can only target Windows computers, and there is no Windows backend, so in v1 it always answers "Ctrl-Alt-Del cannot be sent to <name>.". Windows support for it is deferred to a future feature (owner decision 2026-10-22).
 - Configurable ports [ports]
   - Delivered: built (`advanced.port`, default 47801, UDP). Needs a restart to take effect.
 - Enable/disable hotkey [enable-hotkey]
