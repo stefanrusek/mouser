@@ -14,19 +14,21 @@ Mouser is an **early pre-release**. Expect rough edges. Published versions are o
 |---|---|
 | macOS | Built and tested on real hardware (the owner's Macs). Not yet exercised on a real login screen (see below). |
 | Linux (X11 and Wayland) | Built and tested in aarch64 virtual machines and against simulated desktop portals only. A two-VM X11 test passed (joining by address, crossing, keys and clicks). No real Linux hardware yet. |
-| Windows | Not functional. It waits for hardware access. The installer exists, but the app stops on start with "the Windows platform backend is not implemented yet". |
+| Windows | Experimental from v0.2.1. The app starts and the backend has input capture and injection, displays, clipboard, file drag, network watching and pointer hiding. Tested only in a Windows-on-ARM VM and CI (x64), not on real Windows hardware. Portable mode and the login-screen/UAC/Ctrl-Alt-Del service are not available. |
 
-What is built (in source, and in v0.2.0 unless noted):
+What is built (in source, and in v0.2.1 unless noted):
 
 - The core engine: desks and join approval, discovery, QUIC transport with self-healing, crossing between displays, corner blocking, clipboard sharing, file drag between computers with a progress window, and problem reporting (missing permissions, blocked crossings and so on).
 - The app: tray/menu bar, first-run screen, join prompt, the display arranger (with per-edge options), settings, the file transfer window, the health panel, QuickJump, auto-update across the LAN and portable mode.
 - The `mouser` CLI: every command in [docs/cli.md](docs/cli.md).
 - The macOS backend (capture, injection, clipboard, secrets, permissions, displays). Everything above, including clipboard sharing, file drag, the arranger, the health panel, QuickJump, LAN updates and portable mode, has been tried on real Macs. The login-screen agent is built but has not been run on a real login screen.
+- The Windows backend (experimental): input capture and injection, displays, clipboard, file drag, network-change watching and pointer hiding. Tested in a Windows-on-ARM VM and CI only, not on real hardware.
 - The Linux backend for X11 and Wayland: input capture and injection, displays, clipboard, network-change watching and portable mode. Tested in VMs and against simulated portals, not on real hardware.
 
 What is not done yet (tracked in `specs/001-mouser-v1/tasks.md`):
 
-- The Windows backend. The crate is empty, so Mouser does not run on Windows. `mouser-service-win` (the service for the Windows login screen, UAC and Ctrl-Alt-Del) is a stub, and that work is deferred to a future feature (owner decision 2026-10-22).
+- Windows portable mode, and `mouser-service-win` (the service for the Windows login screen, UAC and Ctrl-Alt-Del). The service is a stub, and that work is deferred to a future feature (owner decision 2026-10-22).
+- Testing the Windows backend on real Windows hardware.
 - Portable zip packaging.
 - Running the macOS login-screen agent on a real login screen.
 
@@ -36,7 +38,7 @@ Known limitations:
 - Pause applies to the computer where you press the hotkey, not to every computer on the desk. Run `mouser pause` on each one.
 - Large clipboard items (over 1 MiB) are fetched when you paste, so the first paste can be stale.
 - Files received through the clipboard are never cleaned up.
-- Windows is not implemented, and Windows installers are unsigned (SmartScreen will warn). Authenticode signing is deferred.
+- Windows is experimental (see the table above), and Windows installers are unsigned (SmartScreen will warn). Authenticode signing is deferred.
 - Linux limits are listed under [Install > Linux](#linux).
 
 ## Install
@@ -72,7 +74,7 @@ Based on experiments in virtual machines (Ubuntu 24.04 with GNOME 46, Ubuntu 26.
 
 ### Windows
 
-Download `Mouser_<version>_x64-setup.exe`, a per-user NSIS installer. It is unsigned, so Windows SmartScreen will warn you ("More info" then "Run anyway"). There is no Windows backend yet: the app stops on start with "the Windows platform backend is not implemented yet". It waits for hardware access, so there is little point installing it today. To use the CLI, add `%LOCALAPPDATA%\Mouser` to your PATH.
+Download `Mouser_<version>_x64-setup.exe`, a per-user NSIS installer. It is unsigned, so Windows SmartScreen will warn you ("More info" then "Run anyway"). The Windows backend is experimental: it has not been tried on real Windows hardware. To use the CLI, add `%LOCALAPPDATA%\Mouser` to your PATH.
 
 ## Using it
 
