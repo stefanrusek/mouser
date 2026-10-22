@@ -123,6 +123,13 @@ fn linux_creates_the_linux_platform_for_either_mode() {
     );
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+#[should_panic(expected = "platform backend is not implemented yet")]
+fn windows_fails_loudly_until_its_backend_exists() {
+    create_platform(&installed());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn windows_open_with_or_without_portable_state() {
     let f = fixture().await;
