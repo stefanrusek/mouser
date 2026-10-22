@@ -20,19 +20,22 @@ struct Spot {
 
 /// Create the hidden overlay window (once, at startup, so its page is ready).
 pub fn create<R: Runtime>(app: &AppHandle<R>) {
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("landing.html".into()))
-        .title("Mouser pointer")
-        .inner_size(SIZE, SIZE)
-        .transparent(true)
-        .decorations(false)
-        .shadow(false)
-        .resizable(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .visible(false)
-        .build()
-        .expect("landing overlay can be created");
+    crate::portable::with_webview_data(
+        app,
+        WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("landing.html".into())),
+    )
+    .title("Mouser pointer")
+    .inner_size(SIZE, SIZE)
+    .transparent(true)
+    .decorations(false)
+    .shadow(false)
+    .resizable(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .visible(false)
+    .build()
+    .expect("landing overlay can be created");
 }
 
 /// Flash the highlight around `desktop`, a point in desktop coordinates.

@@ -27,6 +27,7 @@ test('calls go through the control command, other commands by name', async () =>
   await api.takeArrangerEdge();
   await api.openFolder('/logs/mouser.log');
   await api.transferResolve('ab12', true);
+  await api.portable();
   await api.hideWindow();
   await api.allowLoginScreen();
   assert.deepEqual(tauri.invoked, [
@@ -38,6 +39,7 @@ test('calls go through the control command, other commands by name', async () =>
     ['take_arranger_edge', undefined],
     ['open_folder', { path: '/logs/mouser.log' }],
     ['transfer_resolve', { transferId: 'ab12', overwrite: true }],
+    ['is_portable', undefined],
     ['hide_window', undefined],
     ['allow_login_screen', undefined],
   ]);

@@ -90,7 +90,7 @@ export async function init({ doc, api, every, onFocus }) {
     current.desk = status.desk;
     problems.set(status.problems, status.computer.id);
     renderStatus(doc, status);
-    show(doc.getElementById('login-section'), status.computers.find((c) => c.connection === 'self').os === 'macos');
+    show(doc.getElementById('login-section'), status.computers.find((c) => c.connection === 'self').os === 'macos' && !(await api.portable()));
     renderMembers(doc, doc.getElementById('member-list'), status, remove);
     const desks = (await api.call('desks.discovered')).filter((d) => d.desk_id !== status.desk?.id);
     renderOtherDesks(doc, doc.getElementById('other-desks'), desks, move, !status.desk);

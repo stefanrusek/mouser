@@ -45,6 +45,7 @@ export function fakeApi(answers = {}) {
     transfers: async () => answers.transfers ?? [],
     takeArrangerEdge: async () => answers.arrangerEdge ?? null,
     openFolder: async (path) => record('open_folder', [path]),
+    portable: async () => answers.portable ?? false,
     hideWindow: async () => record('hide_window', []),
     allowLoginScreen: async () => {
       record('allow_login_screen', []);

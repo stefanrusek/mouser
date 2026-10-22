@@ -207,3 +207,8 @@ test('the login screen action is not offered on other systems', async () => {
   const { doc } = await start({ status });
   assert.ok(doc.getElementById('login-section').hidden);
 });
+
+test('a portable run does not offer to install anything at the login screen', async () => {
+  const { doc } = await start({ portable: true });
+  assert.ok(doc.getElementById('login-section').hidden);
+});

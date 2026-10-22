@@ -465,10 +465,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: portable host test passes: WebView data and all app state resolve under `MouserData/`.
 
-- [ ] T285 [P] [US13-app] Write unit tests in `apps/mouser-app/src/portable_tests.rs`: in portable mode the WebView data directory and every app path resolve under `<exe dir>/MouserData` and autostart UI is hidden (Story 13 sc. 1–2)
-- [ ] T286 [US13-app] Implement portable host configuration in `apps/mouser-app/src/portable.rs`
-- [ ] T287 [US13-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T288 [US13-app] Commit: phase boundary "US13-app" (5.3)
+- [X] T285 [P] [US13-app] Write unit tests in `apps/mouser-app/src/portable_tests.rs`: in portable mode the WebView data directory and every app path resolve under `<exe dir>/MouserData` and autostart UI is hidden (Story 13 sc. 1–2)
+- [X] T286 [US13-app] Implement portable host configuration in `apps/mouser-app/src/portable.rs`
+- [X] T287 [US13-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T288 [US13-app] Commit: phase boundary "US13-app" (5.3)
 
 ### Lane: cli
 

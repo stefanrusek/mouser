@@ -12,12 +12,12 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
-use crate::host::{Host, Updates};
+use crate::host::Host;
 use crate::hotkeys::{Hotkey, Hotkeys, Press, Shortcuts};
 use crate::notify::Notifier;
 use crate::tray::{self, TrayController, TrayPort, TrayView};
 use crate::updater::{self, Applier};
-use crate::{app, commands, host, overlay, platform_select};
+use crate::{app, commands, host, overlay, platform_select, portable};
 
 struct LiveTray<R: Runtime> {
     app: AppHandle<R>,
@@ -185,25 +185,33 @@ pub fn run() {
             open_folder,
             commands::transfer_resolve,
             commands::hide_window,
+            portable::is_portable,
             #[cfg(target_os = "macos")]
             crate::login_screen::allow_login_screen
         ])
         .setup(|app| {
-            let host = tauri::async_runtime::block_on(Host::start(
-                platform_select::create(),
-                mouser_core::config::default_dir(),
+            let paths = mouser_core::paths::Paths::resolve(
+                &std::env::current_exe().expect("the executable has a path"),
+                platform_select::current_os(),
+                &mouser_core::paths::Env::from_process(),
+            );
+            let mut params = portable::engine_params(
+                portable::create_platform(&paths),
+                &paths,
                 mouser_core::control::default_path(),
                 gethostname::gethostname()
                     .into_string()
                     .expect("computer name is valid UTF-8"),
                 env!("CARGO_PKG_VERSION").to_string(),
-                Updates {
-                    installer: Some(updater::installer(Arc::new(LiveApplier(
-                        app.handle().clone(),
-                    )))),
-                    check_schedule: Some(mouser_core::release::CheckSchedule::DEFAULT),
-                },
-            ));
+            );
+            params.installer = Some(updater::installer(Arc::new(LiveApplier(
+                app.handle().clone(),
+            ))));
+            params.check_schedule = Some(mouser_core::release::CheckSchedule::DEFAULT);
+            let config_dir = paths.dir.clone();
+            // Managed first: every window built from here on reads it.
+            app.manage(paths);
+            let host = tauri::async_runtime::block_on(Host::start_with(params));
             let control = host.control();
             app.manage(host);
             #[cfg(target_os = "macos")]
@@ -220,8 +228,14 @@ pub fn run() {
                 }),
             ));
             let handle = app.handle().clone();
+            // The first-run window is not created from the config: a portable
+            // run must give it its data folder first.
+            portable::with_webview_data(
+                &handle,
+                tauri::WebviewWindowBuilder::from_config(&handle, &handle.config().app.windows[0])?,
+            )
+            .build()?;
             overlay::create(&handle);
-            let config_dir = mouser_core::config::default_dir();
             let forward = handle.clone();
             let hotkeys = Hotkeys::new(
                 Box::new(LiveShortcuts(handle.clone())),

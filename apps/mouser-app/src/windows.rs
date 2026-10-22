@@ -70,12 +70,15 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, which: Which) {
         Some(window) => window,
         None => {
             let (width, height) = which.size();
-            WebviewWindowBuilder::new(app, which.label(), WebviewUrl::App(which.page().into()))
-                .title(which.title())
-                .inner_size(width, height)
-                .visible(false)
-                .build()
-                .expect("window can be created")
+            crate::portable::with_webview_data(
+                app,
+                WebviewWindowBuilder::new(app, which.label(), WebviewUrl::App(which.page().into())),
+            )
+            .title(which.title())
+            .inner_size(width, height)
+            .visible(false)
+            .build()
+            .expect("window can be created")
         }
     };
     window.show().expect("window can be shown");

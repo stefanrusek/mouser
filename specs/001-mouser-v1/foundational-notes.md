@@ -164,3 +164,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - "Allow control at the login screen" (macOS): stages `config.toml` + `export_machine_scope` + `state.json` in a 0700 folder, then one administrator prompt runs `<exe> --install-login-screen <staging>` (root side: copy to the machine dir, `LoginAgent::system(exe).install()`); staging is always removed; "User canceled" = refusal.
 - Open: `export_machine_scope` must be re-run after join/leave/key rotation; nothing triggers it yet. Not run for real: the osascript prompt, the root install, a real login-window session.
 - The updater loopback server reads until `\r\n\r\n` (fixes the CI race).
+
+## app US13 decisions
+
+- The app resolves `Paths` at startup, builds the engine with `EngineParams::with_paths`, and on macOS uses `MacPlatform::portable` when portable; WebView data goes to `MouserData/webview` (may be ignored by WKWebView: unverified).
+- The main window is created in `shell.rs` (`"create": false` in tauri.conf.json) so it can get the WebView data folder: a real GUI launch must be smoke-tested before release.
+- "Allow control at the login screen" is hidden in portable runs. The control socket stays at the default path (socket path length). Open: Linux `create_platform` should use `LinuxPlatform::portable(dir)` now that the Linux lane adds it; portable zip packaging in release.yml is not done.

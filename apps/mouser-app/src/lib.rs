@@ -10,6 +10,7 @@ pub mod login_screen;
 pub mod notify;
 pub mod overlay;
 pub mod platform_select;
+pub mod portable;
 pub mod quickjump_windows;
 pub mod tray;
 pub mod tray_sas;
@@ -37,6 +38,8 @@ mod notify_tests;
 mod overlay_tests;
 #[cfg(test)]
 mod platform_select_tests;
+#[cfg(test)]
+mod portable_tests;
 #[cfg(test)]
 mod quickjump_windows_tests;
 #[cfg(test)]

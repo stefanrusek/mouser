@@ -20,6 +20,8 @@ export function makeApi(tauri) {
     openFolder: (path) => invoke('open_folder', { path }),
     // Answer an "Overwrite <name>?" question from a transfer notification.
     transferResolve: (transferId, overwrite) => invoke('transfer_resolve', { transferId, overwrite }),
+    // Whether this run is portable (from a MouserData folder): nothing may be installed on this computer.
+    portable: () => invoke('is_portable'),
     hideWindow: () => invoke('hide_window'),
     // macOS: stage this computer's keys and install the login-window agent, after one administrator prompt.
     allowLoginScreen: () => invoke('allow_login_screen'),

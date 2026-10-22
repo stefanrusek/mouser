@@ -10,6 +10,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Welcome to Mouser",
         "url": "first_run.html",
         "visible": false,

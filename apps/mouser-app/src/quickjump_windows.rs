@@ -58,10 +58,13 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, plans: &[Plan]) {
     let showing = SHOWING.fetch_add(1, Ordering::Relaxed);
     for plan in plans {
         let url = format!("quickjump.html?letter={}", plan.letter);
-        let window = WebviewWindowBuilder::new(
+        let window = crate::portable::with_webview_data(
             app,
-            format!("{}-{showing}", plan.label),
-            WebviewUrl::App(url.into()),
+            WebviewWindowBuilder::new(
+                app,
+                format!("{}-{showing}", plan.label),
+                WebviewUrl::App(url.into()),
+            ),
         )
         .title("Mouser QuickJump")
         .transparent(true)

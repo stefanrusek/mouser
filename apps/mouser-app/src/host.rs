@@ -49,6 +49,12 @@ impl Host {
         );
         params.installer = updates.installer;
         params.check_schedule = updates.check_schedule;
+        Self::start_with(params).await
+    }
+
+    /// Start an engine from ready-made parameters.
+    pub async fn start_with(params: EngineParams) -> Self {
+        let platform = params.platform.clone();
         let engine = Engine::start(params).await;
         Self {
             control: engine.control(),
