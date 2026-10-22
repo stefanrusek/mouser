@@ -874,6 +874,19 @@ Add P2 (US4–US8) then P3 (US9–US13) phases lane by lane; each lane phase is 
 - Do not add behaviour, error handling or defensive branches beyond spec.md (5.5, 5.6); unspecified failures crash loudly.
 - Touched-file ownership (5.7): fix any defect found in a file you modify, with a test, in the same task.
 
+## Owner feedback after v0.2.x (2026-10-22)
+
+Work added from the owner's real-machine use; each was done test-first under the lane rules.
+
+- [X] T510 A computer's displays stay together in the OS arrangement; the arranger moves a whole computer (core layout, app arranger) — 83fe6d8
+- [X] T511 LAN update propagation: retry after a cut fetch, LAN-installed computers keep and re-offer the bundle, the fetcher waits for desk-mates before restarting (core) — 8d3d3f7, 8df0276
+- [X] T512 Platform-reported problems: `Platform::watch_problems` seam, raised as `platform_limitation` with one id per distinct text (platform, testkit, core) — ff2628d, b795c54
+- [X] T513 A cancelled incoming drag ends quietly on both computers (core, testkit) — 7d8d706
+- [X] T514 Stuck Command after Cmd+C on the controlled Mac: injected events carry exact modifier flags; capture reconciles missed modifier releases (platform-macos) — 84f524d
+- [X] T515 Held keys are released when the controlled display leaves the layout; App Nap opt-out while capturing (core, platform-macos) — 2aea0c9
+- [X] T516 `--headless` refuses on Linux and Windows (macOS only in v1) (app) — f77bccf
+- [ ] T517 Pause isolates the computer in both directions: no crossing out or in, control returned with keys released, no clipboard or transfers; new version-gated `Paused` wire message (proto, core, spec)
+
 ## Deferred to a future feature (owner decision 2026-10-22)
 
 Reason: Windows UAC, secure-desktop and login-screen tooling (winlogon-token agent, SYSTEM service, SendSAS) is postponed to a later feature run; nothing here is done, and none of it gates Convergence or Polish. `apps/mouser-service-win` stays a stub.
