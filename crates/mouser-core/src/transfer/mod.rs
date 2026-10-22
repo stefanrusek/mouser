@@ -61,8 +61,12 @@ impl Ctx {
         if !drag::is_drag(&message, &self.transfer_ids) {
             return self.clipboard_message(peer, message);
         }
-        if !Self::authed(&self.core.lock().unwrap(), peer) {
+        let core = self.core.lock().unwrap();
+        if !Self::authed(&core, peer) {
             return Err("file transfer traffic from a computer that is not on the desk".into());
+        }
+        if self.sharing_off(&core, peer) {
+            return Ok(());
         }
         // No transfer task means this platform cannot drag files.
         let _ = self.xfer.send(Command::Message(peer, message));

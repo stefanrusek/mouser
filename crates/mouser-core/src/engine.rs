@@ -162,6 +162,8 @@ pub(crate) struct Peer {
     pub phase: Phase,
     pub displays: Vec<mouser_proto::model::Display>,
     pub status: Option<PeerStatus>,
+    /// The peer told us it is paused (Story 2 scenario 12).
+    pub paused: bool,
     pub last_seen: String,
 }
 

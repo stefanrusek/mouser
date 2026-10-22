@@ -61,6 +61,26 @@ Feature: As a desk user, I want one mouse and keyboard to drive every computer o
     When the desk user presses the enable/disable hotkey
     Then crossing stops (or resumes) on every computer and the tray icon shows the paused (or active) state
 
+  Scenario: Story 2 scenario 12 (isolation): nobody can cross onto a paused computer
+    Given two up-to-date computers are on a desk and Beta is paused
+    When the desk user pushes the pointer across the edge toward Beta
+    Then the pointer stays on Alpha and nothing reaches Beta
+
+  Scenario: Story 2 scenario 12 (isolation): the pointer of a paused computer never leaves it
+    Given two up-to-date computers are on a desk and Alpha is paused
+    When the desk user pushes the pointer across the edge of Alpha
+    Then the pointer stays on Alpha and nothing reaches Beta
+
+  Scenario: Story 2 scenario 12 (isolation): pausing the controlled computer returns control
+    Given two up-to-date computers are on a desk and the pointer and a held key are on Beta
+    When Beta is paused
+    Then control returns to Alpha and Beta's held key is released
+
+  Scenario: Story 2 scenario 12 (isolation): resuming restores crossing
+    Given two up-to-date computers are on a desk and Beta was paused and resumed
+    When the desk user pushes the pointer across the edge toward Beta
+    Then the pointer arrives on Beta
+
   Scenario: Edge case: button or modifier held at the crossing
     Given a mouse button or modifier key is held down
     When the pointer crosses or the connection drops

@@ -225,6 +225,7 @@ impl Ctx {
                 phase,
                 displays: Vec::new(),
                 status: None,
+                paused: false,
                 last_seen: crate::problems::now(),
             };
             if let Some(old) = core.peers.insert(peer, entry) {
@@ -359,6 +360,7 @@ impl Ctx {
             ControlMessage::Remove { computer_id } => self.on_remove(peer, computer_id),
             ControlMessage::Displays { displays } => self.on_displays(peer, displays),
             ControlMessage::Status(status) => self.on_peer_status(peer, status),
+            ControlMessage::Paused { paused } => self.on_peer_paused(peer, paused),
             message @ (ControlMessage::ClipboardOffer { .. }
             | ControlMessage::ClipboardFetch { .. }
             | ControlMessage::ClipboardData { .. }) => self.clipboard_message(peer, message),

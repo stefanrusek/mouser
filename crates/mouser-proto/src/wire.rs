@@ -200,6 +200,12 @@ pub enum ControlMessage {
     },
     Status(PeerStatus),
     SecureAttention,
+    /// This computer is paused (or resumed): isolated from the desk as if
+    /// disconnected, links kept. Appended last; sent only to peers running
+    /// 0.2.2 or later, whose older versions cannot decode it.
+    Paused {
+        paused: bool,
+    },
 }
 
 /// `display_id_hash` for [`MotionDatagram`]: first 4 bytes (big-endian) of

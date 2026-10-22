@@ -73,6 +73,7 @@ Moving the pointer off the edge of one display brings it onto the adjacent displ
 10. **Given** a macOS computer has an application holding Secure Input, **When** that blocks Mouser on that computer, **Then** the desk user sees a notification naming the application.
 11. **Given** the desk user has assigned mouse buttons 4 and 5 to pass through unchanged or to act as Back and Forward, **When** they press those buttons on another computer, **Then** the chosen behavior happens on that computer.
 12. **Given** Mouser is active, **When** the desk user presses the enable/disable hotkey, **Then** crossing stops (or resumes) on every computer and the tray icon shows the paused (or active) state.
+    - *Clarified 2026-10-22 (owner feedback on v0.2.1):* pause (hotkey, `mouser pause`, tray) applies to the computer where it is issued and isolates it in both directions as if it were disconnected, without disconnecting: its own pointer and keyboard never leave it; no other computer can cross onto it or send it input (they treat its displays as unavailable), and control that another computer has over it returns to that computer with every held key released; no clipboard or file transfer goes to or from it while paused (on resume the clipboard is offered again). Resume reverses all of it at once. See data-model.md, "Pause".
 
 ---
 

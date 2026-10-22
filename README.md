@@ -35,7 +35,7 @@ What is not done yet (tracked in `specs/001-mouser-v1/tasks.md`):
 Known limitations:
 
 - Outside macOS, testing has been against VMs, simulated platforms (`VirtualPlatform`), a simulated network (`SimNet`) and simulated portals, not real multi-computer setups.
-- Pause applies to the computer where you press the hotkey, not to every computer on the desk. Run `mouser pause` on each one.
+- Pause applies to the computer where you press the hotkey, not to every computer on the desk. Run `mouser pause` on each one. A paused computer is isolated both ways, as if disconnected, but stays connected so resume is instant. Computers older than 0.2.2 are not told, so for them it is only partly isolated (they can still push the pointer toward it).
 - Large clipboard items (over 1 MiB) are fetched when you paste, so the first paste can be stale.
 - Files received through the clipboard are never cleaned up.
 - Windows is experimental (see the table above), and Windows installers are unsigned (SmartScreen will warn). Authenticode signing is deferred.
@@ -84,7 +84,7 @@ Download `Mouser_<version>_x64-setup.exe`, a per-user NSIS installer. It is unsi
 4. **Cross.** Move the pointer off a shared screen edge. It appears on the other computer, with a brief highlight where it lands, and your keyboard goes with it. New computers are placed automatically; open the **arranger** from the tray to drag displays into the real layout. Clicking an edge in the arranger sets that edge's options, such as blocking corners or full-screen windows.
 5. **Corners.** Crossing is blocked in display corners (to stop accidental switches). Bump the edge twice quickly to override.
 6. **Bring the pointer home.** Press **Escape twice** within half a second and control returns to the local computer.
-7. **Pause.** The default hotkey is Ctrl+Alt+Shift+M (configurable) and `mouser pause` / `mouser resume` do the same. Today this applies to the computer where it is issued.
+7. **Pause.** The default hotkey is Ctrl+Alt+Shift+M (configurable) and `mouser pause` / `mouser resume` do the same. It applies to the computer where it is issued and isolates it both ways: its pointer and keyboard stay on it, other computers cannot cross onto it or type into it (control they had comes back), and nothing is shared with it (clipboard, files) until you resume.
 8. **Clipboard and files.** Copy on one computer and paste on another. Drag files across the edge (not on Linux; copy and paste instead); a transfer window shows progress and asks about overwrites. The targeted-paste hotkey defaults to Ctrl+Alt+Shift+V.
 
 When something is wrong, the app says why and offers a fix (missing permission, blocked crossing, incompatible version). To check from a terminal:

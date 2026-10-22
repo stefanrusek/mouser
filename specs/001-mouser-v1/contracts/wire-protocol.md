@@ -49,6 +49,7 @@ Producer and consumer: `mouser-core` on every desk computer (both sides are the 
 | `ReleaseAvailable` | member → members | Release manifest (signed) | Story 10. |
 | `ReleaseFetch` / release bytes stream | member ↔ member | version, asset | LAN distribution of the downloaded release. |
 | `Status` | member → members | permissions, limitations, secure_input_holder, problems | Health panel shows peers' state (Story 8). |
+| `Paused` | member → members | paused bool | Story 2 sc. 12: the sender is paused (or resumed). Receivers treat its displays as unavailable and accept nothing from it. Appended last in the enum (0.2.2). **Version-gated**: sent only to peers whose `Hello.mouser_version` is >= 0.2.2, because an older peer cannot decode an unknown variant and treats it as a malformed frame (it panics). Also sent right after `DeskAuth` when the sender is already paused. `PROTOCOL_VERSION` is not bumped. |
 
 ## Motion datagram
 

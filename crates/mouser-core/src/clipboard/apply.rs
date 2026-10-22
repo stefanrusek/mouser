@@ -102,6 +102,7 @@ impl Clip {
             }
         }
         self.fetching = None;
+        self.mine = false;
         if !held.is_empty() {
             self.write(clip, held.clone());
         }

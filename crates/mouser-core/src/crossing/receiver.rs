@@ -46,6 +46,10 @@ impl Crossing {
         y: f32,
         seq_base: u64,
     ) -> Result<(), String> {
+        // A paused computer is isolated: whoever crosses onto it is refused.
+        if self.paused {
+            return Ok(());
+        }
         let os = self
             .map
             .wires

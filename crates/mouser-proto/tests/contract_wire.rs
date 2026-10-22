@@ -208,13 +208,15 @@ fn all_messages() -> Vec<ControlMessage> {
             }],
         }),
         ControlMessage::SecureAttention,
+        ControlMessage::Paused { paused: true },
+        ControlMessage::Paused { paused: false },
     ]
 }
 
 #[test]
 fn every_control_message_roundtrips_through_framing() {
     let msgs = all_messages();
-    assert_eq!(msgs.len(), 33);
+    assert_eq!(msgs.len(), 35);
     let mut stream = Vec::new();
     for m in &msgs {
         let frame = encode_frame(m);

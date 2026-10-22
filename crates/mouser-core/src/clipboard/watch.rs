@@ -112,7 +112,22 @@ impl Clip {
         }
         let (message, served) = offer(sequence, &reps);
         self.served = Some(served);
+        self.mine = true;
+        if self.paused {
+            return Vec::new();
+        }
         vec![Out::All(message)]
+    }
+
+    /// Offer again what the user copied here, if the clipboard still holds
+    /// it: to `peer`, or to everyone, after a pause is over.
+    pub fn offer_mine(&mut self, peer: Option<ComputerId>) -> Vec<Out> {
+        let served = match (&self.served, self.mine, self.paused) {
+            (Some(served), true, false) => served,
+            _ => return Vec::new(),
+        };
+        let (message, _) = offer(served.sequence, &served.reps);
+        vec![peer.map_or(Out::All(message.clone()), |p| Out::To(p, message))]
     }
 
     /// A desk member asks for part of what we offered.

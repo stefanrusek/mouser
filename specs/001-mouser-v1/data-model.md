@@ -45,6 +45,7 @@ Member(desk A) ──move to B──▶ Pending(B)     (leaves A on approval of 
 | limitations | list of Limitation | FR-001: platform limitations shown in app. |
 | last_seen | timestamp | Updated on any authenticated packet. |
 | secure_input_holder | optional {pid, app_name} | macOS only (Story 2 sc. 10). |
+| paused | bool | Told by the peer with `Paused` (peers 0.2.2 and later; older peers never send it and are never sent it). While true the peer's displays are unavailable (see Pause below). |
 
 ConnectionState transitions:
 
@@ -91,6 +92,17 @@ While Reconnecting/Offline and the peer was the active computer: control returns
 | seq | u64 per-session input sequence number (Story 3 sc. 1 ordering). |
 
 Transitions: `Local → Remote(c)` on crossing/QuickJump; `Remote(c) → Local` on panic key, crossing back, or loss of c; `Remote(c) → Remote(d)` on crossing between remote displays. Every transition releases all `pressed` on the computer being left.
+
+### Pause (Story 2 sc. 12)
+
+A paused computer is isolated in both directions as if disconnected, but its connections stay up so that resuming is instant (`active.pause` / `active.resume`, `mouser pause` / `resume`, the tray, the hotkey; each applies to the computer where it is issued).
+
+- Its own pointer and keyboard never leave it: no edge crossing, QuickJump or hotkey crossing starts there. If it was controlling another computer, control returns (all of that computer's held input is released).
+- No other computer can cross onto it or send it input. Peers that know it is paused (`Paused`) treat its displays as unavailable, exactly as the displays of an offline computer: an edge to them does not cross and leaves no stuck pointer. If another computer is controlling it when it pauses, control returns to that controller and the held keys and buttons are released on the paused computer. A paused computer also refuses `Enter` itself, which is all that protects it from peers older than 0.2.2.
+- Clipboard and file transfers: a paused computer shares nothing, as a disconnected one does: clipboard offers and transfers neither leave it nor reach it, and transfers in progress end as for a lost peer. On resume, whatever the user copied on that computer meanwhile is offered to the desk again, and each desk-mate offers what it copied here to the resumed computer.
+- QuickJump letters are not shown on it, and letters showing there when it pauses are hidden.
+- `Paused { paused }` goes only to peers whose `Hello.mouser_version` is 0.2.2 or later (older peers cannot decode it), on every change and after each new connection while paused. Resume reverses all of the above.
+- Mixed-version desks: a peer older than 0.2.2 is never told, so for it the paused computer still looks present: a crossing onto it is refused by the paused computer but the older controller may still grab and has to return with the panic key; control it already had is dropped by the paused computer, not given back.
 
 ## ClipboardContent
 

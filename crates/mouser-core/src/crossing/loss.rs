@@ -42,11 +42,9 @@ impl Crossing {
                 None,
             );
         }
-        if self
-            .receiving
-            .as_ref()
-            .is_some_and(|r| !self.map.wires.contains_key(&r.from))
-        {
+        if self.receiving.as_ref().is_some_and(|r| {
+            !self.map.wires.contains_key(&r.from) || self.map.paused.contains(&r.from)
+        }) {
             self.end_receiving();
         }
         self.drop_lost_letters();

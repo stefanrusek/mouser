@@ -86,6 +86,10 @@ pub enum Command {
     Targeted,
     /// A desk member's connection ended.
     PeerGone(ComputerId),
+    /// This computer paused (`true`) or resumed.
+    Paused(bool),
+    /// A paused desk member resumed.
+    PeerResumed(ComputerId),
     /// The files of a transfer are all here (their top-level paths).
     FilesArrived(Vec<PathBuf>),
 }
@@ -117,6 +121,11 @@ pub struct Clip {
     /// Where pasted files are written.
     pub(crate) dir: PathBuf,
     pub(crate) inbox: Inbox,
+    /// This computer is paused: it shares nothing, though it notices copies.
+    pub(crate) paused: bool,
+    /// The clipboard holds what the user copied here (`served`), not
+    /// something that came from another computer.
+    pub(crate) mine: bool,
 }
 
 impl Clip {
@@ -130,6 +139,8 @@ impl Clip {
             fetching: None,
             dir,
             inbox,
+            paused: false,
+            mine: false,
         }
     }
 
@@ -147,6 +158,11 @@ impl Clip {
                 Ok(Vec::new())
             }
             Command::FilesArrived(paths) => Ok(self.files_arrived(clip, paths)),
+            Command::Paused(paused) => {
+                self.paused = paused;
+                Ok(self.offer_mine(None))
+            }
+            Command::PeerResumed(peer) => Ok(self.offer_mine(Some(peer))),
         }
     }
 
@@ -196,8 +212,13 @@ impl Ctx {
         peer: ComputerId,
         message: ControlMessage,
     ) -> Result<(), String> {
-        if !Self::authed(&self.core.lock().unwrap(), peer) {
+        let core = self.core.lock().unwrap();
+        if !Self::authed(&core, peer) {
             return Err("clipboard traffic from a computer that is not on the desk".into());
+        }
+        // Nothing is shared with or by a paused computer.
+        if self.sharing_off(&core, peer) {
+            return Ok(());
         }
         // No clipboard task means this platform shares no clipboard.
         let _ = self.clip.send(Command::Message(peer, message));
@@ -210,12 +231,20 @@ impl Ctx {
         for out in outs {
             match out {
                 Out::To(peer, message) => {
-                    if let Some(entry) = core.peers.get(&peer) {
+                    if let Some(entry) = core
+                        .peers
+                        .get(&peer)
+                        .filter(|_| !self.sharing_off(&core, peer))
+                    {
                         entry.send(message);
                     }
                 }
                 Out::All(message) => {
-                    for entry in core.peers.values().filter(|p| p.phase == Phase::Authed) {
+                    for entry in core
+                        .peers
+                        .values()
+                        .filter(|p| p.phase == Phase::Authed && !p.paused && !core.paused)
+                    {
                         entry.send(message.clone());
                     }
                 }
@@ -224,7 +253,9 @@ impl Ctx {
                     transfer,
                     files,
                 } => {
-                    if let Some(entry) = core.peers.get(&to) {
+                    if let Some(entry) =
+                        core.peers.get(&to).filter(|_| !self.sharing_off(&core, to))
+                    {
                         self.stream_files(entry.conn.clone(), transfer, files);
                     }
                 }

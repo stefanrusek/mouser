@@ -1029,6 +1029,122 @@ async fn crossing_stops_and_resumes(w: &mut CrossWorld) {
     .await;
 }
 
+// ---- scenario 12: pause isolates in both directions ------------------------------------------------------------
+
+impl CrossWorld {
+    /// Computers that know `Paused`.
+    async fn current_desk(&mut self) {
+        let computers = ["Alpha", "Beta"]
+            .into_iter()
+            .map(|n| {
+                (
+                    n,
+                    Setup {
+                        mouser_version: "0.2.2".into(),
+                        ..Setup::default()
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        self.desk(computers).await;
+    }
+
+    async fn pause(&mut self, name: &str, paused: bool) {
+        let method = if paused {
+            Method::ActivePause
+        } else {
+            Method::ActiveResume
+        };
+        let _: Empty = self.lab.node(name).call(method, json!({})).await;
+        // The news reaches the desk-mates.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+#[given("two up-to-date computers are on a desk and Beta is paused")]
+async fn beta_is_paused(w: &mut CrossWorld) {
+    w.current_desk().await;
+    w.pause("Beta", true).await;
+}
+
+#[given("two up-to-date computers are on a desk and Alpha is paused")]
+async fn alpha_is_paused(w: &mut CrossWorld) {
+    w.current_desk().await;
+    w.pause("Alpha", true).await;
+}
+
+#[given("two up-to-date computers are on a desk and Beta was paused and resumed")]
+async fn beta_was_paused_and_resumed(w: &mut CrossWorld) {
+    w.current_desk().await;
+    w.pause("Beta", true).await;
+    w.pause("Beta", false).await;
+}
+
+#[given("two up-to-date computers are on a desk and the pointer and a held key are on Beta")]
+async fn the_pointer_and_a_key_are_on_beta(w: &mut CrossWorld) {
+    w.current_desk().await;
+    let alpha = w.platform("Alpha");
+    push_right(&alpha);
+    let beta = w.platform("Beta");
+    injected(&beta, "the crossing", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    alpha.send_input(key(A, true));
+    injected(&beta, "the key", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: true,
+        }
+    })
+    .await;
+}
+
+#[when("the desk user pushes the pointer across the edge toward Beta")]
+async fn pushes_toward_beta(w: &mut CrossWorld) {
+    push_right(&w.platform("Alpha"));
+}
+
+#[when("the desk user pushes the pointer across the edge of Alpha")]
+async fn pushes_across_alphas_edge(w: &mut CrossWorld) {
+    push_right(&w.platform("Alpha"));
+}
+
+#[when("Beta is paused")]
+async fn beta_pauses(w: &mut CrossWorld) {
+    w.pause("Beta", true).await;
+}
+
+#[then("the pointer stays on Alpha and nothing reaches Beta")]
+async fn the_pointer_stays(w: &mut CrossWorld) {
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!w.platform("Alpha").is_grabbed());
+    assert!(w.platform("Beta").injected().is_empty());
+}
+
+#[then("control returns to Alpha and Beta's held key is released")]
+async fn control_returns(w: &mut CrossWorld) {
+    let alpha = w.platform("Alpha");
+    until("control back on Alpha", || !alpha.is_grabbed()).await;
+    let beta = w.platform("Beta");
+    injected(&beta, "the release", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: false,
+        }
+    })
+    .await;
+}
+
+#[then("the pointer arrives on Beta")]
+async fn the_pointer_arrives(w: &mut CrossWorld) {
+    let beta = w.platform("Beta");
+    injected(&beta, "the crossing", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+}
+
 // ---- edge case: held at the crossing ------------------------------------------------------------------------------
 
 #[given("a mouse button or modifier key is held down")]

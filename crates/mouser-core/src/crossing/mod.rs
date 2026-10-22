@@ -49,7 +49,7 @@ mod sas_tests;
 #[cfg(test)]
 mod state_tests;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::mpsc;
 
@@ -114,6 +114,8 @@ pub(crate) struct DeskMap {
     pub block_fullscreen: bool,
     /// Authenticated peers.
     pub wires: BTreeMap<ComputerId, Wire>,
+    /// Peers that are paused: linked, but their displays are not in `placed`.
+    pub paused: BTreeSet<ComputerId>,
 }
 
 /// The platform's input: capture of the local devices and injection.
@@ -210,6 +212,10 @@ impl Crossing {
     /// or the controller's: the paste shortcut and the targeted-paste hotkey
     /// are clipboard business.
     pub fn clipboard_keys(&self, held: &std::collections::BTreeSet<u32>, usage: u32) {
+        // A paused computer shares no clipboard.
+        if self.paused {
+            return;
+        }
         let command = if self.targeted_paste.pressed(held, usage) {
             Command::Targeted
         } else if paste_chord(self.os).pressed(held, usage) {
@@ -274,6 +280,7 @@ impl Ctx {
         let mine = self.local_displays(core);
         let mut displays = mine.clone();
         let mut wires = BTreeMap::new();
+        let mut paused = BTreeSet::new();
         for (id, peer) in core.peers.iter().filter(|(_, p)| p.phase == Phase::Authed) {
             wires.insert(
                 *id,
@@ -283,7 +290,11 @@ impl Ctx {
                     os: peer.hello.os,
                 },
             );
-            displays.extend(core.state.displays.get(id).cloned().unwrap_or_default());
+            if peer.paused {
+                paused.insert(*id);
+            } else {
+                displays.extend(core.state.displays.get(id).cloned().unwrap_or_default());
+            }
         }
         let layout = core
             .state
@@ -298,6 +309,7 @@ impl Ctx {
             block_fullscreen: layout.block_fullscreen,
             mine,
             wires,
+            paused,
         };
         self.crossing.lock().unwrap().set_map(map);
     }

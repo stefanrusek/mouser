@@ -81,7 +81,7 @@ impl Crossing {
         self.jump = Some(letters);
     }
 
-    fn hide_letters(&self) {
+    pub(crate) fn hide_letters(&self) {
         for wire in self.map.wires.values() {
             wire.send(ControlMessage::QuickJumpHide);
         }
@@ -91,6 +91,10 @@ impl Crossing {
     /// The controller `from` shows letters: this computer's displays among
     /// them.
     pub fn on_quickjump_show(&mut self, from: ComputerId, letters: Vec<(DisplayId, char)>) {
+        // A paused computer is not part of the jump.
+        if self.paused {
+            return;
+        }
         self.letters_from = Some(from);
         let _ = self.events.send(EngineEvent::QuickJumpShow { letters });
     }
