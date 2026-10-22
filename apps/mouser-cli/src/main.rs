@@ -198,3 +198,18 @@ async fn main() -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_answer_in_an_unknown_shape_is_reported_as_an_older_mouser() {
+        let failure = decode::<Vec<String>>(serde_json::json!({"something": "else"})).unwrap_err();
+        assert_eq!(failure.exit_code(), 1);
+        assert_eq!(
+            failure.to_string(),
+            "The running Mouser is older than this command; update it."
+        );
+    }
+}
