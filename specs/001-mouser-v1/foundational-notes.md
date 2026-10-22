@@ -230,3 +230,5 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Owner (2026-10-22), future (v2): a left click on the menu-bar/tray icon toggles pause (the menu stays on right click). Reason: a laptop that is carried away from the desk can stay on the desk and just be paused, so its pointer never slides onto screens the owner can't see.
 
 - Decided (orchestrator, 2026-10-22, after J1 found Windows desk create poisoning the engine): secret-store failures on desk create/join/leave/remove/rekey are clean errors (control code -32603 `internal`, no `data.kind`; state unchanged) — b0780be. Open: `Ctx::persist` (`state.json writable` expect, ~12 sites under the core lock) can still poison the core lock on a full disk or permission error; fix later by making persist return a Result (not panic=abort, since link tasks rely on task-local panics).
+
+- Decided (orchestrator, 2026-10-22): Windows firewall detection (2bf7e36) checks the constant port 47801; a changed `advanced.port` is not followed (the platform has no access to config) — acceptable for v1, revisit with a seam addition.
