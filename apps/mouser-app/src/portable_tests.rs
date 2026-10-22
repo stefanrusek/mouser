@@ -138,7 +138,7 @@ fn linux_portable_run_installs_nothing_so_autostart_is_unsupported() {
 #[cfg(target_os = "windows")]
 #[test]
 fn windows_creates_the_windows_platform() {
-    use mouser_platform::{Os, Platform};
+    use mouser_platform::Os;
     assert_eq!(create_platform(&installed()).info().os, Os::Windows);
 }
 
