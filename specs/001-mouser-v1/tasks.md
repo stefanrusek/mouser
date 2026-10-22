@@ -659,10 +659,10 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 44: US7-platform-windows — As a desk user, I want to drag files from one computer to another (P2)
 
-- [ ] T407 [P] [US7-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/drag_tests.rs`: `outgoing()` returns paths from an `IDropTarget` on a transparent edge window during an OLE drag; `begin_incoming(names)` starts `DoDragDrop` from a helper window with a virtual-file data object implementing `IDataObjectAsyncCapability` and reports the drop folder (as validated by hardware probe 3)
-- [ ] T408 [US7-platform-windows] Implement `FileDrag` in `crates/mouser-platform-windows/src/drag.rs`
-- [ ] T409 [US7-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T410 [US7-platform-windows] Commit: phase boundary "US7-platform-windows" (5.3)
+- [X] T407 [P] [US7-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/drag_tests.rs`: `outgoing()` returns paths from an `IDropTarget` on a transparent edge window during an OLE drag; `begin_incoming(names)` starts `DoDragDrop` from a helper window with a virtual-file data object implementing `IDataObjectAsyncCapability` and reports the drop folder (as validated by hardware probe 3)
+- [X] T408 [US7-platform-windows] Implement `FileDrag` in `crates/mouser-platform-windows/src/drag.rs`
+- [X] T409 [US7-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T410 [US7-platform-windows] Commit: phase boundary "US7-platform-windows" (5.3)
 
 #### Phase 45: US13-platform-windows — As a desk owner, I want to run Mouser without installing it (P3)
 
