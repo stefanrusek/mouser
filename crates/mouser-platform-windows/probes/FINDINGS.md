@@ -89,3 +89,15 @@ Same VM and conditions as above.
 | Hook point `pt` at the right screen edge, pass-through, +10 relative moves | not clamped: `pt.x` 2572, 2580, 2581 with the screen's last pixel 2559 and the cursor clamped to 2557, 2559, 2559 |
 | Same, hook swallowing | cursor stays put (2557); `pt.x` 2578 every time, i.e. cursor plus the accelerated delta. So a swallowed move's delta is `pt` minus the parked point, also at an edge |
 | A zero-length tagged relative move reaches the LL mouse hook | **no**; a one-pixel one does. The capture watchdog's probe is a tagged one-pixel move, which the hook swallows so the cursor never moves |
+
+### Network profile after a Parallels suspend/resume (J1, 2026-10-22)
+
+Same VM. Before the J1 run the network was "Network", category Private, and the Private firewall profile is disabled on this VM, so mouser-app's UDP 47801 socket drew no prompt. J1 suspends and resumes the VM with `prlctl`; on resume Windows identified the adapter as a new network, "Network 2", category **Public**, where the firewall is on.
+
+| Observation | Result |
+|---|---|
+| Network after resume | "Network 2", Public (was "Network", Private) |
+| mouser-app started 17:47:14 | Windows' own prompt opened 17:47:19: `PickerHost.exe FirewallNotificationDialogServer`, window title "Windows Security" |
+| While the prompt is open | a full-screen `Shell_SystemDim` window (PickerHost) covers the display; `DoDragDrop` cannot start ("the drag could not be started") and the edge-strip drag ends at once |
+
+So the J1 sleep step reaches a firewall-on profile on every run, and a real Windows user who joins a new network sees the prompt again. Firewall detection has to re-check on network change, not only at start.

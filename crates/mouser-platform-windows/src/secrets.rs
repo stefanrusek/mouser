@@ -2,7 +2,7 @@
 //! `%ProgramData%\Mouser\secrets\`, so mouser-service can read the desk keys
 //! before anyone logs in (W4).
 
-use mouser_platform::{Result, SecretStore};
+use mouser_platform::{Error, Result, SecretStore};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HLOCAL, LocalFree};
@@ -109,13 +109,24 @@ pub(crate) fn current_user_sid() -> String {
 /// SYSTEM, Administrators and the installing user only (foundational-notes.md,
 /// 2026-10-22): machine-scope DPAPI alone lets any local user who can read a
 /// file decrypt it. Files created inside inherit these entries.
-fn create_private_dir(dir: &Path) {
-    std::fs::create_dir_all(dir).expect("create secrets dir");
+fn create_private_dir(dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(dir).map_err(io)?;
     let sddl = format!(
         "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{})",
         current_user_sid()
     );
     protect_dir(dir, &sddl);
+    Ok(())
+}
+
+fn io(e: std::io::Error) -> Error {
+    Error::Os(e.to_string())
+}
+
+/// Where the secret `name` lives: one file, its name escaped the same way a
+/// portable run escapes it (core's desk keys are `desk_key/<desk id>`).
+fn path_of(dir: &Path, name: &str) -> PathBuf {
+    dir.join(crate::portable::file_name(name))
 }
 
 /// Replaces the DACL of `dir` with the one `sddl` describes. Existing files
@@ -149,28 +160,24 @@ pub(crate) fn protect_dir(dir: &Path, sddl: &str) {
 
 impl SecretStore for DpapiStore {
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>> {
-        let blob = match std::fs::read(self.dir.join(name)) {
-            Ok(blob) => blob,
-            Err(e) => {
-                assert_eq!(e.kind(), ErrorKind::NotFound, "read secret {name}: {e}");
-                return Ok(None);
-            }
-        };
-        Ok(Some(unprotect(&blob)))
+        match std::fs::read(path_of(&self.dir, name)) {
+            Ok(blob) => Ok(Some(unprotect(&blob))),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(io(e)),
+        }
     }
 
     fn set(&mut self, name: &str, value: &[u8]) -> Result<()> {
         if !self.dir.exists() {
-            create_private_dir(&self.dir);
+            create_private_dir(&self.dir)?;
         }
-        std::fs::write(self.dir.join(name), protect(value)).expect("write secret");
-        Ok(())
+        std::fs::write(path_of(&self.dir, name), protect(value)).map_err(io)
     }
 
     fn delete(&mut self, name: &str) -> Result<()> {
-        if let Err(e) = std::fs::remove_file(self.dir.join(name)) {
-            assert_eq!(e.kind(), ErrorKind::NotFound, "delete secret {name}: {e}");
+        match std::fs::remove_file(path_of(&self.dir, name)) {
+            Err(e) if e.kind() != ErrorKind::NotFound => Err(io(e)),
+            _ => Ok(()),
         }
-        Ok(())
     }
 }

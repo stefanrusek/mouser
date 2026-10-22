@@ -21,6 +21,65 @@ fn set_get_overwrite_delete_round_trip_across_reopen() {
     store.delete("desk-key").unwrap();
 }
 
+/// Core names a desk's key `desk_key/<desk id>`; v0.2.2 panicked writing it
+/// ("write secret: path not found") and the poisoned lock took the control
+/// server down with it.
+#[test]
+fn names_with_a_slash_are_one_escaped_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let secrets = dir.path().join("secrets");
+    let mut store = DpapiStore::new(secrets.clone());
+    let name = format!("desk_key/{}", "03".repeat(16));
+    store.set(&name, b"k").unwrap();
+    assert!(
+        secrets
+            .join(format!("desk_key%2F{}", "03".repeat(16)))
+            .is_file()
+    );
+    assert_eq!(
+        DpapiStore::new(secrets.clone()).get(&name).unwrap(),
+        Some(b"k".to_vec())
+    );
+    store.delete(&name).unwrap();
+    assert_eq!(store.get(&name).unwrap(), None);
+    // Names that were already file names keep their files.
+    store.set("device_key", b"d").unwrap();
+    assert!(secrets.join("device_key").is_file());
+}
+
+/// A store that cannot be written answers with an error instead of
+/// panicking inside whoever called it.
+#[test]
+fn a_store_that_cannot_be_written_is_an_error_not_a_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    // A file where the secrets directory should be.
+    let blocked = dir.path().join("secrets");
+    std::fs::write(&blocked, b"not a directory").unwrap();
+    let mut store = DpapiStore::new(blocked.join("inner"));
+    assert!(matches!(
+        store.set("k", b"v"),
+        Err(mouser_platform::Error::Os(_))
+    ));
+    let mut store = DpapiStore::new(blocked.clone());
+    assert!(matches!(
+        store.set("k", b"v"),
+        Err(mouser_platform::Error::Os(_))
+    ));
+    // Nothing was stored, and there is nothing to delete.
+    assert_eq!(store.get("k").unwrap(), None);
+    store.delete("k").unwrap();
+    // Something that is there but is not a secret file cannot be read or
+    // removed: an error, not "absent".
+    let secrets = dir.path().join("ok");
+    std::fs::create_dir_all(secrets.join("k")).unwrap();
+    let mut store = DpapiStore::new(secrets);
+    assert!(matches!(store.get("k"), Err(mouser_platform::Error::Os(_))));
+    assert!(matches!(
+        store.delete("k"),
+        Err(mouser_platform::Error::Os(_))
+    ));
+}
+
 /// How SDDL writes `sid` as a trustee: some well-known accounts get an alias
 /// instead of the SID (this machine's built-in Administrator, RID 500, is
 /// `LA`; the CI runner's user is that account).
