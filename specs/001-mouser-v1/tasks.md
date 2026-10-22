@@ -885,7 +885,7 @@ Work added from the owner's real-machine use; each was done test-first under the
 - [X] T514 Stuck Command after Cmd+C on the controlled Mac: injected events carry exact modifier flags; capture reconciles missed modifier releases (platform-macos) — 84f524d
 - [X] T515 Held keys are released when the controlled display leaves the layout; App Nap opt-out while capturing (core, platform-macos) — 2aea0c9
 - [X] T516 `--headless` refuses on Linux and Windows (macOS only in v1) (app) — f77bccf
-- [ ] T517 Pause isolates the computer in both directions: no crossing out or in, control returned with keys released, no clipboard or transfers; new version-gated `Paused` wire message (proto, core, spec)
+- [X] T517 Pause isolates the computer in both directions: no crossing out or in, control returned with keys released, no clipboard or transfers; new version-gated `Paused` wire message (proto, core, spec)
 
 ## Deferred to a future feature (owner decision 2026-10-22)
 
