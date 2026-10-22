@@ -620,21 +620,21 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 40: US2-platform-windows — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
-- [ ] T380 [P] [US2-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us2.rs` running conformance rules 1, 2, 3, 4, 7 against `WinPlatform`
-- [ ] T381 [P] [US2-platform-windows] Write unit tests for displays in `crates/mouser-platform-windows/src/displays_tests.rs`: Per-Monitor-V2 rectangles from `EnumDisplayMonitors`/`GetMonitorInfoW`; scale from `GetDpiForMonitor(MDT_EFFECTIVE_DPI)`; `physical_size_mm` from EDID when present; `WM_DISPLAYCHANGE`/`WM_DPICHANGED` fire `watch_displays`
-- [ ] T382 [US2-platform-windows] Implement `displays()`/`watch_displays()` in `crates/mouser-platform-windows/src/displays.rs`
-- [ ] T383 [P] [US2-platform-windows] Write unit tests for the HID ↔ scan-code table in `crates/mouser-platform-windows/src/keymap_tests.rs`
-- [ ] T384 [US2-platform-windows] Implement the HID ↔ Windows scan-code/virtual-key table in `crates/mouser-platform-windows/src/keymap.rs`
-- [ ] T385 [P] [US2-platform-windows] Write unit tests for capture in `crates/mouser-platform-windows/src/capture_tests.rs`: `WH_MOUSE_LL`/`WH_KEYBOARD_LL` on a dedicated thread with an I/O-free pump feeding a lock-free queue; while grabbed the hooks swallow input and the cursor is parked at the crossing edge with `SetCursorPos`, deltas computed from hook coordinates; events flagged as Mouser-injected are ignored; a watchdog reinstalls a hook that stopped delivering and raises a Problem (W1, W2)
-- [ ] T386 [US2-platform-windows] Implement `InputCapture` in `crates/mouser-platform-windows/src/capture.rs`
-- [ ] T387 [P] [US2-platform-windows] Write unit tests for injection in `crates/mouser-platform-windows/src/inject_tests.rs`: `SendInput` for absolute moves (via `SetCursorPos`), buttons 1–5, scroll and scan-code keys; held input released on drop; `secure_attention` forwards to the service when present, else `Unsupported`
-- [ ] T388 [US2-platform-windows] Implement `InputInject` in `crates/mouser-platform-windows/src/inject.rs`
-- [ ] T389 [P] [US2-platform-windows] Write unit tests for elevation detection in `crates/mouser-platform-windows/src/uipi_tests.rs`: `foreground_elevated()` is true when the foreground process integrity level is above Mouser's; the core reports "Mouser can't control <app> because it runs as administrator" (W3)
-- [ ] T390 [US2-platform-windows] Implement `foreground_elevated()` in `crates/mouser-platform-windows/src/uipi.rs`
-- [ ] T391 [P] [US2-platform-windows] Write unit tests for platform info in `crates/mouser-platform-windows/src/info_tests.rs`: `limitations` includes "Some games and remote-desktop apps ignore Mouser's input on this PC" (D3 item 1)
-- [ ] T392 [US2-platform-windows] Implement `info()` and the `WinPlatform` facade in `crates/mouser-platform-windows/src/lib.rs`
-- [ ] T393 [US2-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T394 [US2-platform-windows] Commit: phase boundary "US2-platform-windows" (5.3)
+- [X] T380 [P] [US2-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us2.rs` running conformance rules 1, 2, 3, 4, 7 against `WinPlatform`
+- [X] T381 [P] [US2-platform-windows] Write unit tests for displays in `crates/mouser-platform-windows/src/displays_tests.rs`: Per-Monitor-V2 rectangles from `EnumDisplayMonitors`/`GetMonitorInfoW`; scale from `GetDpiForMonitor(MDT_EFFECTIVE_DPI)`; `physical_size_mm` from EDID when present; `WM_DISPLAYCHANGE`/`WM_DPICHANGED` fire `watch_displays`
+- [X] T382 [US2-platform-windows] Implement `displays()`/`watch_displays()` in `crates/mouser-platform-windows/src/displays.rs`
+- [X] T383 [P] [US2-platform-windows] Write unit tests for the HID ↔ scan-code table in `crates/mouser-platform-windows/src/keymap_tests.rs`
+- [X] T384 [US2-platform-windows] Implement the HID ↔ Windows scan-code/virtual-key table in `crates/mouser-platform-windows/src/keymap.rs`
+- [X] T385 [P] [US2-platform-windows] Write unit tests for capture in `crates/mouser-platform-windows/src/capture_tests.rs`: `WH_MOUSE_LL`/`WH_KEYBOARD_LL` on a dedicated thread with an I/O-free pump feeding a lock-free queue; while grabbed the hooks swallow input and the cursor is parked at the crossing edge with `SetCursorPos`, deltas computed from hook coordinates; events flagged as Mouser-injected are ignored; a watchdog reinstalls a hook that stopped delivering and raises a Problem (W1, W2)
+- [X] T386 [US2-platform-windows] Implement `InputCapture` in `crates/mouser-platform-windows/src/capture.rs`
+- [X] T387 [P] [US2-platform-windows] Write unit tests for injection in `crates/mouser-platform-windows/src/inject_tests.rs`: `SendInput` for absolute moves (via `SetCursorPos`), buttons 1–5, scroll and scan-code keys; held input released on drop; `secure_attention` forwards to the service when present, else `Unsupported`
+- [X] T388 [US2-platform-windows] Implement `InputInject` in `crates/mouser-platform-windows/src/inject.rs`
+- [X] T389 [P] [US2-platform-windows] Write unit tests for elevation detection in `crates/mouser-platform-windows/src/uipi_tests.rs`: `foreground_elevated()` is true when the foreground process integrity level is above Mouser's; the core reports "Mouser can't control <app> because it runs as administrator" (W3)
+- [X] T390 [US2-platform-windows] Implement `foreground_elevated()` in `crates/mouser-platform-windows/src/uipi.rs`
+- [X] T391 [P] [US2-platform-windows] Write unit tests for platform info in `crates/mouser-platform-windows/src/info_tests.rs`: `limitations` includes "Some games and remote-desktop apps ignore Mouser's input on this PC" (D3 item 1)
+- [X] T392 [US2-platform-windows] Implement `info()` and the `WinPlatform` facade in `crates/mouser-platform-windows/src/lib.rs`
+- [X] T393 [US2-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T394 [US2-platform-windows] Commit: phase boundary "US2-platform-windows" (5.3)
 
 #### Phase 41: US3-platform-windows — As a desk user, I want my desk to keep working through sleep, network changes, and VPNs (P1)
 
