@@ -181,3 +181,12 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Wayland `set_grabbed` returns Unsupported; QuickJump limitation listed.
 - VM note: llvm-cov on the virtiofs-mounted repo loses profraw data; symlink `target/llvm-cov-<lane>` to local disk in the VM. CI is unaffected.
 - Not verified: real GNOME/KDE clipboard, X11 INCR against real GTK/Qt clients.
+
+## Orchestrator decisions from the docs review (2026-10-22)
+
+- An invalid or incomplete `config.toml` at START no longer panics: Mouser starts with the defaults in memory (the file is left untouched), raises a `platform_limitation`-style Problem with kind `config_invalid`... (use the existing Problem kinds: raise it as `missing_permission`? NO) → raise a Problem of kind `platform_limitation` with problem_id `config_invalid` and message "Mouser's settings file has a mistake and is being ignored until it is fixed: <reason>. File: <path>", and writes one `config.rejected` log record. Fixing the file clears it (the existing live reload applies it). Missing keys take their defaults (serde default), unknown keys are refused as today's validator decides.
+- The CLI's offline `config set` validates exactly like the engine (including `hotkeys.quickjump` and `enable_disable`): one shared validator in core used by both.
+- The CLI resolves its config/log paths with `mouser_core::paths::Paths::resolve(current_exe)`, so a CLI shipped beside a portable app uses `MouserData/`.
+- The CLI tolerates a status without `logging` (older running Mouser) with the message "The running Mouser is older than this command; update it." and exit 1, never a panic.
+- `general.notifications = false` suppresses Mouser's system notifications (problems, join requests stay visible in their windows).
+- `desk move`: implement only if contracts/cli.md lists it.
