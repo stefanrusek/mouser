@@ -7,3 +7,22 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+# Everything here is Windows-only: on other systems the crate is an empty library so
+# the workspace builds everywhere.
+[target.'cfg(windows)'.dependencies]
+mouser-platform = { path = "../mouser-platform" }
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Security_Cryptography",
+    "Win32_System_Com",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+] }
+
+[target.'cfg(windows)'.dev-dependencies]
+mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
+tempfile = "=3.27.0"
