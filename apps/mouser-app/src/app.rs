@@ -12,6 +12,7 @@ use tokio::sync::broadcast::error::RecvError;
 use crate::host::Host;
 use crate::notify::{self, Notifier};
 use crate::overlay;
+use crate::quickjump_windows;
 use crate::tray::{TrayController, current_status};
 use crate::windows::{self, Which};
 
@@ -78,9 +79,33 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
             );
             windows::show(app, Which::Arranger);
         }
-        // The QuickJump overlay (US11-app) is what shows these.
-        EngineEvent::QuickJumpShow { .. } | EngineEvent::QuickJumpHide => {}
+        EngineEvent::QuickJumpShow { letters } => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let host = app.state::<Host>();
+                let own = status_id(&host).await;
+                let displays = host
+                    .platform()
+                    .displays()
+                    .expect("the local displays can be listed");
+                quickjump_windows::show(&app, &quickjump_windows::plan(&own, &displays, &letters));
+            });
+        }
+        EngineEvent::QuickJumpHide => quickjump_windows::hide(app),
     }
+}
+
+/// This computer's id, from the engine's status.
+async fn status_id(host: &Host) -> mouser_proto::ids::ComputerId {
+    let status = host
+        .control()
+        .call(mouser_proto::control::Method::Status, None)
+        .await
+        .expect("status can be read");
+    serde_json::from_value::<mouser_proto::control::Status>(status)
+        .expect("status matches its schema")
+        .computer
+        .id
 }
 
 /// Handle engine events until the engine stops.

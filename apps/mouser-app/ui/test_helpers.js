@@ -19,10 +19,12 @@ export function fakeApi(answers = {}) {
   const calls = [];
   const listeners = [];
   const landings = [];
+  const quickJumps = [];
   const record = (name, args) => calls.push([name, ...args]);
   return {
     calls,
     emitLanding: (landing) => landings.forEach((handler) => handler(landing)),
+    emitQuickJump: () => quickJumps.forEach((handler) => handler()),
     emit: (method, params) => listeners.forEach((handler) => handler({ jsonrpc: '2.0', method, params })),
     call: async (method, params) => {
       calls.push([method, params]);
@@ -46,6 +48,9 @@ export function fakeApi(answers = {}) {
     hideWindow: async () => record('hide_window', []),
     onLanding: async (handler) => {
       landings.push(handler);
+    },
+    onQuickJump: async (handler) => {
+      quickJumps.push(handler);
     },
     onNotification: async (handler) => {
       listeners.push(handler);

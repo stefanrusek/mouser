@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EVENT, LANDING_EVENT, makeApi } from './api.js';
+import { EVENT, LANDING_EVENT, QUICKJUMP_EVENT, makeApi } from './api.js';
 import { boot } from './boot.js';
 import { button, errorText, guarded } from './dom.js';
 import { loadPage } from './test_helpers.js';
@@ -55,6 +55,14 @@ test('landings arrive as the bare payload', async () => {
   await makeApi(tauri).onLanding((landing) => seen.push(landing));
   tauri.listeners[LANDING_EVENT]({ payload: { x: 60, y: 60 } });
   assert.deepEqual(seen, [{ x: 60, y: 60 }]);
+});
+
+test('the end of QuickJump arrives without a payload', async () => {
+  const tauri = fakeTauri();
+  let ended = 0;
+  await makeApi(tauri).onQuickJump(() => ended++);
+  tauri.listeners[QUICKJUMP_EVENT]({ payload: null });
+  assert.equal(ended, 1);
 });
 
 test('boot hands a window module the document, the api, a timer and focus', () => {

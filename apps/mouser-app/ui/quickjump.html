@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mouser QuickJump</title>
+  <link rel="stylesheet" href="quickjump.css">
+</head>
+<body>
+<div id="letter" hidden></div>
+<script type="module">
+  import { boot } from './boot.js';
+  import { init } from './quickjump.js';
+  boot(init);
+</script>
+</body>
+</html>

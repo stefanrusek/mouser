@@ -2,6 +2,7 @@
 
 export const EVENT = 'mouser://notification';
 export const LANDING_EVENT = 'mouser://landing';
+export const QUICKJUMP_EVENT = 'mouser://quickjump';
 
 export function makeApi(tauri) {
   const { invoke } = tauri.core;
@@ -24,5 +25,7 @@ export function makeApi(tauri) {
     onNotification: (handler) => tauri.event.listen(EVENT, (event) => handler(event.payload)),
     // handler receives {x, y}: where the pointer landed, in the overlay window's own pixels.
     onLanding: (handler) => tauri.event.listen(LANDING_EVENT, (event) => handler(event.payload)),
+    // handler is told when QuickJump ends (the window is about to close).
+    onQuickJump: (handler) => tauri.event.listen(QUICKJUMP_EVENT, () => handler()),
   };
 }

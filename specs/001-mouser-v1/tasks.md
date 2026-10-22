@@ -447,10 +447,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: QuickJump overlay UI tests pass.
 
-- [ ] T277 [P] [US11-app] Write UI tests `apps/mouser-app/ui/quickjump.test.js`: `QuickJumpShow` renders the assigned large letter centred on each local display; `QuickJumpHide` removes them (Story 11 sc. 1–3)
-- [ ] T278 [US11-app] Implement the QuickJump overlay `apps/mouser-app/ui/quickjump.html`/`quickjump.js` with one borderless overlay window per local display in `apps/mouser-app/src/quickjump_windows.rs`
-- [ ] T279 [US11-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T280 [US11-app] Commit: phase boundary "US11-app" (5.3)
+- [X] T277 [P] [US11-app] Write UI tests `apps/mouser-app/ui/quickjump.test.js`: `QuickJumpShow` renders the assigned large letter centred on each local display; `QuickJumpHide` removes them (Story 11 sc. 1–3)
+- [X] T278 [US11-app] Implement the QuickJump overlay `apps/mouser-app/ui/quickjump.html`/`quickjump.js` with one borderless overlay window per local display in `apps/mouser-app/src/quickjump_windows.rs`
+- [X] T279 [US11-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T280 [US11-app] Commit: phase boundary "US11-app" (5.3)
 
 #### Phase 24: US12-app — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 

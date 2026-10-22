@@ -1,0 +1,11 @@
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { display: grid; place-items: center; }
+#letter {
+  font: 700 30vmin/1 system-ui, sans-serif;
+  color: #ffffff;
+  background: rgba(37, 99, 235, 0.85);
+  padding: 0.15em 0.4em;
+  border-radius: 0.15em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+#letter[hidden] { display: none; }

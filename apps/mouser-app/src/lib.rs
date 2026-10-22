@@ -7,6 +7,7 @@ pub mod hotkeys;
 pub mod notify;
 pub mod overlay;
 pub mod platform_select;
+pub mod quickjump_windows;
 pub mod tray;
 pub mod updater;
 pub mod windows;
@@ -28,6 +29,8 @@ mod notify_tests;
 mod overlay_tests;
 #[cfg(test)]
 mod platform_select_tests;
+#[cfg(test)]
+mod quickjump_windows_tests;
 #[cfg(test)]
 mod support_tests;
 #[cfg(test)]

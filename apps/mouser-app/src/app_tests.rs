@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use mouser_proto::control::{Method, Notification, Topic};
 use serde_json::json;
@@ -10,7 +10,7 @@ use crate::support_tests::{
     FakeNotifier, FakeTray, app_with, eventually, fixture, has_window, status_of,
 };
 use crate::tray::{Appearance, TrayController};
-use mouser_platform::Os;
+use mouser_platform::{Os, Platform};
 
 fn note(method: Topic, params: serde_json::Value) -> Notification {
     Notification {
@@ -238,17 +238,38 @@ async fn a_landing_flashes_the_overlay_and_a_review_offer_is_a_notification() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn quickjump_events_are_left_to_the_quickjump_overlay() {
+async fn quickjump_letters_show_on_this_computers_displays_and_hide_again() {
     let f = fixture().await;
+    let own = status_of(&f.host).await.computer.id;
+    let key = f.platform.displays().unwrap()[0].key.clone();
     let app = app_with(f.host);
+    let handle_ = app.handle().clone();
     let notifier = FakeNotifier::default();
-    let show = mouser_core::EngineEvent::QuickJumpShow { letters: vec![] };
-    handle_event(app.handle(), &notifier, show);
+    let letters = vec![(mouser_proto::model::DisplayId { computer: own, key }, 'A')];
     handle_event(
-        app.handle(),
+        &handle_,
         &notifier,
-        mouser_core::EngineEvent::QuickJumpHide,
+        mouser_core::EngineEvent::QuickJumpShow { letters },
     );
+    let count = || {
+        handle_
+            .webview_windows()
+            .keys()
+            .filter(|label| label.starts_with("quickjump-"))
+            .count()
+    };
+    eventually(|| count() == 1).await;
+    let ended = Arc::new(Mutex::new(0));
+    for (label, window) in handle_.webview_windows() {
+        if label.starts_with("quickjump-") {
+            let sink = ended.clone();
+            window.listen(crate::quickjump_windows::EVENT, move |_| {
+                *sink.lock().unwrap() += 1
+            });
+        }
+    }
+    handle_event(&handle_, &notifier, mouser_core::EngineEvent::QuickJumpHide);
+    eventually(|| *ended.lock().unwrap() == 1).await;
     assert!(notifier.shown.lock().unwrap().is_empty());
 }
 
