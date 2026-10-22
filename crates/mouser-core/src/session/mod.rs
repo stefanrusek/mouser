@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 
 use mouser_proto::control::{FixAction, ProblemKind};
 use mouser_proto::ids::{ComputerId, DeskId};
+use mouser_proto::log::LogLevel;
 use mouser_proto::wire::ControlMessage;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -286,6 +287,8 @@ impl Ctx {
                 return;
             }
             let gone = core.peers.remove(&peer).expect("checked above");
+            self.log
+                .record(LogLevel::Info, "peer.disconnected", Some(peer), None);
             if gone.phase != Phase::Departed && core.is_member(peer) {
                 core.mark_absent(peer, gone.last_seen, Instant::now());
             }

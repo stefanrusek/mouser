@@ -10,6 +10,7 @@ pub mod discovery;
 pub mod engine;
 pub mod identity;
 pub mod layout;
+pub mod logging;
 pub mod problems;
 pub mod session;
 pub mod state;

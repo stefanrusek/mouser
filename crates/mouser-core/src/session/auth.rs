@@ -5,6 +5,7 @@
 
 use hmac::{Hmac, KeyInit, Mac};
 use mouser_proto::ids::{ComputerId, DeskId};
+use mouser_proto::log::LogLevel;
 use quinn::Connection;
 use sha2::Sha256;
 
@@ -86,6 +87,8 @@ impl Ctx {
             return Ok(());
         }
         entry.phase = Phase::Authed;
+        self.log
+            .record(LogLevel::Info, "peer.connected", Some(peer), None);
         self.mark_present(&mut core, peer);
         let state = core.state.desk.as_ref().expect("on a desk").state.clone();
         let displays = self.local_displays(&core);

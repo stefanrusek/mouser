@@ -3,14 +3,20 @@
 
 pub mod blocked;
 pub mod limitations;
+pub mod notify;
+pub mod peer_status;
+pub mod permissions;
 pub mod secure_input;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use mouser_proto::control::{FixAction, Notification, Problem, ProblemKind, Topic};
 use mouser_proto::ids::ComputerId;
+use mouser_proto::log::LogLevel;
 use mouser_proto::model::PermissionKind;
 use tokio::sync::broadcast;
+
+use crate::logging::Log;
 
 /// RFC 3339 UTC timestamp for "now".
 pub fn now() -> String {
@@ -52,6 +58,7 @@ pub fn permission_text(kind: PermissionKind) -> &'static str {
 pub struct Problems {
     all: Mutex<Vec<Problem>>,
     notify: broadcast::Sender<Notification>,
+    log: Option<Arc<Log>>,
 }
 
 impl Problems {
@@ -59,10 +66,33 @@ impl Problems {
         Self {
             all: Mutex::new(Vec::new()),
             notify,
+            log: None,
         }
     }
 
-    fn announce(&self, problem: &Problem) {
+    /// Record raised and cleared problems in the diagnostic log.
+    pub fn logged_to(mut self, log: Arc<Log>) -> Self {
+        self.log = Some(log);
+        self
+    }
+
+    fn log(&self, event: &str, problem: &Problem) {
+        if let Some(log) = &self.log {
+            let fields = serde_json::json!({
+                "kind": kind_name(problem.kind),
+                "problem_id": problem.problem_id,
+                "message": problem.message,
+            });
+            log.record(
+                LogLevel::Warn,
+                event,
+                Some(problem.computer),
+                fields.as_object().cloned(),
+            );
+        }
+    }
+
+    pub(crate) fn announce(&self, problem: &Problem) {
         let note = Notification {
             jsonrpc: "2.0".into(),
             method: Topic::Problem,
@@ -101,13 +131,18 @@ impl Problems {
         };
         all.push(problem.clone());
         drop(all);
+        self.log("problem.raised", &problem);
         self.announce(&problem);
         true
     }
 
     /// Clear an open problem; returns whether there was one.
     pub fn clear(&self, kind: ProblemKind, subject: &str) -> bool {
-        let problem_id = format!("{}:{subject}", kind_name(kind));
+        self.clear_id(&format!("{}:{subject}", kind_name(kind)))
+    }
+
+    /// Clear the open problem called `problem_id`; returns whether there was one.
+    pub fn clear_id(&self, problem_id: &str) -> bool {
         let mut all = self.all.lock().unwrap();
         let Some(problem) = all
             .iter_mut()
@@ -118,6 +153,7 @@ impl Problems {
         problem.cleared_at = Some(now());
         let cleared = problem.clone();
         drop(all);
+        self.log("problem.cleared", &cleared);
         self.announce(&cleared);
         true
     }
@@ -136,6 +172,12 @@ impl Problems {
 mod blocked_tests;
 #[cfg(test)]
 mod limitations_tests;
+#[cfg(test)]
+mod notify_tests;
+#[cfg(test)]
+mod peer_status_tests;
+#[cfg(test)]
+mod permissions_tests;
 #[cfg(test)]
 mod secure_input_tests;
 #[cfg(test)]

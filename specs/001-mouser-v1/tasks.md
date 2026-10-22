@@ -285,17 +285,17 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us8` passes: status lists every computer's connection, responsiveness, missing permissions and latest problem; fixes and diagnostic logging work.
 
-- [ ] T184 [US8-core] Write the acceptance runner `crates/mouser-core/tests/acc_us8.rs` and steps `crates/mouser-core/tests/steps/us8.rs` for every scenario in `tests/features/us8.feature`
-- [ ] T185 [P] [US8-core] Write unit tests for peer status exchange in `crates/mouser-core/src/problems/peer_status_tests.rs`: each member sends `Status` (permissions, limitations, secure-input holder, problems) on change; `status` shows every member's state and `rtt_ms` from the transport (Story 8 sc. 1)
-- [ ] T186 [US8-core] Implement peer status exchange in `crates/mouser-core/src/problems/peer_status.rs`
-- [ ] T187 [P] [US8-core] Write unit tests for permission problems in `crates/mouser-core/src/problems/permissions_tests.rs`: a missing permission raises `missing_permission` with fix `open_system_settings(kind)`; invoking the fix calls `Platform::open_permission_settings(kind)` (Story 8 sc. 2)
-- [ ] T188 [US8-core] Implement permission problems and the fix action in `crates/mouser-core/src/problems/permissions.rs`
-- [ ] T189 [P] [US8-core] Write unit tests for problem notifications in `crates/mouser-core/src/problems/notify_tests.rs`: `join_refused`, `incompatible_version`, `missing_permission`, `secure_input`, `platform_limitation` emit a notification with the message and, when present, one fix action (Story 8 sc. 3)
-- [ ] T190 [US8-core] Implement problem notifications in `crates/mouser-core/src/problems/notify.rs`
-- [ ] T191 [P] [US8-core] Write unit tests for the diagnostic log in `crates/mouser-core/src/logging/tests.rs`: `logging.set{enabled:true}` returns the log file path and writes one JSON record per line validating against `log-record.schema.json`; nothing is written to the OS console or system log; files rotate at `diagnostics.max_log_mb` (Story 8 sc. 4, FR-010)
-- [ ] T192 [US8-core] Implement the JSONL diagnostic log writer and `logging.set` in `crates/mouser-core/src/logging/mod.rs`
-- [ ] T193 [US8-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T194 [US8-core] Commit: phase boundary "US8-core" (5.3)
+- [X] T184 [US8-core] Write the acceptance runner `crates/mouser-core/tests/acc_us8.rs` and steps `crates/mouser-core/tests/steps/us8.rs` for every scenario in `tests/features/us8.feature`
+- [X] T185 [P] [US8-core] Write unit tests for peer status exchange in `crates/mouser-core/src/problems/peer_status_tests.rs`: each member sends `Status` (permissions, limitations, secure-input holder, problems) on change; `status` shows every member's state and `rtt_ms` from the transport (Story 8 sc. 1)
+- [X] T186 [US8-core] Implement peer status exchange in `crates/mouser-core/src/problems/peer_status.rs`
+- [X] T187 [P] [US8-core] Write unit tests for permission problems in `crates/mouser-core/src/problems/permissions_tests.rs`: a missing permission raises `missing_permission` with fix `open_system_settings(kind)`; invoking the fix calls `Platform::open_permission_settings(kind)` (Story 8 sc. 2)
+- [X] T188 [US8-core] Implement permission problems and the fix action in `crates/mouser-core/src/problems/permissions.rs`
+- [X] T189 [P] [US8-core] Write unit tests for problem notifications in `crates/mouser-core/src/problems/notify_tests.rs`: `join_refused`, `incompatible_version`, `missing_permission`, `secure_input`, `platform_limitation` emit a notification with the message and, when present, one fix action (Story 8 sc. 3)
+- [X] T190 [US8-core] Implement problem notifications in `crates/mouser-core/src/problems/notify.rs`
+- [X] T191 [P] [US8-core] Write unit tests for the diagnostic log in `crates/mouser-core/src/logging/tests.rs`: `logging.set{enabled:true}` returns the log file path and writes one JSON record per line validating against `log-record.schema.json`; nothing is written to the OS console or system log; files rotate at `diagnostics.max_log_mb` (Story 8 sc. 4, FR-010)
+- [X] T192 [US8-core] Implement the JSONL diagnostic log writer and `logging.set` in `crates/mouser-core/src/logging/mod.rs`
+- [X] T193 [US8-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T194 [US8-core] Commit: phase boundary "US8-core" (5.3)
 
 #### Phase 11: US9-core — As a troubleshooting agent, I want to inspect and change Mouser from the command line (P3)
 

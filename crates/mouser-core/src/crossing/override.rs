@@ -76,12 +76,14 @@ impl Crossing {
             Reason::Fullscreen
         } else {
             self.bumps.release();
+            blocked::crossed(&self.problems, &id, side);
             return true;
         };
-        if self.bumps.hit((id, side), now) {
+        if self.bumps.hit((id.clone(), side), now) {
+            blocked::crossed(&self.problems, &id, side);
             return true;
         }
-        blocked::explain(&self.problems, self.me, reason);
+        blocked::explain(&self.problems, self.me, reason, &id, side);
         false
     }
 }

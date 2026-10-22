@@ -30,6 +30,7 @@ use crate::crossing::{Crossing, Host};
 use crate::desk::join::Requests;
 use crate::discovery::{Advert, Discovery, MdnsDiscovery};
 use crate::identity::Identity;
+use crate::logging::Log;
 use crate::problems::Problems;
 use crate::session::handshake::PeerHello;
 use crate::state::{self, LocalState, desk_key_name};
@@ -161,6 +162,8 @@ pub(crate) struct Core {
     pub needs_review: BTreeSet<DisplayId>,
     /// The application holding Secure Input on this computer.
     pub secure_holder: Option<mouser_platform::SecureInputHolder>,
+    /// The status last sent to the desk-mates.
+    pub status_sent: Option<PeerStatus>,
 }
 
 /// State shared by every task of one engine.
@@ -174,6 +177,7 @@ pub(crate) struct Ctx {
     pub transport: Transport,
     pub discovery: Arc<dyn Discovery>,
     pub problems: Arc<Problems>,
+    pub log: Arc<Log>,
     pub notify: broadcast::Sender<Notification>,
     pub events: broadcast::Sender<EngineEvent>,
     pub crossing: Arc<Mutex<Crossing>>,
@@ -358,7 +362,17 @@ impl Engine {
         let (notify, _) = broadcast::channel(256);
         let (events, _) = broadcast::channel(256);
         let dirty = Arc::new(Notify::new());
-        let problems = Arc::new(Problems::new(notify.clone()));
+        let log = Arc::new(Log::new(
+            &params.config_dir,
+            identity.computer_id(),
+            match config.general.computer_name.as_str() {
+                "" => params.computer_name.clone(),
+                name => name.to_string(),
+            },
+            config.diagnostics.logging,
+            config.diagnostics.max_log_mb,
+        ));
+        let problems = Arc::new(Problems::new(notify.clone()).logged_to(log.clone()));
         let panic = PanicSpec::parse(&config.hotkeys.panic).expect("hotkeys.panic is valid");
         let targeted_paste =
             Chord::parse(&config.hotkeys.targeted_paste).expect("hotkeys.targeted_paste is valid");
@@ -391,6 +405,7 @@ impl Engine {
             transport,
             discovery,
             problems,
+            log,
             notify,
             events,
             crossing,
@@ -414,6 +429,7 @@ impl Engine {
                 paused: false,
                 needs_review: BTreeSet::new(),
                 secure_holder: None,
+                status_sent: None,
             }),
             next_link: AtomicU64::new(0),
             stop: CancellationToken::new(),
@@ -551,6 +567,10 @@ async fn reconcile_loop(ctx: Arc<Ctx>) {
         ctx.check_liveness();
         ctx.try_start_input();
         ctx.sync_secure_input();
+        if ctx.sync_permission_problems() {
+            ctx.notify_status();
+        }
+        ctx.sync_peer_status();
     }
 }
 

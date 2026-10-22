@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use mouser_proto::control::{
     ConfigGetParams, ConfigSetParams, DeskCreateParams, DeskJoinParams, DeskMoveParams, Empty,
-    JoinDecideParams, Method, RemoveMemberParams, Request, Response, RpcError, SubscribeParams,
-    Topic,
+    JoinDecideParams, LoggingSetParams, Method, RemoveMemberParams, Request, Response, RpcError,
+    SubscribeParams, Topic,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -101,6 +101,10 @@ pub(crate) async fn call(
             let p: ConfigSetParams = parse(params)?;
             ctx.set_config(&p.key, p.value)?;
             json(Empty {})
+        }
+        Method::LoggingSet => {
+            let p: LoggingSetParams = parse(params)?;
+            json(ctx.set_logging(p.enabled)?)
         }
         _ => Err(unknown(format!("{name} is not available yet"))),
     }

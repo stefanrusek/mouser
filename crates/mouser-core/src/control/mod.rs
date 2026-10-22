@@ -68,6 +68,16 @@ impl ControlHandle {
             });
     }
 
+    /// Carry out the fix of the open problem `problem_id` (a problem's
+    /// `fix` is what the user is offered): opens the system screen for a
+    /// missing permission, and acknowledges `open_arranger_edge`, which
+    /// clears that notice. The other fixes are the app's own.
+    pub fn fix(&self, problem_id: &str) -> Result<(), String> {
+        self.ctx.apply_fix(problem_id)?;
+        self.ctx.notify_status();
+        Ok(())
+    }
+
     /// Every notification from now on (the caller filters by topic).
     pub fn notifications(&self) -> broadcast::Receiver<Notification> {
         self.ctx.notify.subscribe()

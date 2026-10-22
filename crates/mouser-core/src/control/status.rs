@@ -4,12 +4,11 @@ use std::collections::BTreeMap;
 
 use mouser_platform::{PermissionKind as PlatformKind, PermissionState as PlatformState};
 use mouser_proto::control::{
-    ComputerRef, ConnectionState, EngineState, ProblemKind, Status, StatusComputer, StatusDesk,
+    ComputerRef, ConnectionState, EngineState, LoggingStatus, Status, StatusComputer, StatusDesk,
 };
 use mouser_proto::model::{PermissionKind, PermissionState};
 
 use crate::engine::Ctx;
-use crate::problems::permission_text;
 use crate::state::Membership;
 
 pub(crate) fn permission_kind(kind: PlatformKind) -> PermissionKind {
@@ -45,29 +44,6 @@ pub fn tray_summary(status: &Status) -> TraySummary {
         state: status.state,
         computers: status.computers.len() as u32,
         displays: status.computers.iter().map(|c| c.displays).sum(),
-    }
-}
-
-impl Ctx {
-    /// Raise a `missing_permission` problem (with the fix that opens the right
-    /// system screen) for each missing permission, and clear it once granted.
-    pub(crate) fn sync_permission_problems(&self) {
-        for (kind, state) in self.platform.permissions() {
-            let wire = permission_kind(kind);
-            let subject = serde_json::to_value(wire).expect("kind serializes");
-            let subject = subject.as_str().expect("kind is a string");
-            if state == PlatformState::Missing {
-                self.problems.raise(
-                    ProblemKind::MissingPermission,
-                    subject,
-                    self.me(),
-                    permission_text(wire).to_string(),
-                    Some(mouser_proto::control::FixAction::OpenSystemSettings(wire)),
-                );
-            } else {
-                self.problems.clear(ProblemKind::MissingPermission, subject);
-            }
-        }
     }
 }
 
@@ -120,8 +96,14 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
                         .get(&member.computer_id)
                         .map(|a| a.last_seen.clone())
                 }),
-                permissions: BTreeMap::new(),
-                limitations: Vec::new(),
+                permissions: peer
+                    .and_then(|p| p.status.as_ref())
+                    .map(|s| s.permissions.clone())
+                    .unwrap_or_default(),
+                limitations: peer
+                    .and_then(|p| p.status.as_ref())
+                    .map(|s| s.limitations.clone())
+                    .unwrap_or_default(),
                 displays: peer.map_or(0, |p| p.displays.len() as u32),
             });
         }
@@ -148,6 +130,20 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
     } else {
         EngineState::Active
     };
+    let mut problems = ctx.problems.open();
+    for reported in core
+        .peers
+        .values()
+        .filter_map(|p| p.status.as_ref())
+        .flat_map(|s| &s.problems)
+    {
+        let known = problems
+            .iter()
+            .any(|p| p.problem_id == reported.problem_id && p.computer == reported.computer);
+        if !known {
+            problems.push(reported.clone());
+        }
+    }
     drop(core);
     Status {
         version: ctx.mouser_version.clone(),
@@ -156,7 +152,10 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         desk,
         active_computer: ctx.crossing.lock().unwrap().active(),
         computers,
-        problems: ctx.problems.open(),
-        logging: None,
+        problems,
+        logging: Some(LoggingStatus {
+            enabled: ctx.log.enabled(),
+            path: ctx.log.path().to_string_lossy().into_owned(),
+        }),
     }
 }

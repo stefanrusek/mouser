@@ -85,3 +85,12 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - `transfer` notifications: `transfer_id` (hex), `state` (pending|checking|copying|awaiting_overwrite_decision|completed|rejected), `current_item`, `bytes_done`, `bytes_total`, `rate` (B/s), `eta_seconds`; throttled to 100 ms; conflict/rejected add `item`, `reason`, `message`.
 - Open items: peer disconnect drops transfers silently (no notification), partial and completed files are never cleaned up; Linux backend must report a FileDrag limitation pointing to copy/paste.
 - app US7: Overwrite/Skip go through the in-process Tauri command `transfer_resolve`. Open bug: the transfer window is created after the notification that opens it, so a one-shot `rejected` (no_space) can be lost; fix by having the app buffer the latest `transfer` notification per id and replay it to a newly opened window (app US8).
+
+## core US8 decisions (for app US8, cli US9)
+
+- Peers exchange `Status` on change; `status` fills each peer's `permissions`/`limitations`, and `status.problems` merges what peers report about themselves (dedup by problem_id+computer). Permission problems re-sync every 250 ms.
+- In-process `ControlHandle::fix(problem_id)`: `open_system_settings:<kind>` opens settings; `open_arranger_edge` clears the notice. Errors for other fixes and for problems of other computers: the app shows fix buttons only for problems whose `computer` is this computer.
+- `crossing_blocked` is per edge: `problem_id = crossing_blocked:<computer id>/<display key>/<side>`; it clears on fix, on a double-bump crossing, and when the edge stops blocking. The app parses the id to open that edge.
+- Diagnostic log: `<config_dir>/logs/mouser.log` (JSONL per log-record.schema.json), rotates at `diagnostics.max_log_mb` to `mouser.log.1`; `logging.set{enabled}` persists `diagnostics.logging`; `status.logging{enabled,path}` always present. Events: logging.enabled/disabled, problem.raised/cleared, peer.connected/disconnected (crossing events not yet).
+- Open: transfers are still dropped silently on peer disconnect (spec has no failed state; decided below).
+- Known flaky hang (seen twice): `transport::tests::an_idle_connection_outlives_the_idle_timeout_thanks_to_keep_alive` can hang under llvm-cov; to be diagnosed.

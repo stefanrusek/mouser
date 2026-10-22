@@ -1,4 +1,5 @@
 use mouser_platform::LocalInput;
+use mouser_platform::Platform;
 use mouser_proto::control::{FixAction, ProblemKind, Topic};
 
 use crate::testing::*;
@@ -61,4 +62,80 @@ async fn a_full_screen_block_names_the_full_screen_application() {
     push_right(a);
     let problem = recv_topic(&mut notes, Topic::Problem).await;
     assert!(problem["message"].as_str().unwrap().contains("full-screen"));
+}
+
+fn blocked_ids(open: &[mouser_proto::control::Problem]) -> Vec<String> {
+    open.iter()
+        .filter(|p| p.kind == ProblemKind::CrossingBlocked)
+        .map(|p| p.problem_id.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn the_notice_names_its_edge_in_its_id_and_following_the_fix_clears_it() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let a = &nodes[0];
+    a.platform.set_fullscreen(true);
+    let mut notes = a.engine.control().notifications();
+    push_right(a);
+    let problem = recv_topic(&mut notes, Topic::Problem).await;
+    let id = problem["problem_id"].as_str().unwrap().to_string();
+    let display = a.platform.displays().unwrap()[0].key.clone();
+    assert_eq!(
+        id,
+        format!(
+            "crossing_blocked:{}/{display}/right",
+            a.engine.computer_id()
+        )
+    );
+    assert_eq!(
+        blocked_ids(&status(a).await.problems),
+        std::slice::from_ref(&id)
+    );
+    // Seeing it (opening the arranger) is what clears it.
+    a.engine.control().fix(&id).unwrap();
+    assert!(blocked_ids(&status(a).await.problems).is_empty());
+    let cleared = recv_topic(&mut notes, Topic::Problem).await;
+    assert!(cleared["cleared_at"].is_string());
+    // The next block explains again.
+    away(a);
+    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    push_right(a);
+    let again = recv_topic(&mut notes, Topic::Problem).await;
+    assert_eq!(again["problem_id"], id.as_str());
+}
+
+#[tokio::test]
+async fn crossing_the_edge_at_last_clears_its_notice() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let a = &nodes[0];
+    a.platform.set_fullscreen(true);
+    let mut notes = a.engine.control().notifications();
+    push_right(a);
+    recv_topic(&mut notes, Topic::Problem).await;
+    // The double bump crosses and the notice has done its job.
+    away(a);
+    push_right(a);
+    let cleared = recv_topic(&mut notes, Topic::Problem).await;
+    assert!(cleared["cleared_at"].is_string());
+    assert!(blocked_ids(&status(a).await.problems).is_empty());
+}
+
+#[tokio::test]
+async fn the_notice_goes_once_nothing_blocks_the_edge_any_more() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let a = &nodes[0];
+    a.platform.set_fullscreen(true);
+    let mut notes = a.engine.control().notifications();
+    push_right(a);
+    recv_topic(&mut notes, Topic::Problem).await;
+    a.platform.set_fullscreen(false);
+    away(a);
+    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    push_right(a);
+    let cleared = recv_topic(&mut notes, Topic::Problem).await;
+    assert!(cleared["cleared_at"].is_string());
 }

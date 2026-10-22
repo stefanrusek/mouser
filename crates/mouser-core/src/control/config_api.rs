@@ -66,6 +66,11 @@ impl Ctx {
         let name_changed = next.general.computer_name != core.config.general.computer_name;
         core.config = next;
         config::save(&self.config_dir, &core.config);
+        self.log.apply(
+            core.config.diagnostics.logging,
+            core.config.diagnostics.max_log_mb,
+            &self.display_name_in(&core),
+        );
         {
             let mut crossing = self.crossing.lock().unwrap();
             crossing.buttons = Buttons45::from_config(&core.config.mouse.buttons_4_5);
