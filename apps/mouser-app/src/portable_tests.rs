@@ -137,9 +137,9 @@ fn linux_portable_run_installs_nothing_so_autostart_is_unsupported() {
 
 #[cfg(target_os = "windows")]
 #[test]
-#[should_panic(expected = "platform backend is not implemented yet")]
-fn windows_fails_loudly_until_its_backend_exists() {
-    create_platform(&installed());
+fn windows_creates_the_windows_platform() {
+    use mouser_platform::{Os, Platform};
+    assert_eq!(create_platform(&installed()).info().os, Os::Windows);
 }
 
 #[tokio::test(flavor = "multi_thread")]

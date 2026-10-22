@@ -91,9 +91,8 @@ fn linux_creates_the_linux_platform() {
 
 #[cfg(target_os = "windows")]
 #[test]
-#[should_panic(expected = "platform backend is not implemented yet")]
-fn other_systems_fail_loudly_until_their_backend_exists() {
-    create();
+fn windows_creates_the_windows_platform() {
+    assert_eq!(create().info().os, Os::Windows);
 }
 
 #[test]
