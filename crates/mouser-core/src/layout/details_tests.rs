@@ -28,12 +28,18 @@ async fn each_display_carries_resolution_scale_owner_and_online_state() {
     let _: mouser_proto::control::Desk =
         call(&a, Method::DeskCreate, json!({"name": "Home"})).await;
     admit(&a, &b).await;
-    eventually("both computers' displays known", || async {
-        let layout = layout_of(&a).await;
-        let displays = layout["displays"].as_array().unwrap();
-        ["Alpha", "Beta"]
-            .iter()
-            .all(|name| displays.iter().any(|d| d["computer_name"] == *name))
+    eventually("both computers' displays known to both", || async {
+        for node in [&a, &b] {
+            let layout = layout_of(node).await;
+            let displays = layout["displays"].as_array().unwrap();
+            if !["Alpha", "Beta"]
+                .iter()
+                .all(|name| displays.iter().any(|d| d["computer_name"] == *name))
+            {
+                return false;
+            }
+        }
+        true
     })
     .await;
     let layout = layout_of(&a).await;
