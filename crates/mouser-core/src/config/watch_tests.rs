@@ -229,3 +229,106 @@ async fn an_invalid_edit_is_refused_and_the_previous_values_stay() {
     })
     .await;
 }
+
+fn problems(node: &TestNode) -> Vec<mouser_proto::control::Problem> {
+    node.engine
+        .ctx
+        .problems
+        .open()
+        .into_iter()
+        .filter(|p| p.problem_id == "platform_limitation:config_invalid")
+        .collect()
+}
+
+#[tokio::test]
+async fn a_broken_file_at_start_runs_on_the_defaults_until_it_is_fixed() {
+    let lab = Lab::new();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(crate::config::FILE);
+    let broken = "[mouse]\nbuttons_4_5 = \"sideways\"\n\n[general]\ncomputer_name = \"Fixed\"\n";
+    std::fs::write(&path, broken).unwrap();
+    let node = lab
+        .boot_with(
+            "Alpha",
+            mouser_testkit::VirtualPlatform::new(),
+            dir,
+            |params| params.port = Some(free_port()),
+        )
+        .await;
+    // Running on the defaults, the file as the user left it, and a problem.
+    assert_eq!(config(&node), Config::default());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    let open = problems(&node);
+    assert_eq!(open.len(), 1);
+    assert_eq!(
+        open[0].kind,
+        mouser_proto::control::ProblemKind::PlatformLimitation
+    );
+    assert_eq!(
+        open[0].message,
+        format!(
+            "Mouser's settings file has a mistake and is being ignored until it is fixed: \
+             mouse.buttons_4_5: must be \"passthrough\" or \"back_forward\". File: {}",
+            path.display()
+        )
+    );
+    let seen: Value = call(&node, Method::Status, json!({})).await;
+    assert!(
+        seen["problems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["problem_id"] == "platform_limitation:config_invalid"),
+        "{seen}"
+    );
+    // The reload loop does not say it again, and the file stays as it is.
+    settle().await;
+    assert_eq!(problems(&node).len(), 1);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+
+    // The user fixes the mistake: it applies and the problem clears.
+    std::fs::write(
+        &path,
+        "[mouse]\nbuttons_4_5 = \"back_forward\"\n\n[general]\ncomputer_name = \"Fixed\"\n",
+    )
+    .unwrap();
+    eventually("the fixed file to be applied", || async {
+        config(&node).mouse.buttons_4_5 == "back_forward"
+    })
+    .await;
+    assert_eq!(config(&node).general.computer_name, "Fixed");
+    assert!(problems(&node).is_empty());
+}
+
+#[tokio::test]
+async fn a_still_broken_file_keeps_one_problem_with_the_newest_reason() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let mut seen = String::new();
+    reload(&node, &mut seen);
+    node.engine.ctx.log.apply(true, 50, "Alpha");
+    for (text, reason) in [
+        ("[advanced]\nport = 0\n", "advanced.port: must be between"),
+        (
+            "[hotkeys]\nquickjump = \"Hyper+J\"\n",
+            "hotkeys.quickjump: ",
+        ),
+    ] {
+        std::fs::write(node.dir.path().join(crate::config::FILE), text).unwrap();
+        reload(&node, &mut seen);
+        let open = problems(&node);
+        assert_eq!(open.len(), 1);
+        assert!(open[0].message.contains(reason), "{}", open[0].message);
+    }
+    let said = rejections(&node);
+    assert_eq!(said.len(), 2);
+    assert!(
+        said[1]["fields"]["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("hotkeys.quickjump: ")
+    );
+    std::fs::write(node.dir.path().join(crate::config::FILE), "").unwrap();
+    reload(&node, &mut seen);
+    assert!(problems(&node).is_empty());
+}

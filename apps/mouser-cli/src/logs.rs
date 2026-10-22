@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use clap::Subcommand;
-use mouser_core::config;
 use mouser_core::logging;
 use mouser_proto::control::{LoggingSetResult, Method, Status};
 use serde_json::json;
@@ -34,7 +33,7 @@ pub async fn run(live: Option<Mouser>, json: bool, action: LogsCommand) -> Resul
             let value = mouser
                 .call(Method::LoggingSet, json!({ "enabled": enabled }))
                 .await?;
-            let result: LoggingSetResult = crate::decode(value.clone());
+            let result: LoggingSetResult = crate::decode(value.clone())?;
             emit(json, &value, || {
                 if enabled {
                     format!("Logging is on: {}", result.path)
@@ -64,11 +63,11 @@ pub async fn run(live: Option<Mouser>, json: bool, action: LogsCommand) -> Resul
 async fn path(live: Option<Mouser>) -> Result<PathBuf, Failure> {
     match live {
         Some(mut mouser) => {
-            let status: Status = crate::decode(mouser.call(Method::Status, json!({})).await?);
-            Ok(PathBuf::from(
-                status.logging.expect("status reports logging").path,
-            ))
+            let status: Status = crate::decode(mouser.call(Method::Status, json!({})).await?)?;
+            // 0.1.1 did not report its log.
+            let logging = status.logging.ok_or(Failure::Outdated)?;
+            Ok(PathBuf::from(logging.path))
         }
-        None => Ok(config::default_dir().join("logs").join(logging::FILE)),
+        None => Ok(crate::paths::dir().join("logs").join(logging::FILE)),
     }
 }

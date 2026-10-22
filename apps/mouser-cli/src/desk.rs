@@ -30,7 +30,7 @@ pub enum DeskCommand {
 
 pub async fn desks(mouser: &mut Mouser) -> Result<(), Failure> {
     let value = mouser.call(Method::DesksDiscovered, json!({})).await?;
-    let desks: Vec<DiscoveredDesk> = decode(value.clone());
+    let desks: Vec<DiscoveredDesk> = decode(value.clone())?;
     mouser.print(&value, || {
         desks
             .iter()
@@ -58,7 +58,7 @@ async fn create(mouser: &mut Mouser, name: String) -> Result<(), Failure> {
     let value = mouser
         .call(Method::DeskCreate, json!({ "name": name }))
         .await?;
-    let desk: Desk = decode(value.clone());
+    let desk: Desk = decode(value.clone())?;
     mouser.print(&value, || {
         format!("Created desk \"{}\" [{}]", desk.name, desk.desk_id)
     });
@@ -77,7 +77,7 @@ async fn join_params(mouser: &mut Mouser, target: &str) -> Result<Value, Failure
         return Ok(json!({ "address": target }));
     }
     let value = mouser.call(Method::DesksDiscovered, json!({})).await?;
-    let found: Vec<DiscoveredDesk> = decode(value);
+    let found: Vec<DiscoveredDesk> = decode(value)?;
     let mut named = found.iter().filter(|d| d.name == target);
     match (named.next(), named.next()) {
         (None, _) => Err(Failure::Invalid(format!(
@@ -112,8 +112,8 @@ async fn join(mouser: &mut Mouser, target: &str) -> Result<(), Failure> {
             .next_notification()
             .await
             .expect("Mouser keeps the connection until the join is decided");
-        if let Some(decision) = decision(note) {
-            break decision?;
+        if let Some(desk) = decision(note)? {
+            break desk;
         }
     };
     let value = serde_json::to_value(&desk).expect("desk serializes");
@@ -121,17 +121,19 @@ async fn join(mouser: &mut Mouser, target: &str) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The join's outcome, if `note` carries it: the desk joined, or the refusal.
-fn decision(note: Notification) -> Option<Result<StatusDesk, Failure>> {
+/// The join's outcome, if `note` carries it: the desk joined (`Some`), or
+/// the refusal (an error).
+fn decision(note: Notification) -> Result<Option<StatusDesk>, Failure> {
     match note.method {
-        Topic::Status => decode::<Status>(note.params)
+        Topic::Status => Ok(decode::<Status>(note.params)?
             .desk
-            .filter(|desk| desk.pending_join != Some(true))
-            .map(Ok),
+            .filter(|desk| desk.pending_join != Some(true))),
         _ => {
-            let problem: Problem = decode(note.params);
-            (problem.kind == ProblemKind::JoinRefused && problem.cleared_at.is_none())
-                .then_some(Err(Failure::Declined(problem.message)))
+            let problem: Problem = decode(note.params)?;
+            let refused = problem.kind == ProblemKind::JoinRefused && problem.cleared_at.is_none();
+            refused
+                .then_some(problem.message)
+                .map_or(Ok(None), |message| Err(Failure::Declined(message)))
         }
     }
 }
@@ -145,7 +147,7 @@ async fn remove(mouser: &mut Mouser, computer: &str) -> Result<(), Failure> {
         Ok(id) => id,
         Err(_) => {
             let value = mouser.call(Method::Status, json!({})).await?;
-            let status: Status = decode(value);
+            let status: Status = decode(value)?;
             status
                 .computers
                 .iter()
@@ -165,7 +167,7 @@ async fn remove(mouser: &mut Mouser, computer: &str) -> Result<(), Failure> {
 
 pub async fn requests(mouser: &mut Mouser) -> Result<(), Failure> {
     let value = mouser.call(Method::JoinPending, json!({})).await?;
-    let pending: Vec<PendingJoin> = decode(value.clone());
+    let pending: Vec<PendingJoin> = decode(value.clone())?;
     mouser.print(&value, || {
         pending
             .iter()

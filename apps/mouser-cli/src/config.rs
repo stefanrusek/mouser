@@ -2,9 +2,7 @@
 //! `config.toml` when it is not running (Story 9 sc. 2).
 
 use clap::Subcommand;
-use mouser_core::clipboard::targeted::Chord;
 use mouser_core::config::{self, Config};
-use mouser_core::crossing::panic::PanicSpec;
 use mouser_proto::control::Method;
 use serde_json::{Value, json};
 
@@ -28,7 +26,7 @@ fn invalid(key: &str, reason: impl std::fmt::Display) -> Failure {
 }
 
 pub async fn run(live: Option<Mouser>, json: bool, action: ConfigCommand) -> Result<(), Failure> {
-    let dir = config::default_dir();
+    let dir = crate::paths::dir();
     match action {
         ConfigCommand::Path => {
             let path = dir.join(config::FILE);
@@ -64,14 +62,23 @@ async fn get(
 ) -> Result<Value, Failure> {
     match live {
         Some(mut mouser) => mouser.call(Method::ConfigGet, json!({ "key": key })).await,
-        None => lookup(&tree(&load(dir)), key).cloned(),
+        None => lookup(&tree(&load(dir)?), key).cloned(),
     }
 }
 
-/// The file's settings (a missing file, in a missing directory, is the default).
-fn load(dir: &std::path::Path) -> Config {
+/// The file's settings (a missing file, in a missing directory, is the
+/// default). A file with a mistake is not touched or guessed at.
+fn load(dir: &std::path::Path) -> Result<Config, Failure> {
     std::fs::create_dir_all(dir).expect("config directory can be created");
-    config::load_or_create(dir)
+    let loaded = config::load(dir);
+    match loaded.rejection {
+        None => Ok(loaded.config),
+        Some(rejection) => Err(Failure::Invalid(format!(
+            "Mouser's settings file has a mistake: {}. File: {}",
+            rejection.reason,
+            dir.join(config::FILE).display()
+        ))),
+    }
 }
 
 fn tree(config: &Config) -> Value {
@@ -81,10 +88,7 @@ fn tree(config: &Config) -> Value {
 fn lookup<'a>(tree: &'a Value, key: Option<&str>) -> Result<&'a Value, Failure> {
     match key {
         None => Ok(tree),
-        Some(key) => key
-            .split('.')
-            .try_fold(tree, |node, part| node.get(part))
-            .ok_or_else(|| invalid(key, "unknown key")),
+        Some(key) => config::lookup(tree, key).map_err(|e| invalid(&e.key, e.reason)),
     }
 }
 
@@ -120,22 +124,11 @@ fn typed(key: &str, current: &Value, text: &str) -> Result<Value, Failure> {
     }
 }
 
-/// The same checks the running Mouser makes, then write the file.
+/// The same checks the running Mouser makes (core's one validator), then
+/// write the file.
 fn set_file(dir: &std::path::Path, key: &str, value: Value) -> Result<(), Failure> {
-    let mut tree = tree(&load(dir));
-    if key == "schema" {
-        return Err(invalid(key, "read-only"));
-    }
-    if lookup(&tree, Some(key))?.is_object() {
-        return Err(invalid(key, "is a section; set its keys"));
-    }
-    let (section, name) = key.split_once('.').expect("a leaf key has a section");
-    tree[section][name] = value;
-    let next: Config =
-        serde_json::from_value(tree).expect("a typed value keeps the config's shape");
-    next.validate().map_err(|e| invalid(&e.key, e.reason))?;
-    PanicSpec::parse(&next.hotkeys.panic).map_err(|e| invalid("hotkeys.panic", e))?;
-    Chord::parse(&next.hotkeys.targeted_paste).map_err(|e| invalid("hotkeys.targeted_paste", e))?;
+    let (next, _) =
+        config::with_value(&load(dir)?, key, value).map_err(|e| invalid(&e.key, e.reason))?;
     config::save(dir, &next);
     Ok(())
 }

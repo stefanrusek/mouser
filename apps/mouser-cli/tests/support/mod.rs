@@ -171,9 +171,20 @@ impl Node {
         self.id.expect("node is running")
     }
 
+    /// Where this computer's Mouser serves (or would serve) its control API.
+    pub fn control_path(&self) -> &std::path::Path {
+        &self.control_path
+    }
+
     /// Run `mouser args...` as this computer's user and wait for it.
     pub async fn mouser(&self, args: &[&str]) -> Output {
-        let child = self.spawn(args);
+        self.mouser_at(env!("CARGO_BIN_EXE_mouser").as_ref(), args)
+            .await
+    }
+
+    /// Run the `mouser` at `exe` (a copy somewhere else) as this user.
+    pub async fn mouser_at(&self, exe: &std::path::Path, args: &[&str]) -> Output {
+        let child = self.spawn_at(exe, args);
         let out = child.wait_with_output().await.unwrap();
         Output {
             code: out.status.code().expect("mouser exits by itself"),
@@ -184,7 +195,11 @@ impl Node {
 
     /// Start `mouser args...` without waiting (for `desk join`).
     pub fn spawn(&self, args: &[&str]) -> Child {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_mouser"));
+        self.spawn_at(env!("CARGO_BIN_EXE_mouser").as_ref(), args)
+    }
+
+    fn spawn_at(&self, exe: &std::path::Path, args: &[&str]) -> Child {
+        let mut command = Command::new(exe);
         command
             .args(args)
             .envs(self.env.iter().map(|(k, v)| (*k, v)))

@@ -1,57 +1,24 @@
 //! `config.get` / `config.set` (Story 9 scenario 2, FR-005, contracts/config.md).
 //!
 //! A key is `section.name`; a whole section (or no key at all) can be read.
-//! A write is validated with `Config::validate` (and the panic gesture and the
-//! targeted-paste hotkey, which the engine parses at start) before anything changes; then it is saved,
+//! A write is validated with `config::with_value` (the one validator, shared
+//! with the command line) before anything changes; then it is saved,
 //! applied to the running engine, and, for the desk-shared keys, replicated
 //! to the desk with a new epoch.
 
 use std::sync::{Arc, MutexGuard};
 
-use mouser_proto::config::{Config, ConfigError, DESK_SHARED_KEYS};
+use mouser_proto::config::{Config, DESK_SHARED_KEYS};
 use mouser_proto::control::RpcError;
 use mouser_proto::wire::ControlMessage;
 use serde_json::Value;
 
-use crate::clipboard::targeted::Chord;
 use crate::config;
 use crate::control::invalid;
 use crate::crossing::buttons::Buttons45;
-use crate::crossing::panic::{PanicDetector, PanicSpec};
+use crate::crossing::panic::PanicDetector;
 use crate::engine::{Core, Ctx, Phase};
 use crate::state::Membership;
-
-fn rejected(key: &str, reason: impl std::fmt::Display) -> RpcError {
-    invalid(format!("{key}: {reason}"))
-}
-
-/// The value at `key` in the config's JSON form.
-fn lookup<'a>(tree: &'a Value, key: &str) -> Result<&'a Value, RpcError> {
-    key.split('.')
-        .try_fold(tree, |node, part| node.get(part))
-        .ok_or_else(|| rejected(key, "unknown key"))
-}
-
-/// Everything a config must satisfy beyond its shape: `Config::validate`,
-/// and the hotkeys the engine parses (the panic gesture and the
-/// targeted-paste and QuickJump chords, which are returned parsed).
-pub(crate) fn check(next: &Config) -> Result<(PanicSpec, Chord, Chord), ConfigError> {
-    next.validate()?;
-    let panic = PanicSpec::parse(&next.hotkeys.panic).map_err(|reason| ConfigError {
-        key: "hotkeys.panic".into(),
-        reason,
-    })?;
-    let targeted_paste =
-        Chord::parse(&next.hotkeys.targeted_paste).map_err(|reason| ConfigError {
-            key: "hotkeys.targeted_paste".into(),
-            reason,
-        })?;
-    let quickjump = Chord::parse(&next.hotkeys.quickjump).map_err(|reason| ConfigError {
-        key: "hotkeys.quickjump".into(),
-        reason,
-    })?;
-    Ok((panic, targeted_paste, quickjump))
-}
 
 impl Ctx {
     /// `config.get`: the value at `key`, or the whole config.
@@ -60,7 +27,9 @@ impl Ctx {
             serde_json::to_value(&self.core.lock().unwrap().config).expect("config serializes");
         match key {
             None => Ok(tree),
-            Some(key) => lookup(&tree, key).cloned(),
+            Some(key) => config::lookup(&tree, key)
+                .cloned()
+                .map_err(|e| invalid(e.to_string())),
         }
     }
 
@@ -68,18 +37,8 @@ impl Ctx {
     /// the previous value.
     pub(crate) fn set_config(self: &Arc<Self>, key: &str, value: Value) -> Result<(), RpcError> {
         let core = self.core.lock().unwrap();
-        let mut tree = serde_json::to_value(&core.config).expect("config serializes");
-        if key == "schema" {
-            return Err(rejected(key, "read-only"));
-        }
-        if lookup(&tree, key)?.is_object() {
-            return Err(rejected(key, "is a section; set its keys"));
-        }
-        let (section, name) = key.split_once('.').expect("a leaf key has a section");
-        tree[section][name] = value;
-        let next: Config =
-            serde_json::from_value(tree).map_err(|e| rejected(key, e.to_string()))?;
-        let hotkeys = check(&next).map_err(|e| rejected(&e.key, e.reason))?;
+        let (next, hotkeys) =
+            config::with_value(&core.config, key, value).map_err(|e| invalid(e.to_string()))?;
         let shared = DESK_SHARED_KEYS.contains(&key);
         self.apply_config(core, next, hotkeys, shared, true);
         Ok(())
@@ -92,7 +51,7 @@ impl Ctx {
         self: &Arc<Self>,
         mut core: MutexGuard<'_, Core>,
         next: Config,
-        (panic, targeted_paste, quickjump): (PanicSpec, Chord, Chord),
+        (panic, targeted_paste, quickjump): config::Hotkeys,
         shared: bool,
         save: bool,
     ) {

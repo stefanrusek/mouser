@@ -10,14 +10,38 @@
 use std::sync::Arc;
 
 use mouser_proto::config::{Config, DESK_SHARED_KEYS};
+use mouser_proto::control::ProblemKind;
 use mouser_proto::log::LogLevel;
 use serde_json::{Map, Value};
 
-use super::FILE;
-use crate::control::config_api::check;
+use super::{FILE, validate};
 use crate::engine::Ctx;
 
+/// The subject of the problem raised while the file is being ignored.
+const SUBJECT: &str = "config_invalid";
+
 impl Ctx {
+    /// The file is not used: say so in the diagnostic log and as a problem
+    /// that stays open until a valid file is read.
+    pub(crate) fn reject_config(&self, reason: &str) {
+        let mut fields = Map::new();
+        fields.insert("reason".into(), Value::String(reason.into()));
+        self.log
+            .record(LogLevel::Warn, "config.rejected", None, Some(fields));
+        self.problems
+            .clear(ProblemKind::PlatformLimitation, SUBJECT);
+        self.problems.raise(
+            ProblemKind::PlatformLimitation,
+            SUBJECT,
+            self.me(),
+            format!(
+                "Mouser's settings file has a mistake and is being ignored until it is fixed: {reason}. File: {}",
+                self.config_dir.join(FILE).display()
+            ),
+            None,
+        );
+    }
+
     /// Apply the file if its text changed since `seen`, which becomes the
     /// text looked at.
     pub(crate) fn reload_config(self: &Arc<Self>, seen: &mut String) {
@@ -34,19 +58,18 @@ impl Ctx {
         let parsed = toml::from_str::<Config>(&text)
             .map_err(|e| e.to_string())
             .and_then(|next| {
-                let hotkeys = check(&next).map_err(|e| e.to_string())?;
+                let hotkeys = validate(&next).map_err(|e| e.to_string())?;
                 Ok((next, hotkeys))
             });
         let (next, hotkeys) = match parsed {
             Ok(parsed) => parsed,
             Err(reason) => {
-                let mut fields = Map::new();
-                fields.insert("reason".into(), Value::String(reason));
-                self.log
-                    .record(LogLevel::Warn, "config.rejected", None, Some(fields));
+                self.reject_config(&reason);
                 return;
             }
         };
+        self.problems
+            .clear(ProblemKind::PlatformLimitation, SUBJECT);
         if next == core.config {
             return;
         }

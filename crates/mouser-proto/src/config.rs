@@ -29,6 +29,7 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct General {
     pub start_at_login: bool,
     pub notifications: bool,
@@ -37,6 +38,7 @@ pub struct General {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Hotkeys {
     pub enable_disable: String,
     pub quickjump: String,
@@ -45,6 +47,7 @@ pub struct Hotkeys {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Mouse {
     /// `"passthrough"` or `"back_forward"`.
     pub buttons_4_5: String,
@@ -52,24 +55,28 @@ pub struct Mouse {
 
 /// Desk-shared; replicated via `DeskState`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Crossing {
     pub block_fullscreen: bool,
     pub equalize_dimensions: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Diagnostics {
     pub logging: bool,
     pub max_log_mb: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Updates {
     pub automatic: bool,
     pub release_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Advanced {
     /// UDP (QUIC) port, 1-65535.
     pub port: u32,
@@ -79,6 +86,7 @@ pub struct Advanced {
 
 /// The whole config file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub schema: u32,
     pub general: General,
@@ -90,41 +98,83 @@ pub struct Config {
     pub advanced: Advanced,
 }
 
+impl Default for General {
+    fn default() -> Self {
+        Self {
+            start_at_login: true,
+            notifications: true,
+            computer_name: String::new(),
+        }
+    }
+}
+
+impl Default for Hotkeys {
+    fn default() -> Self {
+        Self {
+            enable_disable: "Ctrl+Alt+Shift+M".into(),
+            quickjump: "Ctrl+Alt+Shift+J".into(),
+            targeted_paste: "Ctrl+Alt+Shift+V".into(),
+            panic: "Escape*2".into(),
+        }
+    }
+}
+
+impl Default for Mouse {
+    fn default() -> Self {
+        Self {
+            buttons_4_5: "passthrough".into(),
+        }
+    }
+}
+
+impl Default for Crossing {
+    fn default() -> Self {
+        Self {
+            block_fullscreen: true,
+            equalize_dimensions: false,
+        }
+    }
+}
+
+impl Default for Diagnostics {
+    fn default() -> Self {
+        Self {
+            logging: false,
+            max_log_mb: 50,
+        }
+    }
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self {
+            automatic: true,
+            release_url: "https://api.github.com/repos/stefanrusek/mouser/releases?per_page=10"
+                .into(),
+        }
+    }
+}
+
+impl Default for Advanced {
+    fn default() -> Self {
+        Self {
+            port: 47801,
+            allowlist: Vec::new(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             schema: 1,
-            general: General {
-                start_at_login: true,
-                notifications: true,
-                computer_name: String::new(),
-            },
-            hotkeys: Hotkeys {
-                enable_disable: "Ctrl+Alt+Shift+M".into(),
-                quickjump: "Ctrl+Alt+Shift+J".into(),
-                targeted_paste: "Ctrl+Alt+Shift+V".into(),
-                panic: "Escape*2".into(),
-            },
-            mouse: Mouse {
-                buttons_4_5: "passthrough".into(),
-            },
-            crossing: Crossing {
-                block_fullscreen: true,
-                equalize_dimensions: false,
-            },
-            diagnostics: Diagnostics {
-                logging: false,
-                max_log_mb: 50,
-            },
-            updates: Updates {
-                automatic: true,
-                release_url: "https://api.github.com/repos/stefanrusek/mouser/releases?per_page=10"
-                    .into(),
-            },
-            advanced: Advanced {
-                port: 47801,
-                allowlist: Vec::new(),
-            },
+            general: General::default(),
+            hotkeys: Hotkeys::default(),
+            mouse: Mouse::default(),
+            crossing: Crossing::default(),
+            diagnostics: Diagnostics::default(),
+            updates: Updates::default(),
+            advanced: Advanced::default(),
         }
     }
 }

@@ -21,11 +21,9 @@ use tokio_util::task::TaskTracker;
 
 use crate::clipboard::Command;
 use crate::clipboard::files::Inbox;
-use crate::clipboard::targeted::Chord;
 use crate::config;
 use crate::control::{self, ControlHandle};
 use crate::crossing::buttons::Buttons45;
-use crate::crossing::panic::PanicSpec;
 use crate::crossing::{Crossing, Host};
 use crate::desk::join::Requests;
 use crate::discovery::{Advert, Discovery, MdnsDiscovery};
@@ -67,6 +65,10 @@ pub struct EngineParams {
     /// When to look for releases by itself; `None` only on request
     /// (`update.check`).
     pub check_schedule: Option<CheckSchedule>,
+    /// Listen here instead of on `advanced.port`, so a test never takes the
+    /// port a Mouser running on the same machine holds.
+    #[cfg(test)]
+    pub(crate) port: Option<u16>,
     /// Where the device key and desk keys are kept; `None` selects the
     /// platform's own store. A headless engine (see
     /// [`crate::engine_headless`]) is given the machine-scope store, since
@@ -97,6 +99,8 @@ impl EngineParams {
             release_pubkey: UPDATER_PUBKEY.to_string(),
             http: Http::system(),
             check_schedule: None,
+            #[cfg(test)]
+            port: None,
             secrets: None,
             portable: false,
         }
@@ -389,7 +393,7 @@ impl Engine {
     /// the desk from persisted state with no action.
     pub async fn start(params: EngineParams) -> Engine {
         std::fs::create_dir_all(&params.config_dir).expect("config directory");
-        let config = config::load_or_create(&params.config_dir);
+        let config::Loaded { config, rejection } = config::load(&params.config_dir);
         let mut secrets = params.secrets.unwrap_or_else(|| params.platform.secrets());
         let identity = Identity::load_or_create(secrets.as_mut());
         let state = LocalState::load(&params.config_dir.join(state::FILE));
@@ -401,6 +405,8 @@ impl Engine {
             <[u8; 32]>::try_from(stored).expect("desk key is 32 bytes")
         });
         let port = u16::try_from(config.advanced.port).expect("validated port");
+        #[cfg(test)]
+        let port = params.port.unwrap_or(port);
         let transport = Transport::bind(&identity, port);
         let discovery = params.discovery.unwrap_or_else(|| {
             Arc::new(MdnsDiscovery::new(
@@ -422,11 +428,8 @@ impl Engine {
             config.diagnostics.max_log_mb,
         ));
         let problems = Arc::new(Problems::new(notify.clone()).logged_to(log.clone()));
-        let panic = PanicSpec::parse(&config.hotkeys.panic).expect("hotkeys.panic is valid");
-        let targeted_paste =
-            Chord::parse(&config.hotkeys.targeted_paste).expect("hotkeys.targeted_paste is valid");
-        let quickjump =
-            Chord::parse(&config.hotkeys.quickjump).expect("hotkeys.quickjump is valid");
+        let (panic, targeted_paste, quickjump) =
+            config::validate(&config).expect("a loaded config is valid");
         let (clip, clip_commands) = mpsc::unbounded_channel();
         let (xfer, xfer_commands) = mpsc::unbounded_channel();
         let crossing = Arc::new(Mutex::new(Crossing::new(
@@ -499,6 +502,13 @@ impl Engine {
             tasks: TaskTracker::new(),
         });
         ctx.resume();
+        // The rejected file stays as the text already looked at: the first
+        // look of the reload loop must not say it again.
+        let mut seen = String::new();
+        if let Some(rejection) = rejection {
+            ctx.reject_config(&rejection.reason);
+            seen = rejection.text;
+        }
         ctx.raise_limitations();
         ctx.try_start_input();
         ctx.start_clipboard(clip_commands);
@@ -536,7 +546,7 @@ impl Engine {
             .expect("network watcher starts");
         ctx.spawn(network_loop(ctx.clone(), changed));
         ctx.spawn(accept_loop(ctx.clone()));
-        ctx.spawn(reconcile_loop(ctx.clone()));
+        ctx.spawn(reconcile_loop(ctx.clone(), seen));
         ctx.spawn(status_loop(ctx.clone(), dirty));
         if let Some(schedule) = params.check_schedule {
             ctx.spawn(control::update::check_loop(ctx.clone(), schedule));
@@ -624,10 +634,10 @@ async fn network_loop(ctx: Arc<Ctx>, mut changed: mpsc::UnboundedReceiver<()>) {
     }
 }
 
-async fn reconcile_loop(ctx: Arc<Ctx>) {
+async fn reconcile_loop(ctx: Arc<Ctx>, mut config_text: String) {
     let mut tick = tokio::time::interval(RECONCILE);
-    // The first look at the file finds out whether it was edited since start.
-    let mut config_text = String::new();
+    // The first look at the file finds out whether it was edited since start
+    // (`config_text` starts empty unless the file was rejected at start).
     loop {
         tick.tick().await;
         ctx.reload_config(&mut config_text);

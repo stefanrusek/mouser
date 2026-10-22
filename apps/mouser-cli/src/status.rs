@@ -18,7 +18,7 @@ fn name<T: Serialize>(value: &T) -> String {
 
 pub async fn run(mouser: &mut Mouser) -> Result<(), Failure> {
     let value = mouser.call(Method::Status, json!({})).await?;
-    let status: Status = crate::decode(value.clone());
+    let status: Status = crate::decode(value.clone())?;
     mouser.print(&value, || text(&status));
     Ok(())
 }

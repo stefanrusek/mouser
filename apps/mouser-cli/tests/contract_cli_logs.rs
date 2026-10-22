@@ -133,3 +133,77 @@ async fn path_and_tail_work_with_mouser_stopped() {
     }
     lab.shutdown().await;
 }
+
+/// Serve `status` with `result` on `path`, the way an older Mouser would.
+#[cfg(unix)]
+fn old_mouser(path: &std::path::Path, result: Value) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let listener = tokio::net::UnixListener::bind(path).unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let result = result.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read).lines();
+                while let Some(line) = lines.next_line().await.unwrap() {
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    let reply = json!({"jsonrpc": "2.0", "id": request["id"], "result": result});
+                    write
+                        .write_all(format!("{reply}\n").as_bytes())
+                        .await
+                        .unwrap();
+                }
+            });
+        }
+    });
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_mouser_older_than_the_command_is_reported_not_a_panic() {
+    let lab = Lab::new();
+    let alpha = lab.add("Alpha").await;
+    // 0.1.1 had no `logging` in its status.
+    let mut old = alpha.call(mouser_proto::control::Method::Status).await;
+    old.as_object_mut().unwrap().remove("logging");
+    let nobody = lab.offline("Nobody");
+    old_mouser(nobody.control_path(), old);
+    for args in [
+        vec!["logs", "path"],
+        vec!["--json", "logs", "path"],
+        vec!["logs", "tail"],
+    ] {
+        let out = nobody.mouser(&args).await;
+        assert_eq!((out.code, out.stdout.as_str()), (1, ""), "{args:?}");
+        assert_eq!(
+            out.stderr, "The running Mouser is older than this command; update it.\n",
+            "{args:?}"
+        );
+    }
+    lab.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn any_answer_in_an_unknown_shape_means_the_mouser_is_older() {
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    old_mouser(nobody.control_path(), json!({"something": "else"}));
+    for args in [
+        vec!["status"],
+        vec!["desks"],
+        vec!["requests"],
+        vec!["update"],
+        vec!["desk", "create", "Home"],
+        vec!["desk", "remove", "Beta"],
+    ] {
+        let out = nobody.mouser(&args).await;
+        assert_eq!((out.code, out.stdout.as_str()), (1, ""), "{args:?}");
+        assert_eq!(
+            out.stderr, "The running Mouser is older than this command; update it.\n",
+            "{args:?}"
+        );
+    }
+    lab.shutdown().await;
+}

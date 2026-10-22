@@ -23,7 +23,7 @@ pub async fn run(mouser: &mut Mouser, action: Option<UpdateCommand>) -> Result<(
         Method::UpdateCheck
     };
     let value = mouser.call(method, json!({})).await?;
-    let result: UpdateResult = decode(value.clone());
+    let result: UpdateResult = decode(value.clone())?;
     mouser.print(&value, || {
         if apply {
             let to = result.available.expect("an applied update was available");

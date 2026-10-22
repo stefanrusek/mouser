@@ -261,3 +261,119 @@ async fn with_mouser_stopped_a_fresh_user_gets_a_config_file() {
     );
     lab.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn offline_set_applies_the_engines_rules_to_every_hotkey_and_leaves_the_file_alone() {
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    let dir = &nobody.user_config_dir;
+    std::fs::create_dir_all(dir).unwrap();
+    config::save(dir, &config::Config::default());
+    let before = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+    for (key, value) in [
+        ("hotkeys.quickjump", "Hyper+J"),
+        ("hotkeys.panic", "Escape"),
+        ("hotkeys.targeted_paste", "Nope"),
+    ] {
+        let bad = nobody.mouser(&["config", "set", key, value]).await;
+        assert_eq!((bad.code, bad.stdout.as_str()), (3, ""), "{key}");
+        assert!(
+            bad.stderr.starts_with(&format!("{key}: ")),
+            "{}",
+            bad.stderr
+        );
+        assert!(bad.stderr.trim().len() > key.len() + 2, "{}", bad.stderr);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("config.toml")).unwrap(),
+            before,
+            "{key} left the file unchanged"
+        );
+    }
+    let good = nobody
+        .mouser(&["config", "set", "hotkeys.quickjump", "Ctrl+Alt+K"])
+        .await;
+    assert_eq!(good.code, 0, "{}", good.stderr);
+    lab.shutdown().await;
+}
+
+/// A copy of the `mouser` binary in a directory of its own, as a portable
+/// install carries it beside `MouserData/`.
+fn portable_copy(home: &std::path::Path) -> std::path::PathBuf {
+    let folder = home.join("portable");
+    std::fs::create_dir_all(folder.join("MouserData")).unwrap();
+    let exe = folder.join(
+        std::path::Path::new(env!("CARGO_BIN_EXE_mouser"))
+            .file_name()
+            .unwrap(),
+    );
+    std::fs::copy(env!("CARGO_BIN_EXE_mouser"), &exe).unwrap();
+    exe
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cli_beside_a_portable_app_uses_mouser_data() {
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    let place = tempfile::tempdir().unwrap();
+    let exe = portable_copy(place.path());
+    let data = exe.parent().unwrap().join("MouserData");
+    let file = data.join("config.toml");
+
+    let path = nobody.mouser_at(&exe, &["config", "path"]).await;
+    assert_eq!(
+        (path.code, path.stdout.as_str()),
+        (0, format!("{}\n", file.display()).as_str())
+    );
+    let set = nobody
+        .mouser_at(&exe, &["config", "set", "advanced.port", "50001"])
+        .await;
+    assert_eq!(set.code, 0, "{}", set.stderr);
+    assert_eq!(config::load_or_create(&data).advanced.port, 50001);
+    assert!(
+        !nobody.user_config_dir.join("config.toml").exists(),
+        "nothing was written to the installed directory"
+    );
+    let got = nobody
+        .mouser_at(&exe, &["config", "get", "advanced.port"])
+        .await;
+    assert_eq!(got.stdout, "50001\n");
+    let log = nobody.mouser_at(&exe, &["logs", "path"]).await;
+    assert_eq!(
+        log.stdout,
+        format!("{}\n", data.join("logs").join("mouser.log").display())
+    );
+    std::fs::create_dir_all(data.join("logs")).unwrap();
+    std::fs::write(data.join("logs").join("mouser.log"), "one\ntwo\n").unwrap();
+    let tail = nobody.mouser_at(&exe, &["logs", "tail", "-n", "1"]).await;
+    assert_eq!(tail.stdout, "two\n");
+    lab.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn offline_a_file_with_a_mistake_is_reported_and_never_overwritten() {
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    let dir = &nobody.user_config_dir;
+    std::fs::create_dir_all(dir).unwrap();
+    let file = dir.join("config.toml");
+    std::fs::write(&file, "[advanced]\nport = 0\n").unwrap();
+    for args in [
+        vec!["config", "get"],
+        vec!["config", "set", "general.start_at_login", "false"],
+    ] {
+        let out = nobody.mouser(&args).await;
+        assert_eq!((out.code, out.stdout.as_str()), (3, ""), "{args:?}");
+        assert_eq!(
+            out.stderr,
+            format!(
+                "Mouser's settings file has a mistake: advanced.port: must be between 1 and 65535. File: {}\n",
+                file.display()
+            )
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "[advanced]\nport = 0\n"
+    );
+    lab.shutdown().await;
+}

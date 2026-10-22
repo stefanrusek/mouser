@@ -3,6 +3,7 @@
 mod config;
 mod desk;
 mod logs;
+mod paths;
 mod pause;
 mod sas;
 mod status;
@@ -28,6 +29,9 @@ pub enum Failure {
     Rpc(RpcError),
     /// The desk declined the join (exit 1).
     Declined(String),
+    /// The running Mouser answered in a shape this command does not know:
+    /// it is an older version (exit 1).
+    Outdated,
 }
 
 /// JSON-RPC "invalid params": the engine rejected an argument.
@@ -39,7 +43,7 @@ impl Failure {
             Self::NotRunning => 2,
             Self::Invalid(_) => 3,
             Self::Rpc(error) if error.code == INVALID_PARAMS => 3,
-            Self::Rpc(_) | Self::Declined(_) => 1,
+            Self::Rpc(_) | Self::Declined(_) | Self::Outdated => 1,
         }
     }
 }
@@ -50,13 +54,17 @@ impl fmt::Display for Failure {
             Self::NotRunning => f.write_str("Mouser is not running"),
             Self::Invalid(message) | Self::Declined(message) => f.write_str(message),
             Self::Rpc(error) => f.write_str(&error.message),
+            Self::Outdated => {
+                f.write_str("The running Mouser is older than this command; update it.")
+            }
         }
     }
 }
 
-/// Decode a control-API result.
-pub fn decode<T: serde::de::DeserializeOwned>(value: Value) -> T {
-    serde_json::from_value(value).expect("Mouser answers with the documented shape")
+/// Decode a control-API result; one that does not have the documented
+/// shape comes from an older Mouser.
+pub fn decode<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, Failure> {
+    serde_json::from_value(value).map_err(|_| Failure::Outdated)
 }
 
 /// One connection to the running Mouser's control API.
