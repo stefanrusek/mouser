@@ -1,0 +1,4 @@
+#!/bin/bash
+# The mouser CLI against the e2e app: mouser-e2e <args...>
+export XDG_RUNTIME_DIR=$HOME/e2e/run
+exec $HOME/target/debug/mouser "$@"

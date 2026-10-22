@@ -20,7 +20,7 @@ struct Spot {
 
 /// Create the hidden overlay window (once, at startup, so its page is ready).
 pub fn create<R: Runtime>(app: &AppHandle<R>) {
-    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("landing.html".into()))
+    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("landing.html".into()))
         .title("Mouser pointer")
         .inner_size(SIZE, SIZE)
         .transparent(true)
@@ -33,9 +33,6 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) {
         .visible(false)
         .build()
         .expect("landing overlay can be created");
-    window
-        .set_ignore_cursor_events(true)
-        .expect("landing overlay ignores the pointer");
 }
 
 /// Flash the highlight around `desktop`, a point in desktop coordinates.
@@ -48,6 +45,11 @@ pub fn show_landing<R: Runtime>(app: &AppHandle<R>, desktop: (f64, f64)) {
         .set_position(LogicalPosition::new(desktop.0 - half, desktop.1 - half))
         .expect("landing overlay can be moved");
     window.show().expect("landing overlay can be shown");
+    // Only once shown: on GTK a hidden window has no native window yet, and
+    // setting this before then aborts the app at startup (tao unwraps None).
+    window
+        .set_ignore_cursor_events(true)
+        .expect("landing overlay ignores the pointer");
     window
         .emit_to(LABEL, EVENT, Spot { x: half, y: half })
         .expect("landing overlay can be told");

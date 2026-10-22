@@ -1,9 +1,12 @@
-//! Wayland portal permissions. A portal grant is "granted" while a restore
-//! token is stored; on X11 nothing needs permission.
+//! Wayland portal permissions. A portal is "granted" when the desktop offers
+//! it: the approval dialog only appears once capture or injection starts, and
+//! core starts neither while a permission is missing, so waiting for a restore
+//! token would never end. It is "missing" only when the portal is absent. On
+//! X11 nothing needs permission.
 
 use crate::Settings;
 use crate::bus::{block_on, connect};
-use crate::session::session_type;
+use crate::session::{PortalFacts, probe_portals, session_type};
 use crate::wayland::portal::{start_capture, start_remote_desktop};
 use mouser_platform::{Error, PermissionKind, PermissionState, Result, SecretStore, SessionType};
 
@@ -30,24 +33,35 @@ fn token_name(kind: PermissionKind) -> Option<&'static str> {
 
 pub(crate) fn report(
     session: SessionType,
-    store: &dyn SecretStore,
+    portals: &PortalFacts,
 ) -> Vec<(PermissionKind, PermissionState)> {
     ALL_KINDS
         .into_iter()
         .map(|kind| {
-            let state = match (session, token_name(kind)) {
-                (SessionType::Wayland, Some(name)) => {
-                    if store.get(name).unwrap().is_some() {
-                        PermissionState::Granted
-                    } else {
-                        PermissionState::Missing
-                    }
-                }
+            let offered = match kind {
+                PermissionKind::InputCapturePortal => Some(portals.input_capture.is_some()),
+                PermissionKind::RemoteDesktopPortal => Some(portals.remote_desktop.is_some()),
+                _ => None,
+            };
+            let state = match (session, offered) {
+                (SessionType::Wayland, Some(true)) => PermissionState::Granted,
+                (SessionType::Wayland, Some(false)) => PermissionState::Missing,
                 _ => PermissionState::NotApplicable,
             };
             (kind, state)
         })
         .collect()
+}
+
+/// The portals the desktop offers; none without a session bus.
+pub(crate) fn probe(env: &std::collections::HashMap<String, String>) -> PortalFacts {
+    let env = env.clone();
+    block_on(async move {
+        match connect(&env).await {
+            Ok(conn) => probe_portals(&conn).await,
+            Err(_) => PortalFacts::default(),
+        }
+    })
 }
 
 /// Starts the portal session so the desktop shows its approval dialog, then

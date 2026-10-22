@@ -1,6 +1,8 @@
 //! Conformance rules 1, 2, 3, 4 and 7 against the X11 backend, running on a
 //! private Xvfb.
 
+#![cfg(target_os = "linux")]
+
 use mouser_platform::Platform;
 use mouser_platform::conformance::{
     rule_1_grab, rule_2_release, rule_3_hid_usage, rule_4_displays, rule_7_no_self_capture,

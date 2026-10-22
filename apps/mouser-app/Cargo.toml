@@ -29,6 +29,9 @@ gethostname = { version = "1", optional = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 mouser-platform-macos = { path = "../../crates/mouser-platform-macos" }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+mouser-platform-linux = { path = "../../crates/mouser-platform-linux" }
+
 [build-dependencies]
 tauri-build = { version = "=2.7.4", features = [] }
 

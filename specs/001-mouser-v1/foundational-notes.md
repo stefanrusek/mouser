@@ -117,3 +117,11 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The offered manifest rewrites platform URLs to `mouser-lan://<fetcher id>/<platform key>`, offering only verified bundles; each peer re-verifies before installing. The fetcher keeps all platforms under `<config_dir>/releases/` and offers them to older desk-mates on auth.
 - `status` shows a connected peer's version from its Hello.
 - Not done: `min_protocol` is parsed but ignored; no update-available notification topic (the tray polls `update.check`).
+
+## Linux milestone decisions
+
+- On Wayland, InputCapturePortal and RemoteDesktopPortal report Granted when the portal is present and usable (Missing only when absent or no session bus); the per-login approval dialog appears when capture/inject starts, described by the "approve each login" limitation. This breaks the deadlock where core never started capture.
+- mouser-platform-linux is `#![cfg(target_os = "linux")]` (empty elsewhere); mouser-app depends on it only on Linux and `create()` returns `LinuxPlatform::new()`.
+- Linux `watch_network` polls interface addresses every 2 s; Wayland `watch_displays` is a no-op handle; file-store secret names are percent-encoded.
+- The landing overlay sets click-through only after it is first shown (GTK has no native window while hidden).
+- Two-VM X11 e2e (Lima user-v2): desk create/join by address, crossing, keys and clicks observed. mDNS discovery between the VMs did NOT work (likely no multicast on user-v2; unverified): open item.

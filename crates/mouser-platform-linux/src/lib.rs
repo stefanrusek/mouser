@@ -4,6 +4,11 @@
 //! Secret Service / 0600-file secret store, XDG autostart and tray detection.
 //! Capabilities a later phase adds report `Unsupported` and are declared as
 //! limitations (rule 9) until it lands.
+//!
+//! Linux only: on any other system this crate is an empty library, so the
+//! workspace builds everywhere.
+
+#![cfg(target_os = "linux")]
 
 mod autostart;
 mod bus;
@@ -160,13 +165,20 @@ impl Platform for LinuxPlatform {
 
     fn watch_displays(&self, tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
         match self.session() {
-            SessionType::Wayland => Err(Unsupported),
+            // The zones are fixed once capture starts, so there is nothing to watch.
+            SessionType::Wayland => Ok(WatchHandle::new(|| {})),
             _ => Ok(x11::displays::watch(&self.settings.env, tx)),
         }
     }
 
     fn permissions(&self) -> Vec<(PermissionKind, PermissionState)> {
-        permissions::report(self.session(), self.secrets().as_ref())
+        let session = self.session();
+        let portals = if session == SessionType::Wayland {
+            permissions::probe(&self.settings.env)
+        } else {
+            session::PortalFacts::default()
+        };
+        permissions::report(session, &portals)
     }
 
     fn open_permission_settings(&self, kind: PermissionKind) -> Result<()> {
@@ -215,8 +227,8 @@ impl Platform for LinuxPlatform {
         net::interfaces(&self.settings.sys_class_net)
     }
 
-    fn watch_network(&self, _tx: Sender<()>) -> Result<WatchHandle> {
-        Err(Unsupported)
+    fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle> {
+        Ok(net::watch(self.settings.sys_class_net.clone(), tx))
     }
 
     fn foreground_elevated(&self) -> bool {

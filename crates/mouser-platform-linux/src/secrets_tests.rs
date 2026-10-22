@@ -58,3 +58,20 @@ fn without_a_secret_service_the_store_is_a_file_in_the_config_dir() {
     reopened.delete("desk-key").unwrap();
     assert_eq!(reopened.get("desk-key").unwrap(), None);
 }
+
+#[test]
+fn file_store_accepts_names_with_slashes_and_keeps_them_distinct() {
+    let root = tempfile::tempdir().unwrap();
+    let mut store = FileSecrets {
+        dir: root.path().join("secrets"),
+    };
+    store.set("desk_key/ab12", b"one").unwrap();
+    store.set("desk_key%2Fab12", b"two").unwrap();
+    assert_eq!(store.get("desk_key/ab12").unwrap(), Some(b"one".to_vec()));
+    assert_eq!(store.get("desk_key%2Fab12").unwrap(), Some(b"two".to_vec()));
+    assert!(root.path().join("secrets/desk_key%2Fab12").is_file());
+    assert!(root.path().join("secrets/desk_key%252Fab12").is_file());
+    store.delete("desk_key/ab12").unwrap();
+    assert_eq!(store.get("desk_key/ab12").unwrap(), None);
+    assert_eq!(store.get("desk_key%2Fab12").unwrap(), Some(b"two".to_vec()));
+}

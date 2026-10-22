@@ -1,5 +1,6 @@
 use crate::Settings;
-use crate::permissions::{INPUT_CAPTURE_TOKEN, REMOTE_DESKTOP_TOKEN, open_settings, report};
+use crate::permissions::{open_settings, report};
+use crate::session::PortalFacts;
 use mouser_platform::PermissionKind::*;
 use mouser_platform::PermissionState::*;
 use mouser_platform::{Error, PermissionKind, PermissionState, Result, SecretStore, SessionType};
@@ -26,24 +27,29 @@ fn state(r: &[(PermissionKind, PermissionState)], kind: PermissionKind) -> Permi
     r.iter().find(|(k, _)| *k == kind).unwrap().1
 }
 
+fn facts(input_capture: bool, remote_desktop: bool) -> PortalFacts {
+    PortalFacts {
+        input_capture: input_capture.then_some(3),
+        remote_desktop: remote_desktop.then_some(3),
+    }
+}
+
 #[test]
-fn on_wayland_a_stored_token_means_granted_and_none_means_missing() {
-    let mut store = Memory::default();
-    let r = report(SessionType::Wayland, &store);
+fn on_wayland_an_offered_portal_is_granted_and_an_absent_one_is_missing() {
+    let r = report(SessionType::Wayland, &facts(false, false));
     assert_eq!(state(&r, InputCapturePortal), Missing);
     assert_eq!(state(&r, RemoteDesktopPortal), Missing);
-    store.set(REMOTE_DESKTOP_TOKEN, b"t1").unwrap();
-    let r = report(SessionType::Wayland, &store);
+    let r = report(SessionType::Wayland, &facts(false, true));
     assert_eq!(state(&r, InputCapturePortal), Missing);
     assert_eq!(state(&r, RemoteDesktopPortal), Granted);
-    store.set(INPUT_CAPTURE_TOKEN, b"t2").unwrap();
-    let r = report(SessionType::Wayland, &store);
+    let r = report(SessionType::Wayland, &facts(true, false));
     assert_eq!(state(&r, InputCapturePortal), Granted);
+    assert_eq!(state(&r, RemoteDesktopPortal), Missing);
 }
 
 #[test]
 fn macos_permission_kinds_do_not_apply_on_linux() {
-    let r = report(SessionType::Wayland, &Memory::default());
+    let r = report(SessionType::Wayland, &facts(true, true));
     for kind in [
         Accessibility,
         InputMonitoring,
@@ -56,9 +62,7 @@ fn macos_permission_kinds_do_not_apply_on_linux() {
 
 #[test]
 fn on_x11_every_kind_is_not_applicable() {
-    let mut store = Memory::default();
-    store.set(REMOTE_DESKTOP_TOKEN, b"t1").unwrap();
-    let r = report(SessionType::X11, &store);
+    let r = report(SessionType::X11, &facts(true, true));
     assert_eq!(r.len(), 6);
     assert!(r.iter().all(|(_, s)| *s == NotApplicable));
 }

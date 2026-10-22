@@ -83,7 +83,13 @@ fn macos_creates_the_macos_platform() {
     assert_eq!(create().info().os, Os::MacOs);
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_creates_the_linux_platform() {
+    assert_eq!(create().info().os, Os::Linux);
+}
+
+#[cfg(target_os = "windows")]
 #[test]
 #[should_panic(expected = "platform backend is not implemented yet")]
 fn other_systems_fail_loudly_until_their_backend_exists() {

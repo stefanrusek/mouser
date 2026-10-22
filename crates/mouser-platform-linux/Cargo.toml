@@ -8,7 +8,9 @@ publish.workspace = true
 [lints]
 workspace = true
 
-[dependencies]
+# Everything here is Linux-only: on other systems the crate is an empty library so
+# the workspace builds everywhere.
+[target.'cfg(target_os = "linux")'.dependencies]
 mouser-platform = { path = "../mouser-platform" }
 ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "input_capture", "remote_desktop", "clipboard", "screencast"] }
 if-addrs = { version = "=0.15.0", features = ["link-local"] }
@@ -18,7 +20,7 @@ tokio = { version = "=1.54.0", features = ["rt-multi-thread", "sync"] }
 x11rb = { version = "=0.14.0", features = ["randr", "xfixes", "xinput", "xtest"] }
 zbus = { version = "=5.19.0", default-features = false, features = ["tokio"] }
 
-[dev-dependencies]
+[target.'cfg(target_os = "linux")'.dev-dependencies]
 mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
 calloop = "=0.14.3"
 enumflags2 = "=0.7.12"

@@ -2,6 +2,8 @@
 //! Service and StatusNotifier watcher. Runs wherever `dbus-daemon` does, so
 //! the CI runner (no desktop) exercises the same code as a real session.
 
+#![cfg(target_os = "linux")]
+
 mod daemon;
 mod eis;
 mod portals;
@@ -302,9 +304,11 @@ fn approving_remote_desktop_starts_the_session_and_keeps_the_single_use_token() 
         },
     );
     let m = machine(Some(&bus), "wayland");
+    // Offered portals count as granted before any dialog: the dialog appears
+    // when capture or injection starts, which core only does once granted.
     assert_eq!(
         state(&m.platform, PermissionKind::RemoteDesktopPortal),
-        PermissionState::Missing
+        PermissionState::Granted
     );
     m.platform
         .open_permission_settings(PermissionKind::RemoteDesktopPortal)
@@ -312,7 +316,11 @@ fn approving_remote_desktop_starts_the_session_and_keeps_the_single_use_token() 
     // The call returned while the dialog is still waiting for the user.
     assert!(!portals.calls.contains("rd.start.done"));
     wait_until("the first token", || {
-        state(&m.platform, PermissionKind::RemoteDesktopPortal) == PermissionState::Granted
+        m.platform
+            .secrets()
+            .get("portal-token-remote-desktop")
+            .unwrap()
+            .is_some()
     });
     assert_eq!(
         m.platform
@@ -347,7 +355,7 @@ fn approving_remote_desktop_starts_the_session_and_keeps_the_single_use_token() 
     );
     assert_eq!(
         state(&m.platform, PermissionKind::InputCapturePortal),
-        PermissionState::Missing
+        PermissionState::Granted
     );
 }
 
@@ -366,7 +374,11 @@ fn a_host_without_the_registry_still_gets_its_dialog() {
         .open_permission_settings(PermissionKind::RemoteDesktopPortal)
         .unwrap();
     wait_until("the token", || {
-        state(&m.platform, PermissionKind::RemoteDesktopPortal) == PermissionState::Granted
+        m.platform
+            .secrets()
+            .get("portal-token-remote-desktop")
+            .unwrap()
+            .is_some()
     });
     assert!(
         !portals
@@ -392,7 +404,11 @@ fn approving_input_capture_v2_starts_a_persistent_session() {
         .open_permission_settings(PermissionKind::InputCapturePortal)
         .unwrap();
     wait_until("the token", || {
-        state(&m.platform, PermissionKind::InputCapturePortal) == PermissionState::Granted
+        m.platform
+            .secrets()
+            .get("portal-token-input-capture")
+            .unwrap()
+            .is_some()
     });
     let calls = portals.calls.all();
     assert!(calls.contains(&"ic.create_session2".to_string()));
@@ -417,7 +433,44 @@ fn approving_input_capture_v1_creates_the_session_and_keeps_no_token() {
         portals.calls.contains("ic.create_session.done")
     });
     assert_eq!(
+        m.platform
+            .secrets()
+            .get("portal-token-input-capture")
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn a_portal_the_desktop_does_not_offer_is_missing() {
+    let bus = Daemon::start();
+    let _portals = Portals::start(
+        &bus.address,
+        PortalConfig {
+            input_capture: None,
+            ..full_portals()
+        },
+    );
+    let m = machine(Some(&bus), "wayland");
+    assert_eq!(
         state(&m.platform, PermissionKind::InputCapturePortal),
+        PermissionState::Missing
+    );
+    assert_eq!(
+        state(&m.platform, PermissionKind::RemoteDesktopPortal),
+        PermissionState::Granted
+    );
+}
+
+#[test]
+fn without_a_session_bus_the_wayland_portals_are_missing() {
+    let m = machine(None, "wayland");
+    assert_eq!(
+        state(&m.platform, PermissionKind::InputCapturePortal),
+        PermissionState::Missing
+    );
+    assert_eq!(
+        state(&m.platform, PermissionKind::RemoteDesktopPortal),
         PermissionState::Missing
     );
 }

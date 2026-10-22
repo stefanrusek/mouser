@@ -43,9 +43,16 @@ pub(crate) struct FileSecrets {
     pub(crate) dir: PathBuf,
 }
 
+impl FileSecrets {
+    /// The file for `name`; a name such as `desk_key/<id>` must stay one file.
+    fn file(&self, name: &str) -> PathBuf {
+        self.dir.join(name.replace('%', "%25").replace('/', "%2F"))
+    }
+}
+
 impl SecretStore for FileSecrets {
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>> {
-        Ok(std::fs::read(self.dir.join(name))
+        Ok(std::fs::read(self.file(name))
             .map(Some)
             .unwrap_or_else(|e| {
                 assert_eq!(e.kind(), std::io::ErrorKind::NotFound, "read secret: {e}");
@@ -60,14 +67,14 @@ impl SecretStore for FileSecrets {
             .create(true)
             .truncate(true)
             .mode(0o600)
-            .open(self.dir.join(name))
+            .open(self.file(name))
             .expect("open secret file");
         file.write_all(value).expect("write secret");
         Ok(())
     }
 
     fn delete(&mut self, name: &str) -> Result<()> {
-        let path = self.dir.join(name);
+        let path = self.file(name);
         if path.exists() {
             std::fs::remove_file(path).expect("remove secret");
         }

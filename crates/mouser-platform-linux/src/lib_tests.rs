@@ -74,20 +74,14 @@ fn x11_supports_capture_and_injection_so_does_not_list_them() {
 fn wayland_capture_and_injection_start_on_first_use() {
     let (p, _dir) = platform("wayland");
     assert!(p.capture().is_ok());
-    assert_eq!(
-        p.watch_displays(std::sync::mpsc::channel().0).err(),
-        Some(Error::Unsupported)
-    );
+    // Nothing changes on Wayland, but the engine still needs a watch to hold.
+    drop(p.watch_displays(std::sync::mpsc::channel().0).unwrap());
 }
 
 #[test]
-fn backends_that_land_later_report_unsupported() {
+fn clipboard_is_unsupported_until_its_backend_lands() {
     let (p, _dir) = platform("x11");
     assert_eq!(p.clipboard().err(), Some(Error::Unsupported));
-    assert_eq!(
-        p.watch_network(std::sync::mpsc::channel().0).err(),
-        Some(Error::Unsupported)
-    );
 }
 
 #[test]
@@ -150,4 +144,10 @@ fn x11_displays_and_their_changes_come_from_randr() {
             .is_empty()
     );
     drop(handle);
+}
+
+#[test]
+fn the_platform_watches_the_network_until_the_handle_is_dropped() {
+    let (p, _dir) = platform("x11");
+    drop(p.watch_network(std::sync::mpsc::channel().0).unwrap());
 }

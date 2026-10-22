@@ -1,8 +1,9 @@
 //! Interface enumeration and physical-LAN classification (research R3).
 
-use mouser_platform::{InterfaceKind, NetInterface};
+use mouser_platform::{InterfaceKind, NetInterface, WatchHandle};
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{RecvTimeoutError, Sender};
 
 /// Name prefixes that are never a physical LAN, whatever sysfs says.
 const VIRTUAL_PREFIXES: &[&str] = &[
@@ -65,4 +66,40 @@ pub(crate) fn interfaces(sys_class_net: &Path) -> Vec<NetInterface> {
             .into_iter()
             .map(|i| (i.name.clone(), i.ip())),
     )
+}
+
+/// How often the interface list is compared for changes.
+const POLL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Fires `tx` whenever the interfaces or their addresses change, until the
+/// returned handle is dropped.
+pub(crate) fn watch(sys_class_net: PathBuf, tx: Sender<()>) -> WatchHandle {
+    watch_with(move || interfaces(&sys_class_net), POLL, tx)
+}
+
+pub(crate) fn watch_with(
+    mut snapshot: impl FnMut() -> Vec<NetInterface> + Send + 'static,
+    every: std::time::Duration,
+    tx: Sender<()>,
+) -> WatchHandle {
+    let fingerprint = |all: Vec<NetInterface>| {
+        let mut seen: Vec<_> = all.into_iter().map(|i| (i.name, i.addrs)).collect();
+        seen.sort();
+        seen
+    };
+    let (stop, stopped) = std::sync::mpsc::channel::<()>();
+    let thread = std::thread::spawn(move || {
+        let mut last = fingerprint(snapshot());
+        while stopped.recv_timeout(every) == Err(RecvTimeoutError::Timeout) {
+            let now = fingerprint(snapshot());
+            if now != last {
+                last = now;
+                let _ = tx.send(());
+            }
+        }
+    });
+    WatchHandle::new(move || {
+        drop(stop);
+        thread.join().unwrap();
+    })
 }

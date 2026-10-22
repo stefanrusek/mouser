@@ -71,8 +71,14 @@ pub fn create() -> Arc<dyn Platform> {
     Arc::new(mouser_platform_macos::MacPlatform::new())
 }
 
-/// The Windows and Linux backend crates do not define a platform type yet.
-#[cfg(not(target_os = "macos"))]
+/// The platform for this computer.
+#[cfg(target_os = "linux")]
+pub fn create() -> Arc<dyn Platform> {
+    Arc::new(mouser_platform_linux::LinuxPlatform::new())
+}
+
+/// The Windows backend crate does not define a platform type yet.
+#[cfg(target_os = "windows")]
 pub fn create() -> Arc<dyn Platform> {
     panic!(
         "the {:?} platform backend is not implemented yet",

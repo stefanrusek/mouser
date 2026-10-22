@@ -3183,6 +3183,7 @@ dependencies = [
  "gethostname",
  "mouser-core",
  "mouser-platform",
+ "mouser-platform-linux",
  "mouser-platform-macos",
  "mouser-proto",
  "mouser-testkit",
