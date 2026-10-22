@@ -7,10 +7,12 @@ use mouser_platform::{DropTarget, Error, FileDrag};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Foundation::{
     DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DV_E_FORMATETC, DV_E_LINDEX, E_FAIL, HWND, POINT, RECT,
     S_OK,
 };
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 use windows::Win32::System::Com::{
     DATADIR_GET, DATADIR_SET, DVASPECT_CONTENT, FORMATETC, IDataObject, TYMED_HGLOBAL,
     TYMED_ISTREAM,
@@ -18,6 +20,11 @@ use windows::Win32::System::Com::{
 use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 use windows::Win32::System::Ole::{DROPEFFECT_COPY, DROPEFFECT_NONE, IDropTarget, OleInitialize};
+use windows::Win32::System::Threading::{
+    GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    QueryFullProcessImageNameW,
+};
+use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput,
@@ -26,12 +33,17 @@ use windows::Win32::UI::Shell::{
     CFSTR_FILECONTENTS, CFSTR_FILEDESCRIPTORW, FILEDESCRIPTORW, SHCreateDataObject,
     SHParseDisplayName,
 };
+use windows::Win32::UI::Shell::{IShellWindows, IWebBrowserApp, ShellWindows};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DestroyWindow, FindWindowW, GetSystemMetrics, GetWindowRect, IsWindowVisible,
     PostMessageW, SM_CXSCREEN, SM_CYSCREEN, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
     SetWindowPos, WM_CLOSE, WS_EX_TOPMOST, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
-use windows::core::{PCWSTR, w};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowTextW,
+    GetWindowThreadProcessId, PhysicalToLogicalPoint, WindowFromPoint,
+};
+use windows::core::{Interface, PCWSTR, PWSTR, w};
 
 /// Drags use the machine's one pointer and button, so tests that move it take
 /// turns with every other test that does.
@@ -681,6 +693,139 @@ fn explorer_window(dir: &std::path::Path) -> HWND {
     window
 }
 
+// ---- what a failed drop reports ---------------------------------------------------
+
+fn text_of(window: HWND) -> String {
+    let mut title = [0u16; 128];
+    let len = unsafe { GetWindowTextW(window, &mut title) }.max(0) as usize;
+    String::from_utf16_lossy(&title[..len])
+}
+
+fn class_name(window: HWND) -> String {
+    let mut name = [0u16; 64];
+    let len = unsafe { GetClassNameW(window, &mut name) }.max(0) as usize;
+    String::from_utf16_lossy(&name[..len])
+}
+
+fn image_of(pid: u32) -> String {
+    let query = |process: HANDLE| {
+        let mut path = [0u16; 520];
+        let mut len = path.len() as u32;
+        let name = PWSTR(path.as_mut_ptr());
+        let got =
+            unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, name, &mut len) };
+        let _ = unsafe { CloseHandle(process) };
+        let text = |()| String::from_utf16_lossy(&path[..len as usize]);
+        got.map_or_else(|e| format!("unreadable ({e})"), text)
+    };
+    unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+        .map_or_else(|e| format!("unopenable ({e})"), query)
+}
+
+/// A window as a line: handle, class, title, rect, owning process and its integrity.
+fn describe(window: HWND) -> String {
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(window, Some(&mut pid)) };
+    let mut rect = RECT::default();
+    let _ = physical(|| unsafe { GetWindowRect(window, &mut rect) });
+    let integrity =
+        crate::uipi::integrity_level(pid).map_or("unknown".into(), |l| format!("{l:#x}"));
+    format!(
+        "{:?} class {:?} title {:?} rect ({},{})-({},{}) pid {pid} {} integrity {integrity}",
+        window.0,
+        class_name(window),
+        text_of(window),
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.bottom,
+        image_of(pid),
+    )
+}
+
+fn names_in(dir: &std::path::Path) -> String {
+    let list = |entries: std::fs::ReadDir| {
+        let mut names: Vec<_> = entries.flatten().map(|e| e.file_name()).collect();
+        names.sort();
+        format!("{names:?}")
+    };
+    std::fs::read_dir(dir).map_or_else(|e| format!("unreadable ({e})"), list)
+}
+
+/// Which of the dropped files are in `dir` (a whole desktop is too long to print).
+fn dropped_in(dir: &std::path::Path) -> String {
+    let found = ["hello.txt", "big.bin"].map(|name| dir.join(name).exists());
+    format!("hello.txt {}, big.bin {}", found[0], found[1])
+}
+
+/// Every `IShellWindows` entry: its window, and the folder it shows if that can be found.
+fn shell_windows() -> String {
+    let windows = unsafe { CoCreateInstance::<_, IShellWindows>(&ShellWindows, None, CLSCTX_ALL) };
+    let entry = |windows: &IShellWindows, i: i32| {
+        let shown = unsafe { windows.Item(&VARIANT::from(i)) }
+            .ok()
+            .and_then(|item| unsafe { item.cast::<IWebBrowserApp>().ok()?.HWND() }.ok());
+        let root = shown.map(|h| HWND(h.0 as *mut _));
+        let folder = root.and_then(crate::dropdir::folder_of_explorer);
+        format!("  [{i}] window {root:?} folder {folder:?}")
+    };
+    let all = |windows: IShellWindows| {
+        let count = unsafe { windows.Count() }.unwrap_or(-1);
+        let mut lines = vec![format!("IShellWindows count {count}")];
+        lines.extend((0..count.max(0)).map(|i| entry(&windows, i)));
+        lines.join("\n")
+    };
+    windows.map_or_else(|e| format!("IShellWindows unavailable ({e})"), all)
+}
+
+/// Everything worth knowing about why a drop did not land where it was aimed.
+fn drop_report(
+    explorer: HWND,
+    dir: &std::path::Path,
+    drop_at: (i32, i32),
+    result: &mouser_platform::Result<DropTarget>,
+) -> String {
+    let (w, h) = screen();
+    let at = POINT {
+        x: drop_at.0,
+        y: drop_at.1,
+    };
+    let mut logical = at;
+    let _ = unsafe { PhysicalToLogicalPoint(explorer, &mut logical) };
+    let under = physical(|| unsafe { WindowFromPoint(at) });
+    let root = physical(|| unsafe { GetAncestor(under, GA_ROOT) });
+    let own = unsafe { GetCurrentProcessId() };
+    let foreground = unsafe { GetForegroundWindow() };
+    let desktop = crate::dropdir::desktop_folder().ok();
+    let lines = [
+        format!("drop result: {result:?}"),
+        format!(
+            "drop point physical ({},{}) logical ({},{}) screen {w}x{h}",
+            drop_at.0, drop_at.1, logical.x, logical.y
+        ),
+        format!("window at drop point: {}", describe(under)),
+        format!("its root: {}", describe(root)),
+        format!("explorer window: {}", describe(explorer)),
+        format!(
+            "explorer is the foreground window: {} (foreground: {})",
+            foreground == explorer,
+            describe(foreground)
+        ),
+        format!("the root is the explorer window: {}", root == explorer),
+        format!(
+            "test process pid {own} integrity {:?}",
+            crate::uipi::integrity_level(own)
+        ),
+        shell_windows(),
+        format!("files in the target folder: {}", names_in(dir)),
+        format!(
+            "dropped files on the desktop: {}",
+            desktop.map_or("no desktop".into(), |d| dropped_in(&d))
+        ),
+    ];
+    lines.join("\n")
+}
+
 #[test]
 fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
     let _live = live();
@@ -690,8 +835,13 @@ fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
         .join(format!("mouser-drop-{}", std::process::id()));
     std::fs::create_dir(&dir).unwrap();
     let explorer = explorer_window(&dir);
-    let mut rect = RECT::default();
-    unsafe { GetWindowRect(explorer, &mut rect) }.unwrap();
+    // Physical pixels, like the drop point the drag reports (this thread may
+    // be DPI-unaware, which would hand back scaled coordinates).
+    let rect = physical(|| {
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(explorer, &mut rect) }.unwrap();
+        rect
+    });
     let drop_at = (
         rect.left + (rect.right - rect.left) * 7 / 10,
         rect.top + (rect.bottom - rect.top) * 6 / 10,
@@ -706,16 +856,25 @@ fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
         button(false);
     });
     let mut drag = WinFileDrag::new();
-    let target = drag
-        .begin_incoming(vec!["hello.txt".into(), "big.bin".into()])
-        .unwrap();
+    let result = drag.begin_incoming(vec!["hello.txt".into(), "big.bin".into()]);
     player.join().unwrap();
-    let DropTarget(folder) = target;
-    assert_eq!(same(&folder), same(&dir));
+    // Always gathered, so that what the failure message says is exercised too.
+    let report = drop_report(explorer, &dir, drop_at, &result);
+    eprintln!("{report}");
+    let folder = result.as_ref().map(|t| t.0.clone());
+    assert!(folder.is_ok(), "{result:?}\n{report}");
+    let folder = folder.unwrap();
+    assert!(
+        same(&folder) == same(&dir),
+        "{folder:?} is not {dir:?}\n{report}"
+    );
     // The shell had made the (empty) files by the time the drag returned.
     for name in ["hello.txt", "big.bin"] {
-        let meta = std::fs::metadata(dir.join(name)).expect(name);
-        assert_eq!(meta.len(), 0, "{name} is a placeholder");
+        let meta = std::fs::metadata(dir.join(name));
+        assert!(
+            meta.is_ok_and(|m| m.len() == 0),
+            "{name} is not a placeholder\n{report}"
+        );
     }
     // The folder is found again from the same point while its window is there.
     let again = folder_at(POINT {
