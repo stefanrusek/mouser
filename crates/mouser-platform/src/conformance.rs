@@ -66,16 +66,23 @@ fn supported<T>(r: Result<T>) -> Option<T> {
 }
 
 /// Rule 1: `set_grabbed(true)` then `set_grabbed(false)` are accepted while
-/// capturing, with the pointer warped between them.
+/// capturing, with the pointer warped between them. A platform that cannot
+/// force a grab (Wayland) refuses both with `Unsupported`.
 pub fn rule_1_grab(p: &dyn Platform) {
     let Some(mut capture) = supported(p.capture()) else {
         return;
     };
     let (tx, _rx) = channel();
     capture.start(tx).unwrap();
-    capture.set_grabbed(true).unwrap();
-    capture.warp(10.0, 10.0).unwrap();
-    capture.set_grabbed(false).unwrap();
+    if supported(capture.set_grabbed(true)).is_some() {
+        capture.warp(10.0, 10.0).unwrap();
+        capture.set_grabbed(false).unwrap();
+    } else {
+        assert!(
+            matches!(capture.set_grabbed(false), Err(Error::Unsupported)),
+            "a platform that cannot grab cannot release a grab either"
+        );
+    }
     capture.stop();
 }
 

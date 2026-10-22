@@ -78,7 +78,7 @@ pub trait SecretStore: Send {
 
 Behavioural rules each backend MUST satisfy (each is a `contract_` test case run on that OS):
 
-1. `set_grabbed(true)` stops local pointer movement and local delivery of keys/buttons within one event; `set_grabbed(false)` restores both.
+1. `set_grabbed(true)` stops local pointer movement and local delivery of keys/buttons within one event; `set_grabbed(false)` restores both. A platform that cannot force a grab (Wayland: capture only starts when the pointer pushes through an edge barrier) returns `Err(Unsupported)` from both; core then still crosses at edges but refuses QuickJump and hotkey crossings from that computer.
 2. Every `key`/`button` down injected is releasable; dropping an `InputInject` releases anything still held.
 3. `key(usage)` produces the OS key for that HID usage, independent of the current keyboard layout (layout translation happens in the receiving OS, as for a physical keyboard).
 4. `displays()` reports `scale` and, where the OS knows it, `physical_size_mm`.
