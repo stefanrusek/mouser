@@ -57,7 +57,7 @@ Download from [GitHub Releases](https://github.com/stefanrusek/mouser/releases).
 
 ### Linux
 
-Download `Mouser_<version>_amd64.AppImage` or `Mouser_<version>_amd64.deb`. The .deb installs the CLI as `/usr/bin/mouser`. v0.1.1 and earlier have no working Linux backend; v0.2.0 is the first release worth trying. The Linux code was tested from source in aarch64 VMs and against simulated portals; the x86_64 AppImage and .deb bundles themselves have not been installed on any machine yet, so expect problems.
+Download `Mouser_<version>_amd64.AppImage` or `Mouser_<version>_amd64.deb`. The .deb installs the CLI as `/usr/bin/mouser`. v0.1.1 and earlier have no working Linux backend; v0.2.0 is the first release worth trying. The Linux code was tested from source in aarch64 VMs and against simulated portals; the x86_64 .deb and AppImage were smoke-tested once, in an emulated Ubuntu 24.04 x86_64 VM under Xvfb (install, start, `mouser status`, creating a desk), but not on real hardware or a real desktop session, so expect problems. The AppImage ran without libfuse2 installed.
 
 Based on experiments in virtual machines (Ubuntu 24.04 with GNOME 46, Ubuntu 26.04 with GNOME 50, Fedora 44 with Plasma 6.7; X11 only on Ubuntu 24.04), details in `crates/mouser-platform-linux/probes/FINDINGS.md`:
 
