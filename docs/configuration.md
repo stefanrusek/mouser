@@ -114,7 +114,7 @@ Always `1`. Read-only; `mouser config set schema ...` is refused.
 | Key | Default | Valid values and effect |
 |---|---|---|
 | `start_at_login` | `true` | true or false. Whether Mouser starts when you sign in. Applied once this computer is on a desk. Ignored in portable mode. |
-| `notifications` | `true` | true or false. **Not used in v1**: the key is stored and validated as a boolean, but nothing reads it, so it does not turn any notification off. |
+| `notifications` | `true` | true or false. When false, Mouser shows no system notifications (problem notifications, the offer to check where a computer's screens sit, a failed Ctrl-Alt-Del from the tray). Windows such as the join prompt and the arranger still open. Changes apply live, no restart. |
 | `computer_name` | `""` | Any text. Empty means the operating system's computer name. Other computers on the desk see a new name after they next reconnect. |
 
 ### `[hotkeys]`

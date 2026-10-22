@@ -128,7 +128,7 @@ The exact texts are in [troubleshooting.md](troubleshooting.md). Operator refere
 - Panic key returns control to the local computer [panic]
   - Delivered: built; default Escape pressed twice within 500 ms (`hotkeys.panic`, written `Escape*2`).
 - Explanatory notifications when something is blocked or broken [bubbles]
-  - Delivered: built (problems with a one-click fix where one exists). The `general.notifications` setting exists in the config file but nothing reads it in v1, so it does not turn notifications off.
+  - Delivered: built (problems with a one-click fix where one exists). Setting `general.notifications` to false silences system notifications live; windows such as the join prompt and the arranger still open.
 - Launch at login [autostart]
   - Delivered: built (`general.start_at_login`, default on). It is applied once the computer is on a desk, and never in portable mode.
 - Guided permissions setup per OS [permissions]
