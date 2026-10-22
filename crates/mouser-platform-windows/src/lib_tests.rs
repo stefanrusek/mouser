@@ -102,3 +102,15 @@ fn problems_reach_the_listener_when_there_is_one() {
     drop(rx);
     sink("gone".into());
 }
+
+#[test]
+fn starting_the_platform_undoes_a_pointer_hidden_by_an_earlier_run() {
+    let _live = live_input();
+    // What a crashed run leaves: the cursors replaced, with nothing in this
+    // process recorded as having done it.
+    crate::cursor::hide().unwrap();
+    crate::cursor::forget_hidden();
+    assert!(crate::cursor::arrow_is_blank());
+    let _p = WinPlatform::new();
+    assert!(!crate::cursor::arrow_is_blank());
+}

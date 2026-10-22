@@ -439,7 +439,8 @@ fn mousers_own_injected_input_is_never_captured() {
     inject.scroll(1.0, 1.0).unwrap();
     inject.key(F24, true).unwrap();
     inject.key(F24, false).unwrap();
-    assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+    let got = rx.recv_timeout(Duration::from_millis(300));
+    assert!(got.is_err(), "{got:?}");
     capture.stop();
 }
 
@@ -515,4 +516,47 @@ fn the_hook_thread_ignores_messages_it_does_not_know() {
     key(0x76, false);
     next(&rx, |i| matches!(i, LocalInput::Key { .. }));
     capture.stop();
+}
+
+#[test]
+fn the_pointer_is_hidden_while_grabbed_and_back_when_released() {
+    use crate::cursor::arrow_is_blank;
+    let _live = crate::live_input();
+    crate::cursor::recover().unwrap();
+    let (mut capture, _rx) = started(no_problems());
+    assert!(!arrow_is_blank());
+    capture.set_grabbed(true).unwrap();
+    assert!(arrow_is_blank());
+    capture.set_grabbed(false).unwrap();
+    assert!(!arrow_is_blank());
+    capture.stop();
+}
+
+#[test]
+fn stopping_while_grabbed_brings_the_pointer_back() {
+    use crate::cursor::arrow_is_blank;
+    let _live = crate::live_input();
+    crate::cursor::recover().unwrap();
+    let (mut capture, _rx) = started(no_problems());
+    capture.set_grabbed(true).unwrap();
+    assert!(arrow_is_blank());
+    capture.stop();
+    assert!(!arrow_is_blank());
+}
+
+#[test]
+fn a_pointer_that_cannot_be_hidden_is_a_problem_not_a_failed_grab() {
+    use crate::capture::set_pointer_hidden;
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    let problems: Problems = Arc::new(move |text| sink.lock().unwrap().push(text));
+    set_pointer_hidden(true, &problems, |hidden| {
+        assert!(hidden);
+        Err(Error::Os("CreateCursor: denied".into()))
+    });
+    set_pointer_hidden(false, &problems, |_| Ok(()));
+    assert_eq!(
+        *seen.lock().unwrap(),
+        ["Mouser could not change the pointer on this PC: CreateCursor: denied"]
+    );
 }

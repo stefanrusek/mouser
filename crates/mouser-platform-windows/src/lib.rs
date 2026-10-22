@@ -14,6 +14,7 @@
 mod autostart;
 mod capture;
 mod clipboard;
+mod cursor;
 mod displays;
 mod dpi;
 mod fullscreen;
@@ -143,6 +144,8 @@ impl WinPlatform {
     }
 
     pub fn with_settings(settings: Settings) -> Self {
+        // A crash while the pointer was hidden leaves it hidden; undo that.
+        let _ = cursor::recover_at_startup();
         WinPlatform {
             settings,
             problems: Arc::new(Mutex::new(None)),
@@ -257,6 +260,8 @@ mod autostart_tests;
 mod capture_tests;
 #[cfg(test)]
 mod clipboard_tests;
+#[cfg(test)]
+mod cursor_tests;
 #[cfg(test)]
 mod displays_tests;
 #[cfg(test)]

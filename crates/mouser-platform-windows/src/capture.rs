@@ -334,6 +334,28 @@ struct Running {
     stop_watchdog: Sender<()>,
 }
 
+/// Hides or restores the local pointer; a failure is reported as a problem and
+/// never stops the grab, since the parked pointer is still held still.
+pub(crate) fn set_pointer_hidden(
+    hidden: bool,
+    problems: &Problems,
+    change: impl FnOnce(bool) -> Result<()>,
+) {
+    if let Err(e) = change(hidden) {
+        problems(format!(
+            "Mouser could not change the pointer on this PC: {e}"
+        ));
+    }
+}
+
+fn hide_or_show(hidden: bool) -> Result<()> {
+    if hidden {
+        crate::cursor::hide()
+    } else {
+        crate::cursor::show()
+    }
+}
+
 pub(crate) struct WinCapture {
     problems: Problems,
     interval: Duration,
@@ -429,6 +451,7 @@ impl InputCapture for WinCapture {
             let (x, y) = cursor_pos()?;
             park_cursor(shared, x, y)?;
         }
+        set_pointer_hidden(grabbed, &self.problems, hide_or_show);
         shared.grabbed.store(grabbed, Ordering::SeqCst);
         Ok(())
     }
@@ -443,6 +466,9 @@ impl InputCapture for WinCapture {
         let Some(running) = self.running.take() else {
             return;
         };
+        if running.shared.grabbed.load(Ordering::SeqCst) {
+            set_pointer_hidden(false, &self.problems, hide_or_show);
+        }
         let _ = running.stop_watchdog.send(());
         running.watchdog.join().expect("watchdog thread");
         unsafe { PostThreadMessageW(running.hook_thread_id, WM_STOP, WPARAM(0), LPARAM(0)) }
