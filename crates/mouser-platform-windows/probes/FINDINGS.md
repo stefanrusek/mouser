@@ -101,3 +101,21 @@ Same VM. Before the J1 run the network was "Network", category Private, and the 
 | While the prompt is open | a full-screen `Shell_SystemDim` window (PickerHost) covers the display; `DoDragDrop` cannot start ("the drag could not be started") and the edge-strip drag ends at once |
 
 So the J1 sleep step reaches a firewall-on profile on every run, and a real Windows user who joins a new network sees the prompt again. Firewall detection has to re-check on network change, not only at start.
+
+### A stalled guest looks like lost hooks (`probe_logger`, 2026-10-22)
+
+Same VM (Windows 11 ARM64 under Parallels). The watchdog sometimes raised "Mouser lost its hold on the keyboard and mouse..." although the hooks were fine. `probe_logger` repeats the watchdog's probe (a tagged one-pixel move and an F24 release through `SendInput`, then waits for both hooks) every 5 s for 6 minutes (71 lines, 17:39:21 to 17:45:27) and logs what happened.
+
+| Observation | Result |
+|---|---|
+| Loop interval | meant to be 5 s; stretched to 8-12 s at times, with single gaps of 14 s and 20 s |
+| `GetTickCount` inside one probe iteration (capped at 2 s) | jumped by 4.8-7.8 s several times (once 11.7 s): the whole guest was not running |
+| Missed probes | every one was seen by the hook later, and the next probe went through: late, not lost |
+| `SendInput` | never failed (0 errors in the log) |
+| `GetLastInputInfo` | advanced on every probe, the missed ones too, so it cannot tell late from lost |
+| `LowLevelHooksTimeout` | not set (neither `HKCU\Control Panel\Desktop` nor `HKLM`), so the default applies and the system did not drop the hooks |
+| Cursor position, foreground window | varied across the misses and the hits; neither correlates with a miss |
+
+So a probe that misses its 500 ms window is not evidence that the hooks were removed: the guest itself stalled for seconds, and the hook callback ran when it woke up. Nothing in the process can observe the difference by time or by input state (`GetLastInputInfo` counts the injected probe whether or not a hook saw it).
+
+The rule that does work counts probes, not time. A missed probe is remembered together with what the hooks had seen when it was sent. The hooks are judged lost only if, when the next cycle begins, the counters have not moved past that point, that is the earlier probe is still unseen after a whole further interval. A guest stall delays both the probe and the cycle, so the late probe has arrived by the time the next cycle looks. A failed `SendInput` is a separate outcome: it says nothing about the hooks, so it neither reinstalls nor raises. When a probe is seen after an alarm, the alarm is withdrawn. The cost is that a hook the system really removed is reinstalled about one interval (5 s) later than before.

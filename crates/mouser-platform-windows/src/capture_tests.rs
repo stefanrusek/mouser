@@ -566,3 +566,231 @@ fn a_pointer_that_cannot_be_hidden_is_a_problem_not_a_failed_grab() {
         )]
     );
 }
+
+/// Drives the watchdog's cycles by hand: the hooks have seen `counters`, the
+/// next probe has `outcome`, and what came out is recorded.
+struct Cycles {
+    judge: Judge,
+    counters: std::cell::Cell<(u32, u32)>,
+    reinstalls: std::cell::Cell<u32>,
+    heard: Arc<std::sync::Mutex<Vec<PlatformProblem>>>,
+    sink: Problems,
+}
+
+impl Cycles {
+    fn new() -> Self {
+        let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sunk = heard.clone();
+        Cycles {
+            judge: Judge::default(),
+            counters: std::cell::Cell::new((0, 0)),
+            reinstalls: std::cell::Cell::new(0),
+            heard,
+            sink: Arc::new(move |p| sunk.lock().unwrap().push(p)),
+        }
+    }
+
+    /// One cycle. Returns whether a probe was sent.
+    fn run(&mut self, outcome: Outcome) -> bool {
+        let sent = std::cell::Cell::new(false);
+        watch_cycle(
+            &mut self.judge,
+            || self.counters.get(),
+            || {
+                sent.set(true);
+                outcome
+            },
+            || self.reinstalls.set(self.reinstalls.get() + 1),
+            &self.sink,
+        );
+        sent.get()
+    }
+
+    /// The hooks see the probes that were late.
+    fn arrive(&self, mouse: bool, key: bool) {
+        let (m, k) = self.counters.get();
+        self.counters
+            .set((m + u32::from(mouse), k + u32::from(key)));
+    }
+
+    fn heard(&self) -> Vec<PlatformProblem> {
+        std::mem::take(&mut self.heard.lock().unwrap())
+    }
+}
+
+fn lost_hold() -> String {
+    LOST_HOLD.to_string()
+}
+
+#[test]
+fn the_problem_text_is_unchanged() {
+    assert_eq!(
+        lost_hold(),
+        "Mouser lost its hold on the keyboard and mouse and took it back; \
+         input may have briefly leaked to this PC."
+    );
+}
+
+#[test]
+fn healthy_hooks_probe_every_cycle_and_say_nothing() {
+    let mut c = Cycles::new();
+    for _ in 0..3 {
+        assert!(c.run(Outcome::Seen));
+        c.arrive(true, true);
+    }
+    assert_eq!(c.reinstalls.get(), 0);
+    assert!(c.heard().is_empty());
+}
+
+#[test]
+fn a_probe_that_is_only_late_is_not_a_loss() {
+    let mut c = Cycles::new();
+    // The guest stalled: the window passed, and the hooks saw the probe afterwards.
+    assert!(c.run(Outcome::Unseen));
+    c.arrive(true, true);
+    assert!(c.run(Outcome::Seen));
+    assert_eq!(c.reinstalls.get(), 0);
+    assert!(c.heard().is_empty());
+}
+
+#[test]
+fn repeated_stalls_that_always_arrive_late_never_raise_anything() {
+    let mut c = Cycles::new();
+    for _ in 0..5 {
+        assert!(c.run(Outcome::Unseen));
+        c.arrive(true, true);
+    }
+    assert_eq!(c.reinstalls.get(), 0);
+    assert!(c.heard().is_empty());
+}
+
+#[test]
+fn a_probe_still_unseen_at_the_next_cycle_is_a_loss() {
+    let mut c = Cycles::new();
+    assert!(c.run(Outcome::Unseen));
+    // Nothing arrived by the next cycle: reinstall, raise, and let the reinstall settle.
+    assert!(!c.run(Outcome::Seen));
+    assert_eq!(c.reinstalls.get(), 1);
+    assert_eq!(c.heard(), [PlatformProblem::Raised(lost_hold())]);
+}
+
+#[test]
+fn a_probe_only_one_hook_saw_is_a_loss() {
+    for (mouse, key) in [(true, false), (false, true)] {
+        let mut c = Cycles::new();
+        c.run(Outcome::Unseen);
+        c.arrive(mouse, key);
+        assert!(!c.run(Outcome::Seen));
+        assert_eq!(c.reinstalls.get(), 1);
+    }
+}
+
+#[test]
+fn the_alarm_clears_after_the_next_probe_gets_through() {
+    let mut c = Cycles::new();
+    c.run(Outcome::Unseen);
+    c.run(Outcome::Seen);
+    assert_eq!(c.heard(), [PlatformProblem::Raised(lost_hold())]);
+    // The hooks are back: the next probe is seen and the alarm is withdrawn once.
+    assert!(c.run(Outcome::Seen));
+    c.arrive(true, true);
+    assert_eq!(c.heard(), [PlatformProblem::Cleared(lost_hold())]);
+    assert!(c.run(Outcome::Seen));
+    assert!(c.heard().is_empty());
+}
+
+#[test]
+fn a_loss_that_goes_on_reinstalls_again_without_raising_again() {
+    let mut c = Cycles::new();
+    c.run(Outcome::Unseen);
+    c.run(Outcome::Seen); // lost, reinstalled
+    assert!(c.run(Outcome::Unseen)); // the reinstalled hooks still missed it
+    assert!(!c.run(Outcome::Seen)); // lost again
+    assert_eq!(c.reinstalls.get(), 2);
+    assert_eq!(c.heard(), [PlatformProblem::Raised(lost_hold())]);
+}
+
+#[test]
+fn a_probe_the_system_would_not_take_says_nothing_about_the_hooks() {
+    let mut c = Cycles::new();
+    assert!(c.run(Outcome::NotSent));
+    assert!(c.run(Outcome::NotSent));
+    assert_eq!(c.reinstalls.get(), 0);
+    assert!(c.heard().is_empty());
+    // It does not take back an alarm either.
+    c.run(Outcome::Unseen);
+    c.run(Outcome::Seen);
+    c.heard();
+    assert!(c.run(Outcome::NotSent));
+    assert!(c.heard().is_empty());
+    assert!(c.run(Outcome::Seen));
+    assert_eq!(c.heard(), [PlatformProblem::Cleared(lost_hold())]);
+}
+
+fn shared() -> Shared {
+    Shared {
+        grabbed: std::sync::atomic::AtomicBool::new(false),
+        park: std::sync::atomic::AtomicU64::new(0),
+        probed_mouse: std::sync::atomic::AtomicU32::new(0),
+        probed_key: std::sync::atomic::AtomicU32::new(0),
+    }
+}
+
+#[test]
+fn a_probe_is_seen_when_both_hooks_count_it() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let s = shared();
+    let out = probe_hooks_with(&s, Duration::from_secs(5), || {
+        s.probed_mouse.fetch_add(1, SeqCst);
+        s.probed_key.fetch_add(1, SeqCst);
+        Ok(())
+    });
+    assert_eq!(out, Outcome::Seen);
+}
+
+#[test]
+fn a_probe_is_unseen_when_a_hook_does_not_count_it_in_time() {
+    use std::sync::atomic::Ordering::SeqCst;
+    let s = shared();
+    let out = probe_hooks_with(&s, Duration::from_millis(30), || {
+        s.probed_mouse.fetch_add(1, SeqCst);
+        Ok(())
+    });
+    assert_eq!(out, Outcome::Unseen);
+}
+
+#[test]
+fn a_probe_the_system_refuses_is_not_sent() {
+    let s = shared();
+    let out = probe_hooks_with(&s, Duration::from_secs(5), || {
+        Err(Error::Os("SendInput: blocked".into()))
+    });
+    assert_eq!(out, Outcome::NotSent);
+}
+
+#[test]
+fn the_real_probe_is_seen_by_working_hooks() {
+    let _live = crate::live_input();
+    let (mut capture, _rx) = started(no_problems());
+    let s = &capture.running().unwrap().shared;
+    assert_eq!(probe_hooks(s, Duration::from_secs(5)), Outcome::Seen);
+    capture.stop();
+}
+
+#[test]
+fn the_watchdog_withdraws_its_alarm_once_the_hooks_are_back() {
+    let _live = crate::live_input();
+    let (ptx, prx) = channel();
+    let sink: Problems = Arc::new(move |p| {
+        let _ = ptx.send(p);
+    });
+    let (tx, _rx) = channel();
+    let mut capture = WinCapture::with_interval(sink, Duration::from_millis(100));
+    capture.start(tx).unwrap();
+    capture.drop_hooks();
+    let first = prx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(first, PlatformProblem::Raised(lost_hold()));
+    let second = prx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(second, PlatformProblem::Cleared(lost_hold()));
+    capture.stop();
+}

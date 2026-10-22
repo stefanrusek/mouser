@@ -14,8 +14,10 @@
 //! Events carrying Mouser's tag are Mouser's own and are ignored.
 //!
 //! A watchdog sends a tagged probe event through both hooks every few
-//! seconds. A hook that does not see it has stopped delivering: it is
-//! installed again and a Problem is reported.
+//! seconds. A hook that has not seen it by the next cycle has stopped
+//! delivering: it is installed again and a Problem is reported (and withdrawn
+//! once a probe gets through). One cycle of grace, because a stalled guest
+//! delivers late, not never.
 
 use crate::displays::{self, DisplayCache};
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
@@ -143,12 +145,12 @@ fn unpack(p: u64) -> (i32, i32) {
 }
 
 /// State the hook thread, the caller and the watchdog share.
-struct Shared {
-    grabbed: AtomicBool,
-    park: AtomicU64,
+pub(crate) struct Shared {
+    pub(crate) grabbed: AtomicBool,
+    pub(crate) park: AtomicU64,
     /// Probe events each hook has seen.
-    probed_mouse: AtomicU32,
-    probed_key: AtomicU32,
+    pub(crate) probed_mouse: AtomicU32,
+    pub(crate) probed_key: AtomicU32,
 }
 
 impl Shared {
@@ -280,28 +282,121 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
     hooks.remove();
 }
 
-/// Sends a one-pixel move and an F24 release tagged as probes, and reports whether
-/// both hooks saw theirs within `wait`.
-fn probe_hooks(shared: &Shared, wait: Duration) -> bool {
-    let (m, k) = (
+/// The probe events each hook has seen so far.
+fn seen(shared: &Shared) -> (u32, u32) {
+    (
         shared.probed_mouse.load(Ordering::SeqCst),
         shared.probed_key.load(Ordering::SeqCst),
-    );
-    let mut nudge = mouse_input(MOUSEEVENTF_MOVE, 0, PROBE_TAG);
-    nudge.Anonymous.mi.dx = 1;
-    let sent =
-        send(&[nudge]).and_then(|()| send(&[key_input(PROBE_SCAN, false, false, PROBE_TAG)]));
+    )
+}
+
+/// What became of one probe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Outcome {
+    /// Both hooks saw it within the wait.
+    Seen,
+    /// Not seen yet. It may only be late: a stalled guest delivers a probe
+    /// seconds after it was sent (FINDINGS.md, "A stalled guest").
+    Unseen,
+    /// The system refused to take the probe, so nothing is known about the hooks.
+    NotSent,
+}
+
+/// Sends a one-pixel move and an F24 release tagged as probes, and reports whether
+/// both hooks saw theirs within `wait`.
+pub(crate) fn probe_hooks(shared: &Shared, wait: Duration) -> Outcome {
+    probe_hooks_with(shared, wait, || {
+        let mut nudge = mouse_input(MOUSEEVENTF_MOVE, 0, PROBE_TAG);
+        nudge.Anonymous.mi.dx = 1;
+        send(&[nudge]).and_then(|()| send(&[key_input(PROBE_SCAN, false, false, PROBE_TAG)]))
+    })
+}
+
+pub(crate) fn probe_hooks_with(
+    shared: &Shared,
+    wait: Duration,
+    send_probe: impl FnOnce() -> Result<()>,
+) -> Outcome {
+    let before = seen(shared);
+    if send_probe().is_err() {
+        return Outcome::NotSent;
+    }
     let end = Instant::now() + wait;
     while Instant::now() < end {
-        if sent.is_ok()
-            && shared.probed_mouse.load(Ordering::SeqCst) != m
-            && shared.probed_key.load(Ordering::SeqCst) != k
-        {
-            return true;
+        let now = seen(shared);
+        if now.0 != before.0 && now.1 != before.1 {
+            return Outcome::Seen;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    false
+    Outcome::Unseen
+}
+
+/// Said when the hooks are judged lost; withdrawn after the next probe gets through.
+pub(crate) const LOST_HOLD: &str = "Mouser lost its hold on the keyboard and mouse and took it back; \
+                         input may have briefly leaked to this PC.";
+
+/// Tells hooks the system took away from a guest that merely stalled. A probe
+/// that is not seen in time is not yet a loss: the hooks are judged lost only
+/// if it is still unseen when the next cycle begins, measured in probes (the
+/// counters have not moved past the earlier probe), never in wall time, so a
+/// stall of the whole guest cannot trip it.
+#[derive(Default)]
+pub(crate) struct Judge {
+    /// What the hooks had seen when the probe that is still unseen was sent.
+    unseen_since: Option<(u32, u32)>,
+    raised: bool,
+}
+
+impl Judge {
+    /// Whether the probe left unseen by the last cycle is still unseen; `now`
+    /// is what the hooks have seen at the start of this cycle. Returns `Some`
+    /// when the hooks are lost, with whether this is the first time to say so.
+    fn lost(&mut self, now: (u32, u32)) -> Option<bool> {
+        let before = self.unseen_since.take()?;
+        if now.0 != before.0 && now.1 != before.1 {
+            return None;
+        }
+        Some(!std::mem::replace(&mut self.raised, true))
+    }
+
+    /// Records the outcome of the probe sent when the hooks had seen `before`.
+    /// A probe that got through withdraws an earlier alarm.
+    fn probed(&mut self, before: (u32, u32), outcome: Outcome) -> Option<PlatformProblem> {
+        match outcome {
+            Outcome::Seen => {
+                std::mem::take(&mut self.raised).then(|| PlatformProblem::Cleared(LOST_HOLD.into()))
+            }
+            Outcome::Unseen => {
+                self.unseen_since = Some(before);
+                None
+            }
+            Outcome::NotSent => None,
+        }
+    }
+}
+
+/// One watchdog cycle: judge the previous probe, and, unless the hooks were
+/// just reinstalled, send the next one.
+pub(crate) fn watch_cycle(
+    judge: &mut Judge,
+    counters: impl Fn() -> (u32, u32),
+    probe: impl FnOnce() -> Outcome,
+    reinstall: impl FnOnce(),
+    problems: &Problems,
+) {
+    let before = counters();
+    if let Some(first) = judge.lost(before) {
+        reinstall();
+        if first {
+            problems(PlatformProblem::Raised(LOST_HOLD.into()));
+        }
+        // The reinstall is asynchronous: probe once it has had a cycle.
+        return;
+    }
+    if let Some(problem) = judge.probed(before, probe()) {
+        problems(problem);
+    }
 }
 
 fn watchdog_thread(
@@ -311,21 +406,23 @@ fn watchdog_thread(
     stop: Receiver<()>,
     problems: Problems,
 ) {
+    let mut judge = Judge::default();
     while let Err(RecvTimeoutError::Timeout) = stop.recv_timeout(interval) {
-        if !probe_hooks(&shared, PROBE_WAIT) {
-            unsafe { PostThreadMessageW(hook_thread_id, WM_REINSTALL, WPARAM(0), LPARAM(0)) }
-                .expect("reinstall hooks");
-            problems(PlatformProblem::Raised(
-                "Mouser lost its hold on the keyboard and mouse and took it back; \
-                 input may have briefly leaked to this PC."
-                    .into(),
-            ));
-        }
+        watch_cycle(
+            &mut judge,
+            || seen(&shared),
+            || probe_hooks(&shared, PROBE_WAIT),
+            || {
+                unsafe { PostThreadMessageW(hook_thread_id, WM_REINSTALL, WPARAM(0), LPARAM(0)) }
+                    .expect("reinstall hooks");
+            },
+            &problems,
+        );
     }
 }
 
-struct Running {
-    shared: Arc<Shared>,
+pub(crate) struct Running {
+    pub(crate) shared: Arc<Shared>,
     hook_thread_id: u32,
     displays: DisplayCache,
     hook: JoinHandle<()>,
@@ -375,7 +472,7 @@ impl WinCapture {
         }
     }
 
-    fn running(&self) -> Result<&Running> {
+    pub(crate) fn running(&self) -> Result<&Running> {
         self.running
             .as_ref()
             .ok_or_else(|| Error::Os("capture has not been started".into()))
