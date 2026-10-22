@@ -149,4 +149,4 @@ Mouser is built spec-first. `specs/001-mouser-v1/` holds the user stories (`spec
 
 ## License
 
-License: not yet chosen.
+MIT. See [LICENSE](LICENSE).
