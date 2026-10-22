@@ -6,9 +6,9 @@ A release is produced entirely by `.github/workflows/release.yml` when a tag mat
 
 1. Set the same version in the workspace `Cargo.toml` (`version`) and `apps/mouser-app/tauri.conf.json` (`version`). The workflow fails if the tag is not `v` + the `tauri.conf.json` version.
 2. Merge to `main`, make sure CI is green.
-3. `git tag v0.1.0 && git push origin v0.1.0`.
-4. Watch the `release` workflow. When it finishes, the pre-release `v0.1.0` has the assets below.
-5. To promote to a normal release, untick "pre-release" on GitHub. Note that `releases/latest/download/latest.json` (the updater endpoint) only resolves for non-pre-releases.
+3. `git tag v<version> && git push origin v<version>` (for example `v0.2.0`).
+4. Watch the `release` workflow. When it finishes, the pre-release `v<version>` has the assets below. Published so far: v0.1.0 and v0.1.1.
+5. To promote to a normal release, untick "pre-release" on GitHub. Note that `releases/latest/download/latest.json` only resolves for non-pre-releases. The app's default `updates.release_url` reads the GitHub releases list instead (pre-releases included), so installed apps still find pre-releases.
 
 ## Repository secrets (Settings > Secrets and variables > Actions)
 
@@ -26,7 +26,7 @@ A release is produced entirely by `.github/workflows/release.yml` when a tag mat
 
 Tauri 2's environment variable names for notarization with an API key are `APPLE_API_ISSUER`, `APPLE_API_KEY` (the key ID) and `APPLE_API_KEY_PATH` (path to the `.p8`). Windows is unsigned for now (Authenticode is deferred, decision D4), so SmartScreen will warn on first run.
 
-Updater key: generated with `npx @tauri-apps/cli@2.12.4 signer generate`. The public half is `plugins.updater.pubkey` in `apps/mouser-app/tauri.conf.json`. If the private key or its password is lost, installed apps can never accept another update, so keep a backup outside GitHub. `crates/mouser-core/src/release/pubkey.rs` (T489) is not written yet; it belongs to the US10 core work and must carry the same public key.
+Updater key: generated with `npx @tauri-apps/cli@2.12.4 signer generate`. The public half is `plugins.updater.pubkey` in `apps/mouser-app/tauri.conf.json`. If the private key or its password is lost, installed apps can never accept another update, so keep a backup outside GitHub. `crates/mouser-core/src/release/pubkey.rs` carries the same public key (compiled in); if you ever rotate the key, change both.
 
 ## Assets in the release
 
@@ -59,7 +59,8 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: ..." \
 
 ## Not included yet
 
-- macOS login-window agent (US12).
-- Windows `MouserService` install, `SoftwareSASGeneration` registry value, and the portable zip (US12 / US13). `mouser-service-win` is still a skeleton.
-- Windows Authenticode signing (D4).
-- Unverified until the first CI run: the Windows NSIS and Linux AppImage/deb bundles (only the macOS bundle was built locally), the Linux desktop template (`apps/mouser-app/linux/com.mouser.app.desktop`; Tauri names the installed file after the app binary), and the universal macOS build.
+- Windows: there is no backend (`crates/mouser-platform-windows` is empty), so the Windows installer starts an app that stops with "the Windows platform backend is not implemented yet". `mouser-service-win` is a stub, so there is no `MouserService` install and no `SoftwareSASGeneration` registry value.
+- A portable zip. Portable mode itself is built (a `MouserData/` folder beside the program), but `release.yml` does not package one.
+- Windows Authenticode signing (D4). Linux packages are not signed.
+- The macOS login-window agent is built (the "Allow control at the login screen" option), but it has never been run on a real login screen.
+- Not verified on real machines: the Windows NSIS installer and the Linux AppImage and `.deb` (CI builds them; nobody has installed them on real hardware), the Linux desktop template (`apps/mouser-app/linux/com.mouser.app.desktop`; Tauri names the installed file after the app binary), and a real GUI launch of a portable run.

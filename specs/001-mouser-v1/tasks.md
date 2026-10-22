@@ -809,12 +809,12 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 
 **Purpose**: Keep `docs/` matching what was delivered (constitution Development Workflow), and final validation.
 
-- [ ] T497 Update `docs/product-requirements.md` so every Must/Nice item states what v1 delivers, including the five accepted platform limitations and any behaviour changed during implementation
-- [ ] T498 Update `docs/technical-decisions.md` with the as-built crates, versions, CI layout, signing state and probe outcomes from `crates/mouser-platform-*/probes/FINDINGS.md`
-- [ ] T499 Write `docs/cli.md`: the operator reference for every `mouser` command, flag, `--json` output and exit code as implemented (from `contracts/cli.md`)
-- [ ] T500 Write `docs/configuration.md`: every `config.toml` key, default and valid values as implemented (from `contracts/config.md`), plus file locations per OS and portable mode
-- [ ] T501 Write `docs/troubleshooting.md`: each Problem kind's message, cause and fix, the diagnostic log location and record format, and the platform limitations
-- [ ] T502 Review all files under `docs/` against the delivered behaviour and record "docs/ reviewed, no drift" or the corrections made in `specs/001-mouser-v1/evidence/docs-review.md` (verification only)
+- [X] T497 Update `docs/product-requirements.md` so every Must/Nice item states what v1 delivers, including the five accepted platform limitations and any behaviour changed during implementation
+- [X] T498 Update `docs/technical-decisions.md` with the as-built crates, versions, CI layout, signing state and probe outcomes from `crates/mouser-platform-*/probes/FINDINGS.md`
+- [X] T499 Write `docs/cli.md`: the operator reference for every `mouser` command, flag, `--json` output and exit code as implemented (from `contracts/cli.md`)
+- [X] T500 Write `docs/configuration.md`: every `config.toml` key, default and valid values as implemented (from `contracts/config.md`), plus file locations per OS and portable mode
+- [X] T501 Write `docs/troubleshooting.md`: each Problem kind's message, cause and fix, the diagnostic log location and record format, and the platform limitations
+- [X] T502 Review all files under `docs/` against the delivered behaviour and record "docs/ reviewed, no drift" or the corrections made in `specs/001-mouser-v1/evidence/docs-review.md` (verification only)
 - [ ] T503 Run the real-machine validation in `specs/001-mouser-v1/quickstart.md` sections 2–8 and record each section's outcome in `specs/001-mouser-v1/evidence/quickstart.md` (verification only)
 - [ ] T504 Gate: `cargo xtask gate --all --lane polish` green on all three CI runners
 - [ ] T505 Commit: phase boundary "Polish" (5.3)
