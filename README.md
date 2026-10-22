@@ -14,7 +14,7 @@ Mouser is an **early pre-release**. Expect rough edges. Published versions are o
 |---|---|
 | macOS | Built and tested on real hardware (the owner's Macs). Not yet exercised on a real login screen (see below). |
 | Linux (X11 and Wayland) | Built and tested in aarch64 virtual machines and against simulated desktop portals only. A two-VM X11 test passed (joining by address, crossing, keys and clicks). No real Linux hardware yet. |
-| Windows | Experimental from v0.2.1. The app starts and the backend has input capture and injection, displays, clipboard, file drag, network watching and pointer hiding. Tested only in a Windows-on-ARM VM and CI (x64), not on real Windows hardware. Portable mode and the login-screen/UAC/Ctrl-Alt-Del service are not available. |
+| Windows | Experimental from v0.2.1. The app starts and the backend has input capture and injection, displays, clipboard, file drag, network watching and pointer hiding. Tested only in a Windows-on-ARM VM and CI (x64), not on real Windows hardware. A portable zip is available; the login-screen/UAC/Ctrl-Alt-Del service is not. |
 
 What is built (in source, and in v0.2.1 unless noted):
 
@@ -27,9 +27,8 @@ What is built (in source, and in v0.2.1 unless noted):
 
 What is not done yet (tracked in `specs/001-mouser-v1/tasks.md`):
 
-- Windows portable mode, and `mouser-service-win` (the service for the Windows login screen, UAC and Ctrl-Alt-Del). The service is a stub, and that work is deferred to a future feature (owner decision 2026-10-22).
+- `mouser-service-win` (the service for the Windows login screen, UAC and Ctrl-Alt-Del). The service is a stub, and that work is deferred to a future feature (owner decision 2026-10-22).
 - Testing the Windows backend on real Windows hardware.
-- Portable zip packaging.
 - Running the macOS login-screen agent on a real login screen.
 
 Known limitations:
@@ -75,6 +74,8 @@ Based on experiments in virtual machines (Ubuntu 24.04 with GNOME 46, Ubuntu 26.
 ### Windows
 
 Download `Mouser_<version>_x64-setup.exe`, a per-user NSIS installer. It is unsigned, so Windows SmartScreen will warn you ("More info" then "Run anyway"). The Windows backend is experimental: it has not been tried on real Windows hardware. To use the CLI, add `%LOCALAPPDATA%\Mouser` to your PATH.
+
+Or download `Mouser_<version>_x64-portable.zip`, extract it anywhere (a USB drive works) and run `mouser-app.exe`. It contains an empty `MouserData/` folder, which makes Mouser portable: settings, keys and logs stay in that folder and nothing is installed. The `mouser` command is in the same folder. Portable mode cannot control the login screen or administrator applications.
 
 ## Using it
 

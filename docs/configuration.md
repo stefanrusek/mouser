@@ -38,7 +38,7 @@ Put a folder named `MouserData` next to the Mouser program and run Mouser from t
 - The control socket stays at its normal path, so `mouser` still finds it.
 - The `mouser` command's offline `config` and `logs path|tail` do not know about `MouserData/`; they look in the normal folder. While the portable copy runs, they work normally.
 
-Limitations shown in the app in portable mode: on macOS, permissions must be granted again on each computer you run Mouser from the drive on; on Wayland, the desktop keeps Mouser's permission after you remove the drive; on Windows, portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del or applications running as administrator. The release workflow does not yet package a portable zip, so you create `MouserData/` yourself. On macOS the program sits inside `Mouser.app/Contents/MacOS/`, which is where the folder has to be; this is not verified on a real Mac.
+Limitations shown in the app in portable mode: on macOS, permissions must be granted again on each computer you run Mouser from the drive on; on Wayland, the desktop keeps Mouser's permission after you remove the drive; on Windows, portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del or applications running as administrator. On Windows, the release ships `Mouser_<version>_x64-portable.zip`: extract it anywhere and run `mouser-app.exe`; it already contains the empty `MouserData/` folder and the `mouser` command beside the program. On the other systems you create `MouserData/` yourself. On macOS the program sits inside `Mouser.app/Contents/MacOS/`, which is where the folder has to be; this is not verified on a real Mac.
 
 ## The login-screen (headless) copy
 

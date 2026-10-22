@@ -32,6 +32,7 @@ Updater key: generated with `npx @tauri-apps/cli@2.12.4 signer generate`. The pu
 
 - `Mouser_<v>_universal.dmg` - macOS (arm64 + x86_64), signed, notarized, stapled
 - `Mouser_<v>_x64-setup.exe` - Windows NSIS installer (per-user, unsigned)
+- `Mouser_<v>_x64-portable.zip` - Windows portable copy: `mouser-app.exe`, `mouser.exe` (the CLI) and an empty `MouserData/` folder. Unsigned, no `.sig`, not in `latest.json`
 - `Mouser_<v>_amd64.AppImage` and `Mouser_<v>_amd64.deb` - Linux
 - `Mouser_<v>_universal.app.tar.gz`, `*-setup.exe`, `*.AppImage` each with a `.sig` - updater bundles
 - `latest.json` - updater manifest, validated in CI against `specs/001-mouser-v1/contracts/release-manifest.schema.json`
@@ -60,7 +61,7 @@ APPLE_SIGNING_IDENTITY="Developer ID Application: ..." \
 ## Not included yet
 
 - Windows: there is no backend (`crates/mouser-platform-windows` is empty), so the Windows installer starts an app that stops with "the Windows platform backend is not implemented yet". `mouser-service-win` is a stub (deferred to a future feature, owner decision 2026-10-22), so there is no `MouserService` install and no `SoftwareSASGeneration` registry value.
-- A portable zip. Portable mode itself is built (a `MouserData/` folder beside the program), but `release.yml` does not package one.
+- A portable zip for macOS or Linux. Windows has one (see below); elsewhere create `MouserData/` yourself.
 - Windows Authenticode signing (D4). Linux packages are not signed.
 - The macOS login-window agent is built (the "Allow control at the login screen" option), but it has never been run on a real login screen.
 - Not verified on real machines: the Windows NSIS installer and the Linux AppImage and `.deb` (CI builds them; nobody has installed them on real hardware), the Linux desktop template (`apps/mouser-app/linux/com.mouser.app.desktop`; Tauri names the installed file after the app binary), and a real GUI launch of a portable run.

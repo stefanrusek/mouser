@@ -140,6 +140,30 @@ jobs:
               cp "$b"/appimage/*.AppImage "$b"/appimage/*.AppImage.sig "$b"/deb/*.deb out/ ;;
           esac
           ls -l out
+      - name: Build the Windows portable zip
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          v="$(node -p "require('./apps/mouser-app/tauri.conf.json').version")"
+          # The app (the same cargo binary the installer ships; the WebView2
+          # loader is statically linked, so there is no DLL to add) and the
+          # CLI sidecar, flat in one folder. The zip's explicit MouserData/
+          # directory entry is what turns portable mode on once extracted
+          # (Paths::resolve checks for that directory beside the exe).
+          python - "$v" <<'PY'
+          import sys, zipfile
+          v = sys.argv[1]
+          with zipfile.ZipFile(f"out/Mouser_{v}_x64-portable.zip", "w", zipfile.ZIP_DEFLATED) as z:
+              z.write("target/release/mouser-app.exe", "mouser-app.exe")
+              z.write("target/x86_64-pc-windows-msvc/release/mouser.exe", "mouser.exe")
+              d = zipfile.ZipInfo("MouserData/")
+              d.external_attr = (0o40755 << 16) | 0x10
+              z.writestr(d, "")
+          with zipfile.ZipFile(f"out/Mouser_{v}_x64-portable.zip") as z:
+              assert sorted(z.namelist()) == ["MouserData/", "mouser-app.exe", "mouser.exe"], z.namelist()
+          PY
+          ls -l out
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: assets-${{ matrix.artifact }}
