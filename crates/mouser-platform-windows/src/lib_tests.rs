@@ -32,7 +32,7 @@ fn capabilities_of_later_phases_are_unsupported_not_panicking() {
     assert!(matches!(p.clipboard(), Err(Error::Unsupported)));
     assert!(p.file_drag().is_none());
     assert!(p.secure_input().is_none());
-    assert!(!p.foreground_is_fullscreen());
+    let _ = p.foreground_is_fullscreen();
 }
 
 #[test]

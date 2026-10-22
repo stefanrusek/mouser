@@ -16,6 +16,7 @@ mod autostart;
 mod capture;
 mod displays;
 mod dpi;
+mod fullscreen;
 mod inject;
 mod keymap;
 mod net;
@@ -222,7 +223,7 @@ impl Platform for WinPlatform {
     }
 
     fn foreground_is_fullscreen(&self) -> bool {
-        false
+        fullscreen::foreground_is_fullscreen()
     }
 
     fn interfaces(&self) -> Vec<NetInterface> {
@@ -260,6 +261,8 @@ mod autostart_tests;
 mod capture_tests;
 #[cfg(test)]
 mod displays_tests;
+#[cfg(test)]
+mod fullscreen_tests;
 #[cfg(test)]
 mod info_tests;
 #[cfg(test)]
