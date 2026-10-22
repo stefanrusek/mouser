@@ -317,6 +317,127 @@ async fn the_hotkey_is_the_configured_one() {
     assert_eq!(shown(&mut mine).await.len(), 2);
 }
 
+#[tokio::test]
+async fn a_letter_whose_display_has_left_the_layout_cancels_the_jump() {
+    let lab = Lab::new();
+    let nodes = docked_desk(&lab).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let (mut mine, mut theirs) = (a.engine.events(), b.engine.events());
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    shown(&mut theirs).await;
+    // Beta's second display is unplugged while the letters show.
+    b.platform.set_displays(vec![screen("b1", (0.0, 0.0))]);
+    eventually("Alpha to forget the display", || async {
+        mapped(a).len() == 2
+    })
+    .await;
+    tap(a, usage(letter_of(&letters, b, "b2")));
+    hidden(&mut mine).await;
+    hidden(&mut theirs).await;
+    a_moment().await;
+    assert!(!a.platform.is_grabbed());
+    assert!(warps(a).is_empty());
+    assert!(
+        !b.platform
+            .injected()
+            .iter()
+            .any(|i| matches!(i, Injected::MotionAbs { .. }))
+    );
+    // QuickJump still works.
+    hotkey(a);
+    assert_eq!(shown(&mut mine).await.len(), 2);
+}
+
+#[tokio::test]
+async fn desk_mates_hide_the_letters_when_the_computer_that_showed_them_goes_offline() {
+    let lab = Lab::new();
+    let mut nodes = desk_of(&lab, &["Alpha", "Beta", "Gamma"]).await;
+    let (mut beta, mut gamma) = (nodes[1].engine.events(), nodes[2].engine.events());
+    hotkey(&nodes[0]);
+    shown(&mut beta).await;
+    shown(&mut gamma).await;
+    nodes.remove(0).engine.shutdown().await;
+    hidden(&mut beta).await;
+    hidden(&mut gamma).await;
+}
+
+#[tokio::test]
+async fn letters_already_put_away_are_not_hidden_again_when_their_computer_goes_offline() {
+    let lab = Lab::new();
+    let mut nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let mut beta = nodes[1].engine.events();
+    hotkey(&nodes[0]);
+    shown(&mut beta).await;
+    tap(&nodes[0], ESCAPE);
+    hidden(&mut beta).await;
+    nodes.remove(0).engine.shutdown().await;
+    eventually("Beta to see Alpha gone", || async {
+        connected(&nodes[0]).await == 0
+    })
+    .await;
+    a_moment().await;
+    assert!(beta.try_recv().is_err(), "nothing more to hide");
+}
+
+#[tokio::test]
+async fn a_computer_that_cannot_grab_input_does_not_start_a_jump_to_another_computer() {
+    let lab = Lab::new();
+    let nodes = vec![
+        lab.start_ungrabbable("Alpha").await,
+        lab.start("Beta").await,
+    ];
+    let nodes = desk_from(nodes).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let (mut mine, mut theirs) = (a.engine.events(), b.engine.events());
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    shown(&mut theirs).await;
+    tap(a, usage(letter_of(&letters, b, "virtual-0")));
+    hidden(&mut mine).await;
+    hidden(&mut theirs).await;
+    a_moment().await;
+    assert!(
+        !b.platform
+            .injected()
+            .iter()
+            .any(|i| matches!(i, Injected::MotionAbs { .. })),
+        "Beta was never entered"
+    );
+    assert_eq!(active(a).await, None);
+    // The jump to Alpha's own display still works.
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    tap(a, usage(alpha_letter(&letters, a)));
+    eventually("the pointer to be placed", || async {
+        !warps(a).is_empty()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_computer_that_cannot_grab_input_still_crosses_at_the_edge_and_comes_back() {
+    let lab = Lab::new();
+    let nodes = vec![
+        lab.start_ungrabbable("Alpha").await,
+        lab.start("Beta").await,
+    ];
+    let nodes = desk_from(nodes).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    push_right(a);
+    entered_at(b, 0.0, 540.0).await;
+    eventually("Beta to be the active computer", || async {
+        active(a).await == Some(b.engine.computer_id())
+    })
+    .await;
+    // The pointer returns through the shared mouse on Alpha.
+    push_back(&nodes, 0);
+    eventually("control to come home", || async {
+        active(a).await != Some(b.engine.computer_id())
+    })
+    .await;
+}
+
 fn placed(n: i32) -> Vec<Placed> {
     (0..n)
         .rev()

@@ -339,13 +339,13 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us12` passes with a VirtualPlatform reporting a secure-attention-capable Windows computer.
 
-- [ ] T218 [US12-core] Write the acceptance runner `crates/mouser-core/tests/acc_us12.rs` and steps `crates/mouser-core/tests/steps/us12.rs` for every scenario in `tests/features/us12.feature`
-- [ ] T219 [P] [US12-core] Write unit tests for Send Ctrl-Alt-Del in `crates/mouser-core/src/crossing/sas_tests.rs`: `send_cad` while a Windows computer is active sends `SecureAttention` and its receiver calls `InputInject::secure_attention`; on a non-Windows active computer `send_cad` returns the unsupported error (Story 12 sc. 4)
-- [ ] T220 [US12-core] Implement `send_cad` and `SecureAttention` handling in `crates/mouser-core/src/crossing/sas.rs`
-- [ ] T221 [P] [US12-core] Write unit tests for headless start in `crates/mouser-core/src/engine_headless_tests.rs`: an `Engine` started without a logged-in user (login-window/service mode) loads the desk from machine-scope secrets, joins the desk, and accepts input (Story 12 sc. 1–3)
-- [ ] T222 [US12-core] Implement headless engine mode in `crates/mouser-core/src/engine_headless.rs`
-- [ ] T223 [US12-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T224 [US12-core] Commit: phase boundary "US12-core" (5.3)
+- [X] T218 [US12-core] Write the acceptance runner `crates/mouser-core/tests/acc_us12.rs` and steps `crates/mouser-core/tests/steps/us12.rs` for every scenario in `tests/features/us12.feature`
+- [X] T219 [P] [US12-core] Write unit tests for Send Ctrl-Alt-Del in `crates/mouser-core/src/crossing/sas_tests.rs`: `send_cad` while a Windows computer is active sends `SecureAttention` and its receiver calls `InputInject::secure_attention`; on a non-Windows active computer `send_cad` returns the unsupported error (Story 12 sc. 4)
+- [X] T220 [US12-core] Implement `send_cad` and `SecureAttention` handling in `crates/mouser-core/src/crossing/sas.rs`
+- [X] T221 [P] [US12-core] Write unit tests for headless start in `crates/mouser-core/src/engine_headless_tests.rs`: an `Engine` started without a logged-in user (login-window/service mode) loads the desk from machine-scope secrets, joins the desk, and accepts input (Story 12 sc. 1–3)
+- [X] T222 [US12-core] Implement headless engine mode in `crates/mouser-core/src/engine_headless.rs`
+- [X] T223 [US12-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T224 [US12-core] Commit: phase boundary "US12-core" (5.3)
 
 #### Phase 15: US13-core — As a desk owner, I want to run Mouser without installing it (P3)
 

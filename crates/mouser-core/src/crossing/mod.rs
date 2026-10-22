@@ -19,6 +19,7 @@ pub mod r#override;
 pub mod panic;
 pub mod pause;
 pub mod receiver;
+pub mod sas;
 pub mod state;
 
 #[cfg(test)]
@@ -43,6 +44,8 @@ mod panic_tests;
 mod pause_tests;
 #[cfg(test)]
 mod receiver_tests;
+#[cfg(test)]
+mod sas_tests;
 #[cfg(test)]
 mod state_tests;
 
@@ -142,6 +145,8 @@ pub(crate) struct Crossing {
     pub quickjump: Chord,
     /// The letters QuickJump is showing, while it is.
     pub jump: Option<Vec<(DisplayId, char)>>,
+    /// The desk-mate whose QuickJump letters this computer is showing.
+    pub letters_from: Option<ComputerId>,
     /// Where the pointer was when this computer's own mouse last moved it.
     pub pointer: (f64, f64),
     /// The clipboard task, told of the paste shortcut and the hotkey.
@@ -193,6 +198,7 @@ impl Crossing {
             targeted_paste,
             quickjump,
             jump: None,
+            letters_from: None,
             pointer: (0.0, 0.0),
             clipboard: host.clipboard,
             drag: host.drag,

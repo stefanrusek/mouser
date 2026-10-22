@@ -23,7 +23,7 @@ async fn start_serves_the_control_api_in_process_and_shutdown_removes_the_socket
         notes.recv().await.unwrap().method,
         mouser_proto::control::Topic::Status
     );
-    let err = call_err(&node, Method::SendCad, json!({})).await;
+    let err = call_err(&node, Method::Subscribe, json!({})).await;
     assert_eq!(err.code, -32601);
     node.engine.shutdown().await;
     assert!(!path.exists());

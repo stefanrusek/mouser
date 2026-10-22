@@ -144,3 +144,10 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Pasteboard failures in `SystemBoard::new`/`write` now panic (unspecified, unreachable on a real pasteboard).
 - OPEN for incoming drags in the real app: an NSDraggingSession only advances if the mouse-down that started it went to a window of Mouser's own process; the transparent drag window must receive the press. Finder also needed ~50 drag events of hover before accepting a drop. Verify in the real app (J1-style test) before claiming file drag into a Mac works.
 - US12 login-window agent: plist writing is gated; a real login-window run is unverified (needs sudo + a real login screen).
+
+## core US12 decisions (for app US12, cli US12, service-win, platform lanes)
+
+- Machine-scope secrets: `EngineParams.secrets: Option<Box<dyn SecretStore>>` (None = platform store). `mouser_core::engine_headless::FileSecrets::new(dir)` (0600 files, `/` → `%2F`). `Engine::export_machine_scope(dir, &mut store)` copies the device + desk keys and writes `state.json`; the privileged install step runs it from the user session and must re-run after join/leave/key rotation (core does not do this itself).
+- `--headless` (app lane): start `Engine` with `secrets = Some(FileSecrets)` and `config_dir` = the machine directory (macOS: e.g. `/Library/Application Support/Mouser`).
+- `send_cad` returns `{}`; non-Windows target or input not running → error -32001, `data.kind = platform_limitation`, "Ctrl-Alt-Del cannot be sent to <name>.". A received `SecureAttention` is honoured only from the computer currently controlling this one.
+- QuickJump: a vanished display cancels; the showing computer going offline hides desk-mates' letters; a jump probes `set_grabbed(true)` and on `Error::Unsupported` sends nothing. Edge crossings tolerate `Unsupported` from `set_grabbed`. Wayland's `set_grabbed` should return `Err(Error::Unsupported)`.

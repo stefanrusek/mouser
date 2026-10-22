@@ -11,6 +11,7 @@ use super::Crossing;
 use super::modifiers::held_modifiers;
 use super::motion;
 use super::state::{Control, Leave, Pressed, Remote};
+use super::supported;
 use crate::layout::edges::{self, Step};
 use crate::layout::equalize;
 
@@ -111,12 +112,10 @@ impl Crossing {
         let display = target.display.display_id.clone();
         let (x, y) = edges::to_local(target, at);
         let wire = self.map.wires[&display.computer].clone();
-        self.io
-            .as_mut()
-            .expect("input is running")
-            .capture
-            .set_grabbed(true)
-            .expect("input can be grabbed");
+        // Where input cannot be grabbed (Wayland) the platform's capture is
+        // driven by the screen edge instead.
+        let io = self.io.as_mut().expect("input is running");
+        let _ = supported(io.capture.set_grabbed(true));
         // A computer that kept something pressed from before starts clean.
         let seq = self.session.next_seq();
         wire.send(ControlMessage::ReleaseAll { seq });
@@ -157,9 +156,7 @@ impl Crossing {
         self.session.sent = Pressed::default();
         let (x, y) = at.unwrap_or(r.back);
         let io = self.io.as_mut().expect("input is running");
-        io.capture
-            .set_grabbed(false)
-            .expect("input can be released");
+        let _ = supported(io.capture.set_grabbed(false));
         io.capture.warp(x, y).expect("pointer can be placed");
         self.dirty.notify_one();
     }

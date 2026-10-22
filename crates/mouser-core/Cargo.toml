@@ -92,3 +92,7 @@ harness = false
 [[test]]
 name = "acc_us11"
 harness = false
+
+[[test]]
+name = "acc_us12"
+harness = false

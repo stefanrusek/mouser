@@ -67,6 +67,11 @@ pub struct EngineParams {
     /// When to look for releases by itself; `None` only on request
     /// (`update.check`).
     pub check_schedule: Option<CheckSchedule>,
+    /// Where the device key and desk keys are kept; `None` selects the
+    /// platform's own store. A headless engine (see
+    /// [`crate::engine_headless`]) is given the machine-scope store, since
+    /// no user store is open before anyone logs in.
+    pub secrets: Option<Box<dyn SecretStore>>,
 }
 
 impl EngineParams {
@@ -89,6 +94,7 @@ impl EngineParams {
             release_pubkey: UPDATER_PUBKEY.to_string(),
             http: Http::system(),
             check_schedule: None,
+            secrets: None,
         }
     }
 }
@@ -379,7 +385,7 @@ impl Engine {
     pub async fn start(params: EngineParams) -> Engine {
         std::fs::create_dir_all(&params.config_dir).expect("config directory");
         let config = config::load_or_create(&params.config_dir);
-        let mut secrets = params.platform.secrets();
+        let mut secrets = params.secrets.unwrap_or_else(|| params.platform.secrets());
         let identity = Identity::load_or_create(secrets.as_mut());
         let state = LocalState::load(&params.config_dir.join(state::FILE));
         let desk_key = state.desk.as_ref().map(|d| {

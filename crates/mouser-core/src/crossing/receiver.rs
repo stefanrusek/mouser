@@ -30,7 +30,7 @@ pub struct Receiving {
 
 impl Crossing {
     /// The controller we are receiving from, with the injector.
-    fn receiver(&mut self, from: ComputerId) -> Option<(&mut Receiving, &mut Io)> {
+    pub(super) fn receiver(&mut self, from: ComputerId) -> Option<(&mut Receiving, &mut Io)> {
         match (self.receiving.as_mut(), self.io.as_mut()) {
             (Some(rx), Some(io)) if rx.from == from => Some((rx, io)),
             _ => None,

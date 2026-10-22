@@ -86,9 +86,6 @@ async fn errors_carry_json_rpc_codes() {
     let response: Response =
         serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
     assert_eq!(response.error.unwrap().code, -32601);
-    let err = c.call(Method::SendCad, None).await.unwrap_err();
-    assert_eq!(err.code, -32601);
-    assert!(err.message.contains("send_cad"), "{}", err.message);
     // Bad params are "invalid params".
     let err = c
         .call(Method::DeskCreate, Some(json!({"name": 5})))

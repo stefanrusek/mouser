@@ -10,13 +10,14 @@
 #[cfg(test)]
 mod tests;
 
+use mouser_proto::ids::ComputerId;
 use mouser_proto::model::DisplayId;
 use mouser_proto::wire::ControlMessage;
 
-use crate::crossing::Crossing;
 use crate::crossing::controller::Return;
 use crate::crossing::panic::usage_for_name;
 use crate::crossing::state::Control;
+use crate::crossing::{Crossing, supported};
 use crate::engine::EngineEvent;
 use crate::layout::edges::{self, Placed};
 
@@ -50,8 +51,12 @@ impl Crossing {
             let chosen = letters
                 .iter()
                 .find(|(_, letter)| usage_for_name(&letter.to_string()) == Some(usage));
-            if let Some((display, _)) = chosen {
-                self.jump_to(display);
+            // A display that left the layout since the letters were shown
+            // cannot be jumped to: the jump is cancelled.
+            if let Some((display, _)) = chosen
+                && let Some(to) = edges::index_of(&self.map.placed, display)
+            {
+                self.jump_to(display, to);
             }
             true
         } else if !self.paused && self.quickjump.pressed(&self.session.held.keys, usage) {
@@ -83,19 +88,31 @@ impl Crossing {
         let _ = self.events.send(EngineEvent::QuickJumpHide);
     }
 
-    /// The controller shows letters: this computer's displays among them.
-    pub fn on_quickjump_show(&self, letters: Vec<(DisplayId, char)>) {
+    /// The controller `from` shows letters: this computer's displays among
+    /// them.
+    pub fn on_quickjump_show(&mut self, from: ComputerId, letters: Vec<(DisplayId, char)>) {
+        self.letters_from = Some(from);
         let _ = self.events.send(EngineEvent::QuickJumpShow { letters });
     }
 
-    pub fn on_quickjump_hide(&self) {
+    pub fn on_quickjump_hide(&mut self) {
+        self.letters_from = None;
         let _ = self.events.send(EngineEvent::QuickJumpHide);
+    }
+
+    /// The computer that showed the letters is gone and will never hide them.
+    pub(crate) fn drop_lost_letters(&mut self) {
+        if self
+            .letters_from
+            .is_some_and(|from| !self.map.wires.contains_key(&from))
+        {
+            self.on_quickjump_hide();
+        }
     }
 
     /// Move the pointer to the centre of `display`, and the shared keyboard
     /// with it.
-    fn jump_to(&mut self, display: &DisplayId) {
-        let to = edges::index_of(&self.map.placed, display).expect("a lettered display is placed");
+    fn jump_to(&mut self, display: &DisplayId, to: usize) {
         let target = &self.map.placed[to];
         let (w, h) = target.display.logical_size;
         let at = edges::to_desk(target, (f64::from(w) / 2.0, f64::from(h) / 2.0));
@@ -118,6 +135,9 @@ impl Crossing {
             }
         } else if self.session.remote() == Some(owner) {
             self.point_at(to, at);
+        } else if !self.can_grab() {
+            // Where input cannot be grabbed the pointer cannot be taken
+            // there: the letters are put away and nothing else happens.
         } else {
             let (speed, back) = match &self.session.control {
                 Control::Remote(r) => (r.speed, r.back),
@@ -126,6 +146,13 @@ impl Crossing {
             self.release_current();
             self.begin(to, at, speed, back);
         }
+    }
+
+    /// Input can be grabbed here (it cannot where the platform lists the
+    /// limitation, such as on Wayland).
+    fn can_grab(&mut self) -> bool {
+        let io = self.io.as_mut().expect("input is running");
+        supported(io.capture.set_grabbed(true)).is_some()
     }
 
     /// The display of this computer the pointer is on (the first one when

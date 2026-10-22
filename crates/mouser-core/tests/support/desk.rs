@@ -157,6 +157,9 @@ pub struct Node {
     control_path: PathBuf,
     engine: Option<Engine>,
     client: Option<ControlClient>,
+    /// Where the secrets are kept when this computer runs headless at a
+    /// login screen; `None` while a user is logged in.
+    machine_secrets: Option<PathBuf>,
 }
 
 static PIPES: AtomicU64 = AtomicU64::new(0);
@@ -311,6 +314,11 @@ impl Node {
         if let Some(key) = &self.setup.release_pubkey {
             params.release_pubkey = key.clone();
         }
+        if let Some(dir) = &self.machine_secrets {
+            params.secrets = Some(Box::new(mouser_core::engine_headless::FileSecrets::new(
+                dir.clone(),
+            )));
+        }
         let engine = Engine::start(params).await;
         self.engine = Some(engine);
         self.client = Some(
@@ -403,6 +411,7 @@ impl Lab {
             control_path,
             engine: None,
             client: None,
+            machine_secrets: None,
         };
         node.start(&self.registry).await;
         assert!(
@@ -421,6 +430,32 @@ impl Lab {
         }
         // The old endpoint's socket is released by its driver task a tick after
         // shutdown; a real restart is a new process and never races.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        node.start(&registry).await;
+    }
+
+    /// Take a computer to its login screen: the privileged step copies its
+    /// identity and desk to the machine, then only the headless engine runs
+    /// there, with nothing from the user's keychain.
+    pub async fn go_to_login_screen(&mut self, name: &str) {
+        let registry = self.registry.clone();
+        let node = self.node(name);
+        let machine = tempfile::tempdir().unwrap();
+        let secrets = machine.path().join("secrets");
+        mouser_core::config::save(machine.path(), &node.setup.config);
+        node.engine
+            .as_ref()
+            .expect("node is running")
+            .export_machine_scope(
+                machine.path(),
+                &mut mouser_core::engine_headless::FileSecrets::new(secrets.clone()),
+            );
+        node.stop().await;
+        if !cfg!(windows) {
+            node.control_path = machine.path().join("mouser.sock");
+        }
+        node.dir = machine;
+        node.machine_secrets = Some(secrets);
         tokio::time::sleep(Duration::from_millis(100)).await;
         node.start(&registry).await;
     }

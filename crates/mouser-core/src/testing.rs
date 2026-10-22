@@ -280,6 +280,26 @@ impl Lab {
         .await
     }
 
+    /// Start an engine over `dir` with `tweak` applied to its parameters.
+    pub async fn boot_with(
+        &self,
+        name: &str,
+        platform: VirtualPlatform,
+        dir: tempfile::TempDir,
+        tweak: impl FnOnce(&mut EngineParams),
+    ) -> TestNode {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        self.launch_with(
+            name,
+            platform,
+            dir,
+            mouser_proto::wire::PROTOCOL_VERSION,
+            "0.1.0",
+            tweak,
+        )
+        .await
+    }
+
     /// (Re)start an engine over an existing config directory.
     pub async fn boot(
         &self,
@@ -741,4 +761,148 @@ pub(crate) async fn handshake(
     tokio::time::timeout(HANDSHAKE, async { tokio::join!(dial, accept) })
         .await
         .expect("the handshake finishes in time")
+}
+
+/// A computer whose input cannot be grabbed (as on Wayland): everything
+/// else is the wrapped virtual computer.
+pub(crate) struct NoGrab(pub VirtualPlatform);
+
+struct NoGrabCapture(Box<dyn mouser_platform::InputCapture>);
+
+impl mouser_platform::InputCapture for NoGrabCapture {
+    fn start(
+        &mut self,
+        tx: std::sync::mpsc::Sender<mouser_platform::LocalInput>,
+    ) -> mouser_platform::Result<()> {
+        self.0.start(tx)
+    }
+
+    fn set_grabbed(&mut self, _grabbed: bool) -> mouser_platform::Result<()> {
+        Err(mouser_platform::Error::Unsupported)
+    }
+
+    fn warp(&mut self, x: f64, y: f64) -> mouser_platform::Result<()> {
+        self.0.warp(x, y)
+    }
+
+    fn stop(&mut self) {
+        self.0.stop()
+    }
+}
+
+impl mouser_platform::Platform for NoGrab {
+    fn info(&self) -> mouser_platform::PlatformInfo {
+        self.0.info()
+    }
+
+    fn displays(&self) -> mouser_platform::Result<Vec<mouser_platform::LocalDisplay>> {
+        self.0.displays()
+    }
+
+    fn watch_displays(
+        &self,
+        tx: std::sync::mpsc::Sender<Vec<mouser_platform::LocalDisplay>>,
+    ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
+        self.0.watch_displays(tx)
+    }
+
+    fn permissions(
+        &self,
+    ) -> Vec<(
+        mouser_platform::PermissionKind,
+        mouser_platform::PermissionState,
+    )> {
+        self.0.permissions()
+    }
+
+    fn open_permission_settings(
+        &self,
+        kind: mouser_platform::PermissionKind,
+    ) -> mouser_platform::Result<()> {
+        self.0.open_permission_settings(kind)
+    }
+
+    fn capture(&self) -> mouser_platform::Result<Box<dyn mouser_platform::InputCapture>> {
+        Ok(Box::new(NoGrabCapture(self.0.capture()?)))
+    }
+
+    fn inject(&self) -> mouser_platform::Result<Box<dyn mouser_platform::InputInject>> {
+        self.0.inject()
+    }
+
+    fn clipboard(&self) -> mouser_platform::Result<Box<dyn mouser_platform::Clipboard>> {
+        self.0.clipboard()
+    }
+
+    fn secure_input(&self) -> Option<mouser_platform::SecureInputHolder> {
+        self.0.secure_input()
+    }
+
+    fn foreground_is_fullscreen(&self) -> bool {
+        self.0.foreground_is_fullscreen()
+    }
+
+    fn interfaces(&self) -> Vec<NetInterface> {
+        self.0.interfaces()
+    }
+
+    fn watch_network(
+        &self,
+        tx: std::sync::mpsc::Sender<()>,
+    ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
+        self.0.watch_network(tx)
+    }
+
+    fn foreground_elevated(&self) -> bool {
+        self.0.foreground_elevated()
+    }
+
+    fn secrets(&self) -> Box<dyn mouser_platform::SecretStore> {
+        self.0.secrets()
+    }
+
+    fn autostart(&self) -> Box<dyn mouser_platform::Autostart> {
+        self.0.autostart()
+    }
+
+    fn file_drag(&self) -> Option<Box<dyn mouser_platform::FileDrag>> {
+        self.0.file_drag()
+    }
+}
+
+impl Lab {
+    /// Start a node whose input cannot be grabbed.
+    pub async fn start_ungrabbable(&self, name: &str) -> TestNode {
+        let platform = VirtualPlatform::new();
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = mouser_proto::config::Config::default();
+        config.advanced.port = u32::from(free_port());
+        crate::config::save(dir.path(), &config);
+        let wrapped = platform.clone();
+        self.boot_with(name, platform, dir, move |params| {
+            params.platform = Arc::new(NoGrab(wrapped));
+        })
+        .await
+    }
+}
+
+#[test]
+fn the_ungrabbable_computer_is_the_wrapped_one_in_every_other_way() {
+    use mouser_platform::{PermissionKind, Platform};
+    let inner = VirtualPlatform::new();
+    inner.set_foreground_elevated(true);
+    let platform = NoGrab(inner.clone());
+    assert!(platform.foreground_elevated());
+    platform
+        .open_permission_settings(PermissionKind::Accessibility)
+        .unwrap();
+    assert_eq!(
+        inner.opened_permission_settings(),
+        [PermissionKind::Accessibility]
+    );
+    let mut capture = platform.capture().unwrap();
+    capture.start(std::sync::mpsc::channel().0).unwrap();
+    assert!(inner.is_capturing());
+    capture.stop();
+    assert!(!inner.is_capturing());
 }

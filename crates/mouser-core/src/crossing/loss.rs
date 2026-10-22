@@ -39,5 +39,6 @@ impl Crossing {
         {
             self.end_receiving();
         }
+        self.drop_lost_letters();
     }
 }

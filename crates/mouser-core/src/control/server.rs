@@ -91,6 +91,10 @@ pub(crate) async fn call(
             ctx.set_paused(method == Method::ActivePause);
             json(Empty {})
         }
+        Method::SendCad => {
+            ctx.send_cad()?;
+            json(Empty {})
+        }
         Method::LayoutGet => Ok(ctx.get_layout()),
         Method::LayoutSet => ctx.set_layout(parse(params)?),
         Method::ConfigGet => {

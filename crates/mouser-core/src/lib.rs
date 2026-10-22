@@ -8,6 +8,7 @@ pub mod crossing;
 pub mod desk;
 pub mod discovery;
 pub mod engine;
+pub mod engine_headless;
 pub mod identity;
 pub mod layout;
 pub mod logging;
@@ -19,6 +20,8 @@ pub mod state;
 pub mod transfer;
 pub mod transport;
 
+#[cfg(test)]
+mod engine_headless_tests;
 #[cfg(test)]
 mod engine_tests;
 #[cfg(test)]
