@@ -157,3 +157,10 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - `mouser_core::paths::{Paths, Env, PORTABLE_DIR}`: `Paths::resolve(current_exe, os, &Env::from_process())` → `{dir, portable}`; portable when `MouserData/` is a directory beside the executable, else the per-OS config dir.
 - `EngineParams::with_paths(&paths)` sets `config_dir`, `portable`, and (portable) `FileSecrets` at `MouserData/secrets`; state and logs follow `config_dir`. On macOS also pass `MacPlatform::portable(paths.dir)` when portable.
 - Portable never calls `Autostart::set`. Windows portable adds the limitation "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator." (under `Capability::SecureAttention`). `Ctx::limitations()` is the single source for problems, status and peer status.
+
+## app headless / login-screen decisions
+
+- `--headless` runs the engine with no Tauri (machine dir: macOS `/Library/Application Support/Mouser`, Windows `C:\ProgramData\Mouser`, Linux `/var/lib/mouser`; secrets under `<dir>/secrets`), stops on SIGTERM/Ctrl-C.
+- "Allow control at the login screen" (macOS): stages `config.toml` + `export_machine_scope` + `state.json` in a 0700 folder, then one administrator prompt runs `<exe> --install-login-screen <staging>` (root side: copy to the machine dir, `LoginAgent::system(exe).install()`); staging is always removed; "User canceled" = refusal.
+- Open: `export_machine_scope` must be re-run after join/leave/key rotation; nothing triggers it yet. Not run for real: the osascript prompt, the root install, a real login-window session.
+- The updater loopback server reads until `\r\n\r\n` (fixes the CI race).

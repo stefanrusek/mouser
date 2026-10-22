@@ -130,8 +130,17 @@ impl Server {
                     break;
                 }
                 let mut stream = stream.expect("a loopback connection is accepted");
-                let mut request = [0u8; 1024];
-                let n = stream.read(&mut request).expect("the request is read");
+                // A request can arrive in several segments: read to the blank
+                // line that ends its head.
+                let mut request = [0u8; 4096];
+                let mut n = 0;
+                while !request[..n].windows(4).any(|w| w == b"\r\n\r\n") && n < request.len() {
+                    let read = stream.read(&mut request[n..]).expect("the request is read");
+                    if read == 0 {
+                        break;
+                    }
+                    n += read;
+                }
                 let line = String::from_utf8_lossy(&request[..n]);
                 let (status, body): (&str, &[u8]) = match line.split_whitespace().nth(1) {
                     Some("/latest.json") => ("200 OK", manifest.as_bytes()),

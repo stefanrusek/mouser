@@ -87,6 +87,19 @@ impl Host {
         self.arranger_edge.lock().unwrap().take()
     }
 
+    /// Copy what a headless engine needs into `dir` and `machine`
+    /// ([`Engine::export_machine_scope`]).
+    pub fn export_machine_scope(
+        &self,
+        dir: &std::path::Path,
+        machine: &mut dyn mouser_platform::SecretStore,
+    ) {
+        self._engine
+            .lock()
+            .unwrap()
+            .export_machine_scope(dir, machine);
+    }
+
     /// In-process access to the control API.
     pub fn control(&self) -> ControlHandle {
         self.control.clone()

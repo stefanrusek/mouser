@@ -46,6 +46,10 @@ export function fakeApi(answers = {}) {
     takeArrangerEdge: async () => answers.arrangerEdge ?? null,
     openFolder: async (path) => record('open_folder', [path]),
     hideWindow: async () => record('hide_window', []),
+    allowLoginScreen: async () => {
+      record('allow_login_screen', []);
+      if (answers.allow_login_screen instanceof Error) throw answers.allow_login_screen;
+    },
     onLanding: async (handler) => {
       landings.push(handler);
     },

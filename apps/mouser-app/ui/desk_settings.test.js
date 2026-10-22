@@ -183,3 +183,27 @@ test('a failed load is shown rather than hidden', async () => {
   const { doc } = await start({ 'config.get': new Error('config.get is not available yet') });
   assert.equal(text(doc, 'error'), 'config.get is not available yet');
 });
+
+test('on a Mac, Allow control at the login screen is offered and runs the install', async () => {
+  const { win, doc, api } = await start();
+  assert.ok(!doc.getElementById('login-section').hidden);
+  click(win, doc.getElementById('login-screen'));
+  await flush();
+  assert.deepEqual(api.calls.find(([m]) => m === 'allow_login_screen'), ['allow_login_screen']);
+  assert.equal(text(doc, 'login-note'), 'Done. This Mac can now be controlled at the login screen.');
+});
+
+test('a refused administrator prompt is explained and nothing is claimed done', async () => {
+  const message = 'Mouser was not given permission, so nothing was changed.';
+  const { win, doc } = await start({ allow_login_screen: new Error(message) });
+  click(win, doc.getElementById('login-screen'));
+  await flush();
+  assert.equal(text(doc, 'login-note'), message);
+});
+
+test('the login screen action is not offered on other systems', async () => {
+  const status = makeStatus();
+  status.computers[0].os = 'windows';
+  const { doc } = await start({ status });
+  assert.ok(doc.getElementById('login-section').hidden);
+});

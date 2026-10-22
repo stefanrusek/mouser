@@ -21,6 +21,8 @@ export function makeApi(tauri) {
     // Answer an "Overwrite <name>?" question from a transfer notification.
     transferResolve: (transferId, overwrite) => invoke('transfer_resolve', { transferId, overwrite }),
     hideWindow: () => invoke('hide_window'),
+    // macOS: stage this computer's keys and install the login-window agent, after one administrator prompt.
+    allowLoginScreen: () => invoke('allow_login_screen'),
     // handler receives {method: topic, params}; resolves to an unlisten function.
     onNotification: (handler) => tauri.event.listen(EVENT, (event) => handler(event.payload)),
     // handler receives {x, y}: where the pointer landed, in the overlay window's own pixels.

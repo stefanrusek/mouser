@@ -146,7 +146,7 @@ fn the_log_folder_opens_with_each_systems_file_manager() {
     }
 }
 
-fn request(cmd: &str, body: serde_json::Value) -> InvokeRequest {
+pub(crate) fn request(cmd: &str, body: serde_json::Value) -> InvokeRequest {
     InvokeRequest {
         cmd: cmd.into(),
         callback: CallbackFn(0),

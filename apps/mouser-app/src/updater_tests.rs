@@ -33,7 +33,9 @@ fn get(endpoint: &str, path: &str) -> (String, Vec<u8>) {
         .next()
         .unwrap();
     let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
-    write!(stream, "GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+    stream
+        .write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes())
+        .unwrap();
     let mut reply = Vec::new();
     stream.read_to_end(&mut reply).unwrap();
     let split = reply.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
@@ -164,6 +166,52 @@ fn the_key_signs_what_the_updater_will_check() {
     assert!(minisign::verify(&key.pubkey(), &signature, b"other").is_err());
     let other = Key::new([6; 32]);
     assert!(minisign::verify(&other.pubkey(), &signature, b"data").is_err());
+}
+
+#[test]
+fn a_request_that_arrives_in_pieces_is_still_answered() {
+    let server = Server::start(&Key::new([5; 32]), &bundle());
+    let port = server
+        .endpoint()
+        .split(':')
+        .nth(2)
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+    stream.write_all(b"GET /bun").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    stream.write_all(b"dle HTTP/1.1\r\nHost: x\r\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    stream.write_all(b"\r\n").unwrap();
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).unwrap();
+    assert!(reply.starts_with("HTTP/1.1 200 OK"), "{reply}");
+    assert!(reply.ends_with("the new Mouser"));
+    server.stop();
+}
+
+#[test]
+fn a_request_that_ends_early_is_answered_not_found() {
+    let server = Server::start(&Key::new([5; 32]), &bundle());
+    let port = server
+        .endpoint()
+        .split(':')
+        .nth(2)
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+    stream.write_all(b"GET").unwrap();
+    stream.shutdown(std::net::Shutdown::Write).unwrap();
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply).unwrap();
+    assert!(reply.starts_with("HTTP/1.1 404"), "{reply}");
+    server.stop();
 }
 
 #[test]

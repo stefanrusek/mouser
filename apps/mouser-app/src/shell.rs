@@ -143,6 +143,28 @@ fn open_folder(path: String) {
     std::thread::spawn(move || opener.wait());
 }
 
+/// Run Mouser headless (no window, no tray) until it is told to stop.
+pub fn run_headless() {
+    tauri::async_runtime::block_on(crate::headless::run(
+        platform_select::create(),
+        crate::headless::machine_dir(platform_select::current_os()),
+        mouser_core::control::default_path(),
+        gethostname::gethostname()
+            .into_string()
+            .expect("computer name is valid UTF-8"),
+        env!("CARGO_PKG_VERSION").to_string(),
+        async {
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("SIGTERM can be awaited");
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+        },
+    ));
+}
+
 /// Run Mouser until the owner quits it.
 pub fn run() {
     tauri::Builder::default()
@@ -162,7 +184,9 @@ pub fn run() {
             commands::take_arranger_edge,
             open_folder,
             commands::transfer_resolve,
-            commands::hide_window
+            commands::hide_window,
+            #[cfg(target_os = "macos")]
+            crate::login_screen::allow_login_screen
         ])
         .setup(|app| {
             let host = tauri::async_runtime::block_on(Host::start(
@@ -182,6 +206,19 @@ pub fn run() {
             ));
             let control = host.control();
             app.manage(host);
+            #[cfg(target_os = "macos")]
+            app.manage::<Box<dyn crate::login_screen::Admin>>(Box::new(
+                crate::login_screen::Osascript(|argv: &[String]| {
+                    let out = std::process::Command::new("osascript")
+                        .args(argv)
+                        .output()
+                        .expect("osascript can run");
+                    crate::login_screen::Outcome {
+                        success: out.status.success(),
+                        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+                    }
+                }),
+            ));
             let handle = app.handle().clone();
             overlay::create(&handle);
             let config_dir = mouser_core::config::default_dir();

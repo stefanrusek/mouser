@@ -90,6 +90,7 @@ export async function init({ doc, api, every, onFocus }) {
     current.desk = status.desk;
     problems.set(status.problems, status.computer.id);
     renderStatus(doc, status);
+    show(doc.getElementById('login-section'), status.computers.find((c) => c.connection === 'self').os === 'macos');
     renderMembers(doc, doc.getElementById('member-list'), status, remove);
     const desks = (await api.call('desks.discovered')).filter((d) => d.desk_id !== status.desk?.id);
     renderOtherDesks(doc, doc.getElementById('other-desks'), desks, move, !status.desk);
@@ -102,6 +103,15 @@ export async function init({ doc, api, every, onFocus }) {
     guarded(errorLine, async () => {
       await api.call('desk.leave');
       await refresh();
+    }),
+  );
+
+  const loginNote = doc.getElementById('login-note');
+  doc.getElementById('login-screen').addEventListener(
+    'click',
+    guarded(loginNote, async () => {
+      await api.allowLoginScreen();
+      loginNote.textContent = 'Done. This Mac can now be controlled at the login screen.';
     }),
   );
 

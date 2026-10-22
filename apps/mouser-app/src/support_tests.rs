@@ -28,7 +28,7 @@ pub struct Fixture {
 /// hands out as an ephemeral port (another test's sockets would otherwise
 /// take it between the probe and the host's bind), at an offset that differs
 /// per process and per call; as `mouser_core::testing::free_port` does.
-fn free_port() -> u16 {
+pub(crate) fn free_port() -> u16 {
     static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     std::iter::repeat_with(|| {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -39,12 +39,12 @@ fn free_port() -> u16 {
 }
 
 #[cfg(unix)]
-fn control_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
+pub(crate) fn control_path_in(dir: &tempfile::TempDir) -> std::path::PathBuf {
     dir.path().join("mouser.sock")
 }
 
 #[cfg(windows)]
-fn control_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
+pub(crate) fn control_path_in(dir: &tempfile::TempDir) -> std::path::PathBuf {
     let unique = dir
         .path()
         .file_name()
@@ -93,7 +93,7 @@ async fn fixture_with(
     let host = Host::start(
         shared,
         dir.path().to_path_buf(),
-        control_path(&dir),
+        control_path_in(&dir),
         "Desk Mac".into(),
         "1.2.3".into(),
         crate::host::Updates::default(),
