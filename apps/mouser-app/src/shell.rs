@@ -143,6 +143,30 @@ fn open_folder(path: String) {
     std::thread::spawn(move || opener.wait());
 }
 
+/// Resolves when the system asks Mouser to stop: Ctrl-C or SIGTERM.
+#[cfg(unix)]
+async fn stop_signal() {
+    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("SIGTERM can be awaited");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = term.recv() => {}
+    }
+}
+
+/// Resolves when the system asks Mouser to stop: Ctrl-C, the console closing
+/// or the computer shutting down.
+#[cfg(windows)]
+async fn stop_signal() {
+    let mut close = tokio::signal::windows::ctrl_close().expect("console close can be awaited");
+    let mut shutdown = tokio::signal::windows::ctrl_shutdown().expect("shutdown can be awaited");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = close.recv() => {}
+        _ = shutdown.recv() => {}
+    }
+}
+
 /// Run Mouser headless (no window, no tray) until it is told to stop.
 pub fn run_headless() {
     tauri::async_runtime::block_on(crate::headless::run(
@@ -153,15 +177,7 @@ pub fn run_headless() {
             .into_string()
             .expect("computer name is valid UTF-8"),
         env!("CARGO_PKG_VERSION").to_string(),
-        async {
-            let mut term =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("SIGTERM can be awaited");
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => {}
-                _ = term.recv() => {}
-            }
-        },
+        stop_signal(),
     ));
 }
 

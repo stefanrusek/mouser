@@ -1,4 +1,4 @@
-use mouser_platform::Os;
+use mouser_platform::{Os, Platform};
 use mouser_proto::control::Method;
 
 use crate::host::on_second_launch;
@@ -58,4 +58,23 @@ async fn a_second_launch_brings_up_the_first_ones_window() {
     assert!(!has_window(&handle, "main"));
     on_second_launch(&handle);
     eventually(|| has_window(&handle, "main")).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn exporting_the_machine_scope_copies_the_identity_and_the_state() {
+    let f = fixture().await;
+    let machine = tempfile::tempdir().unwrap();
+    let mut store = mouser_core::engine_headless::FileSecrets::new(machine.path().join("secrets"));
+    f.host.export_machine_scope(machine.path(), &mut store);
+    let key = f
+        .platform
+        .secrets()
+        .get(mouser_core::identity::DEVICE_KEY)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        mouser_platform::SecretStore::get(&store, mouser_core::identity::DEVICE_KEY).unwrap(),
+        Some(key)
+    );
+    assert!(machine.path().join(mouser_core::state::FILE).exists());
 }
