@@ -24,13 +24,23 @@ impl Crossing {
     pub(super) fn drop_lost(&mut self) {
         let controlled_gone = match &self.session.control {
             state::Control::Remote(r) => {
-                !self.map.wires.contains_key(&r.computer)
-                    || edges::index_of(&self.map.placed, &r.display).is_none()
+                let linked = self.map.wires.contains_key(&r.computer);
+                let placed = edges::index_of(&self.map.placed, &r.display).is_some();
+                (!linked || !placed).then_some(linked)
             }
-            state::Control::Local => false,
+            state::Control::Local => None,
         };
-        if controlled_gone {
-            self.return_local(Return::Lost, None);
+        // A computer still linked but without its display in the layout is
+        // told to release what it was sent; an unreachable one cannot be.
+        if let Some(linked) = controlled_gone {
+            self.return_local(
+                if linked {
+                    Return::Release
+                } else {
+                    Return::Lost
+                },
+                None,
+            );
         }
         if self
             .receiving

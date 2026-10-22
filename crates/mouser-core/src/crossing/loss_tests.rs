@@ -145,3 +145,41 @@ async fn a_lost_controller_leaves_nothing_pressed_on_the_receiver() {
         (BTreeSet::new(), BTreeSet::new())
     );
 }
+
+#[tokio::test]
+async fn the_controlled_display_leaving_the_layout_releases_what_the_still_connected_computer_holds()
+ {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    push_right(a);
+    injected_where(&b.platform, "the pointer on Beta", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    // Command is held on Beta.
+    const LEFT_CMD: u32 = 0x0007_00E3;
+    a.platform.send_input(LocalInput::Key {
+        usage: LEFT_CMD,
+        down: true,
+    });
+    injected_where(&b.platform, "Command held", |i| {
+        *i == Injected::Key {
+            usage: LEFT_CMD,
+            down: true,
+        }
+    })
+    .await;
+    // Beta's display drops out of the layout (replaced by another) while Beta stays connected.
+    b.platform
+        .set_displays(vec![screen("replacement", (0.0, 0.0))]);
+    eventually("Alpha to take control back", || async {
+        !a.platform.is_grabbed()
+    })
+    .await;
+    assert_eq!(connected(a).await, 1, "Beta is still connected");
+    eventually("Beta to release Command", || async {
+        held(&b.platform.injected()).0.is_empty()
+    })
+    .await;
+}

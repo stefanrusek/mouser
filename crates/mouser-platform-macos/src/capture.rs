@@ -14,6 +14,7 @@
 //! so the computer being controlled is never left holding it (Story 3, no
 //! stuck keys).
 
+use crate::activity::Activity;
 use crate::echo::Echo;
 use crate::keymap;
 use crate::tap::{self, Create, Tap, Verdict};
@@ -300,6 +301,8 @@ pub(crate) struct MacCapture {
     create: Create,
     state: Arc<State>,
     tap: Option<Tap>,
+    /// Held while capturing so App Nap cannot throttle the event tap.
+    pub(crate) activity: Option<Activity>,
     grabbed: bool,
 }
 
@@ -310,6 +313,7 @@ impl MacCapture {
             create,
             state: Arc::new(State::new(echo)),
             tap: None,
+            activity: None,
             grabbed: false,
         }
     }
@@ -323,11 +327,17 @@ impl InputCapture for MacCapture {
     fn start(&mut self, tx: Sender<LocalInput>) -> Result<()> {
         *self.state.tx.lock().unwrap() = Some(tx);
         let state = self.state.clone();
-        self.tap = Some(Tap::start(
-            self.create,
-            event_mask(),
-            Box::new(move |ty, ev| handle(&state, ty, ev)),
-        )?);
+        self.activity = Some(Activity::begin(
+            "Mouser is capturing keyboard and mouse input",
+        ));
+        self.tap = Some(
+            Tap::start(
+                self.create,
+                event_mask(),
+                Box::new(move |ty, ev| handle(&state, ty, ev)),
+            )
+            .inspect_err(|_| self.activity = None)?,
+        );
         Ok(())
     }
 
@@ -357,6 +367,7 @@ impl InputCapture for MacCapture {
 
     fn stop(&mut self) {
         self.tap = None;
+        self.activity = None;
         *self.state.tx.lock().unwrap() = None;
         self.set_grabbed(false).unwrap();
     }

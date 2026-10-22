@@ -302,6 +302,7 @@ fn start_refused_by_the_os_reports_the_permissions_to_grant() {
     let mut capture = MacCapture::new(Arc::new(FakeCursor::default()), refuse, Arc::default());
     let (tx, _rx) = channel();
     assert!(capture.start(tx).is_err());
+    assert!(capture.activity.is_none(), "nothing held without a tap");
 }
 
 #[test]

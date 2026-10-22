@@ -5,6 +5,7 @@
 //! Input detection. Clipboard and file drag are supported; capabilities a later phase adds report
 //! `Unsupported` and are declared as limitations (rule 9) until it lands.
 
+mod activity;
 mod autostart;
 mod capture;
 mod clipboard;
@@ -178,6 +179,8 @@ impl Platform for MacPlatform {
     }
 }
 
+#[cfg(test)]
+mod activity_tests;
 #[cfg(test)]
 mod autostart_tests;
 #[cfg(test)]
