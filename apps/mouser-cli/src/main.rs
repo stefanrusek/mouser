@@ -4,6 +4,7 @@ mod config;
 mod desk;
 mod logs;
 mod pause;
+mod sas;
 mod status;
 mod update;
 
@@ -143,6 +144,8 @@ enum Command {
         #[command(subcommand)]
         action: Option<update::UpdateCommand>,
     },
+    /// Send Ctrl-Alt-Del to the Windows computer you are controlling.
+    SendCad,
     /// Diagnostic logging (path and tail work when Mouser is not running).
     Logs {
         #[command(subcommand)]
@@ -158,6 +161,7 @@ async fn run(cli: Cli) -> Result<(), Failure> {
         Command::Config { action } => config::run(connection.ok(), json, action).await,
         Command::Logs { action } => logs::run(connection.ok(), json, action).await,
         Command::Update { action } => update::run(&mut connection?, action).await,
+        Command::SendCad => sas::run(&mut connection?).await,
         Command::Status => status::run(&mut connection?).await,
         Command::Pause => pause::run(&mut connection?, true).await,
         Command::Resume => pause::run(&mut connection?, false).await,

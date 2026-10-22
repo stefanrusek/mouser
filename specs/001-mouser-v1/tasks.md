@@ -515,10 +515,10 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 30: US12-cli — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 
-- [ ] T312 [P] [US12-cli] Write tests `apps/mouser-cli/tests/contract_cli_sas.rs`: `mouser send-cad` calls `send_cad`; the unsupported error prints a plain message and exits 1 (Story 12 sc. 4)
-- [ ] T313 [US12-cli] Implement `send-cad` in `apps/mouser-cli/src/sas.rs`
-- [ ] T314 [US12-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T315 [US12-cli] Commit: phase boundary "US12-cli" (5.3)
+- [X] T312 [P] [US12-cli] Write tests `apps/mouser-cli/tests/contract_cli_sas.rs`: `mouser send-cad` calls `send_cad`; the unsupported error prints a plain message and exits 1 (Story 12 sc. 4)
+- [X] T313 [US12-cli] Implement `send-cad` in `apps/mouser-cli/src/sas.rs`
+- [X] T314 [US12-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T315 [US12-cli] Commit: phase boundary "US12-cli" (5.3)
 
 ### Lane: platform-macos
 
