@@ -96,18 +96,19 @@ The connection between computers heals itself. Waking from sleep, switching betw
 
 ### User Story 4 - As a desk owner, I want to arrange displays to match my physical desk (Priority: P2)
 
-A visual arranger shows every display on the desk, from every computer. The owner drags displays to match where they really sit; display-specific options are on the display itself.
+A visual arranger shows every display on the desk, from every computer. The owner drags computers to match where they really sit; a computer's own displays stay together in the arrangement its operating system reports; display-specific options are on the display itself.
 
 **Why this priority**: Automatic placement (Story 2) gets crossing working. Correcting it to match the real desk is the next most common setup task.
 
-**Independent Test**: Open the arranger, drag one computer's display to the other side, and confirm the pointer now crosses at the new edge.
+**Independent Test**: Open the arranger, drag one computer (with all its displays) to the other side, and confirm the pointer now crosses at the new edge.
 
 **Acceptance Scenarios**:
 
-1. **Given** the arranger is open, **When** the owner drags a display to a new position, **Then** the pointer crosses at the edges that position implies, on every computer on the desk.
+1. **Given** the arranger is open, **When** the owner drags a display to a new position, **Then** all of that computer's displays move together, keeping the arrangement the computer's operating system reports, and the pointer crosses at the edges the new position implies, on every computer on the desk.
 2. **Given** the arranger is open, **When** the owner points at a display, **Then** it shows the display's resolution, scale, owning computer, and whether that computer is online, or when it was last seen if offline.
 3. **Given** a display should not be part of the desk, **When** the owner removes it from the layout, **Then** the pointer never crosses onto it, and the owner can undo the removal.
 4. **Given** adjoining displays differ in physical size, **When** the owner turns on equalized dimensions, **Then** crossing maps the full length of one edge onto the full length of the other.
+5. **Given** a computer's operating system arrangement changes (a display is added, or moved in its display settings), **When** Mouser notices, **Then** that computer's displays in the layout follow the new arrangement while the computer stays where it was relative to the other computers.
 
 ---
 
@@ -267,7 +268,7 @@ The owner can run Mouser from a folder or removable drive on a computer where th
 - A mouse button or modifier key is held down at the moment the pointer crosses or the connection drops: no key or button stays stuck down on any computer. (Story 2, Story 3)
 - A mouse or keyboard attached directly to the active computer is used: its input acts on that computer, the same as the shared mouse and keyboard. (Story 2)
 - The clipboard contains a format the receiving computer cannot represent: the best available representation is pasted (for example plain text for formatted text). (Story 6)
-- A computer joins with a different screen arrangement than last time (for example a laptop docked or undocked): its current displays replace its previous ones in the layout and the desk owner is offered a review. (Story 2, Story 4)
+- A computer joins with a different screen arrangement than last time (for example a laptop docked or undocked): its current displays replace its previous ones in the layout, in the arrangement its operating system reports and anchored on a display that was there before, and the desk owner is offered a review. (Story 2, Story 4)
 - The desk owner removes every display of a computer from the layout: that computer stays a desk member, receives clipboard content, and the pointer never crosses onto it. (Story 4)
 - An agent edits the configuration file while Mouser is running: the change takes effect without restarting Mouser. (Story 9)
 
@@ -293,7 +294,7 @@ The owner can run Mouser from a folder or removable drive on a computer where th
 
 - **Desk**: A named group of computers sharing one mouse and keyboard. Has a name and a set of member computers; optionally an allowlist of network addresses.
 - **Computer**: A machine running Mouser. Has a name, operating system, Mouser version, desk membership, connection state, granted and missing permissions, and last-seen time.
-- **Display**: A physical screen attached to a computer. Has resolution, scale, physical size where known, owning computer, position in the layout, and whether it is included.
+- **Display**: A physical screen attached to a computer. Has resolution, scale, physical size where known, owning computer, position in the layout, and whether it is included. A computer's included displays always keep the relative arrangement its operating system reports, as one rigid group.
 - **Layout**: The arrangement of every included display on a desk, defining which edge leads to which display, plus per-edge options (corner blocking) and desk options (equalized dimensions, full-screen blocking).
 - **Clipboard content**: What was last copied on a desk computer, in every representation it was copied with (plain text, formatted text, image, files).
 - **Transfer**: A copy of files or folders from one computer to another, with its items, progress, and outcome.

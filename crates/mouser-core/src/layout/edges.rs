@@ -34,6 +34,11 @@ impl Rect {
     }
 }
 
+/// True when `a` and `b` share area (touching edges do not count).
+pub fn overlap(a: &Rect, b: &Rect) -> bool {
+    a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom()
+}
+
 /// A display with its rectangle in desk space.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Placed {

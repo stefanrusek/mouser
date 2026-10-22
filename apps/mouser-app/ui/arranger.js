@@ -1,5 +1,6 @@
-// The display arranger: every display of the desk, to scale, draggable into
-// the shape of the physical desk. Desk space is in millimetres.
+// The display arranger: every display of the desk, to scale; computers (with
+// all their displays, which keep the OS arrangement) are draggable into the
+// shape of the physical desk. Desk space is in millimetres.
 
 import { button, el, guarded, show } from './dom.js';
 import { mountEdges, parseBlockedEdge } from './arranger_edges.js';
@@ -68,6 +69,25 @@ export function snapPlacement(rect, others) {
   return { reason: near.length > 0 || others.some((o) => overlaps(rect, o)) ? 'overlap' : 'disconnected' };
 }
 
+// Where the whole group of rects `group` (a computer's displays) lands when it
+// is dragged by (dx, dy) among `others`: moved as one, with one of its
+// members snapped flush against another computer's display, or why it cannot
+// be: { reason: 'overlap' | 'disconnected' }.
+export function snapGroup(group, dx, dy, others) {
+  const clear = (shift) =>
+    !group.some((m) => others.some((o) => overlaps({ ...m, x: m.x + shift.x, y: m.y + shift.y }, o)));
+  const options = group.map((m) => {
+    const moved = { ...m, x: m.x + dx, y: m.y + dy };
+    const snapped = snapPlacement(moved, others);
+    return snapped.reason ? snapped : { x: snapped.x - m.x, y: snapped.y - m.y };
+  });
+  const free = options
+    .filter((o) => !o.reason && clear(o))
+    .sort((a, b) => Math.hypot(a.x - dx, a.y - dy) - Math.hypot(b.x - dx, b.y - dy));
+  if (free.length > 0) return { x: free[0].x, y: free[0].y };
+  return { reason: options.some((o) => o.reason !== 'disconnected') ? 'overlap' : 'disconnected' };
+}
+
 // What the details panel says about a display.
 export function detailLines(display) {
   const [width, height] = display.pixel_size;
@@ -106,6 +126,9 @@ export async function init({ doc, api, every, onFocus }) {
   });
   const includedDisplays = () => state.layout.displays.filter((d) => d.included);
   const shown = () => includedDisplays().find((d) => keyOf(d.display_id) === state.selected);
+  // A computer's displays move together: the OS decides how they sit.
+  const groupOf = (display) =>
+    includedDisplays().filter((d) => d.display_id.computer === display.display_id.computer);
   const rectOf = (display) => {
     const at = state.layout.placements.find((p) => keyOf(p.display_id) === keyOf(display.display_id));
     const [w, h] = deskSize(display);
@@ -160,12 +183,13 @@ export async function init({ doc, api, every, onFocus }) {
     tile.addEventListener('pointerdown', (event) => {
       state.drag = {
         display,
-        tile,
         rect,
         originX: event.clientX,
         originY: event.clientY,
-        left: Number.parseFloat(tile.style.left),
-        top: Number.parseFloat(tile.style.top),
+        tiles: groupOf(display).map((d) => {
+          const own = [...canvas.children].find((t) => t.getAttribute('data-key') === keyOf(d.display_id));
+          return { tile: own, left: Number.parseFloat(own.style.left), top: Number.parseFloat(own.style.top) };
+        }),
       };
     });
     return tile;
@@ -263,27 +287,28 @@ export async function init({ doc, api, every, onFocus }) {
     guarded(errorLine, (event) => save(layoutParams(state.layout, { block_fullscreen: event.target.checked }))),
   );
 
-  const drop = guarded(errorLine, async (display, rect) => {
-    const key = keyOf(display.display_id);
+  const drop = guarded(errorLine, async (display, dx, dy) => {
+    const group = groupOf(display);
     const others = includedDisplays()
-      .filter((d) => keyOf(d.display_id) !== key)
+      .filter((d) => d.display_id.computer !== display.display_id.computer)
       .map(rectOf);
-    const snapped = snapPlacement(rect, others);
-    if (snapped.reason) {
-      refusal.textContent = REFUSALS[snapped.reason](display.name);
+    const shift = snapGroup(group.map(rectOf), dx, dy, others);
+    if (shift.reason) {
+      const name = group.length > 1 ? display.computer_name : display.name;
+      refusal.textContent = REFUSALS[shift.reason](name);
       render();
       return;
     }
-    const was = rectOf(display);
-    if (snapped.x === was.x && snapped.y === was.y) {
+    if (shift.x === 0 && shift.y === 0) {
       render();
       return;
     }
     state.undo = null;
+    const moving = new Set(group.map((d) => keyOf(d.display_id)));
     await save(
       layoutParams(state.layout, {
         placements: state.layout.placements.map((p) =>
-          keyOf(p.display_id) === key ? { ...p, x: snapped.x, y: snapped.y } : p,
+          moving.has(keyOf(p.display_id)) ? { ...p, x: p.x + shift.x, y: p.y + shift.y } : p,
         ),
       }),
     );
@@ -292,8 +317,10 @@ export async function init({ doc, api, every, onFocus }) {
   doc.addEventListener('pointermove', (event) => {
     const { drag } = state;
     if (!drag) return;
-    drag.tile.style.left = `${drag.left + event.clientX - drag.originX}px`;
-    drag.tile.style.top = `${drag.top + event.clientY - drag.originY}px`;
+    for (const { tile, left, top } of drag.tiles) {
+      tile.style.left = `${left + event.clientX - drag.originX}px`;
+      tile.style.top = `${top + event.clientY - drag.originY}px`;
+    }
   });
   doc.addEventListener('pointerup', (event) => {
     const { drag } = state;
@@ -306,11 +333,7 @@ export async function init({ doc, api, every, onFocus }) {
       return;
     }
     const { scale } = state.view;
-    drop(drag.display, {
-      ...drag.rect,
-      x: Math.round(drag.rect.x + dx / scale),
-      y: Math.round(drag.rect.y + dy / scale),
-    });
+    drop(drag.display, Math.round(dx / scale), Math.round(dy / scale));
   });
 
   const tick = guarded(errorLine, () => (state.drag ? undefined : load()), { clear: false });

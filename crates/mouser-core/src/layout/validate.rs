@@ -3,13 +3,23 @@
 
 use mouser_proto::model::{Display, Layout};
 
-use super::edges::{self, Placed};
+use super::autoplace;
+use super::edges;
 
-fn overlap(a: &Placed, b: &Placed) -> bool {
-    a.rect.x < b.rect.right()
-        && b.rect.x < a.rect.right()
-        && a.rect.y < b.rect.bottom()
-        && b.rect.y < a.rect.bottom()
+/// True when the included `displays` of one computer are placed in `layout`
+/// in the arrangement the OS reports, moved as one: every placement lies the
+/// same distance from where the arrangement puts that display.
+pub fn rigid(displays: &[Display], layout: &Layout) -> bool {
+    let included: Vec<Display> = displays.iter().filter(|d| d.included).cloned().collect();
+    let mut shifts = autoplace::arrange(&included).into_iter().map(|(d, x, y)| {
+        let at = layout
+            .placements
+            .iter()
+            .find(|p| p.display_id == d.display_id);
+        at.map(|p| (p.x - x, p.y - y))
+    });
+    let first = shifts.next().flatten();
+    shifts.all(|shift| shift == first)
 }
 
 /// `Ok` when `layout` is a valid placement of the included displays among
@@ -35,9 +45,27 @@ pub fn validate(displays: &[Display], layout: &Layout) -> Result<(), String> {
     }) {
         return Err(format!("{} has no place on the desk", d.name));
     }
+    let computers: std::collections::BTreeSet<_> =
+        displays.iter().map(|d| d.display_id.computer).collect();
+    for computer in computers {
+        let own: Vec<Display> = displays
+            .iter()
+            .filter(|d| d.display_id.computer == computer)
+            .cloned()
+            .collect();
+        if !rigid(&own, layout) {
+            return Err(format!(
+                "The displays of {} keep the arrangement of that computer's own settings; move the computer as a whole",
+                own[0].name
+            ));
+        }
+    }
     let placed = edges::placed(displays, layout);
     for (i, a) in placed.iter().enumerate() {
-        if let Some(b) = placed[i + 1..].iter().find(|b| overlap(a, b)) {
+        if let Some(b) = placed[i + 1..]
+            .iter()
+            .find(|b| edges::overlap(&a.rect, &b.rect))
+        {
             return Err(format!("{} and {} overlap", a.display.name, b.display.name));
         }
     }

@@ -204,6 +204,85 @@ fn the_very_first_placement_needs_no_review() {
     assert!(review_candidates(&Layout::default(), &layout(&[(1, "a")])).is_empty());
 }
 
+fn placement(d: &Display, x: i32, y: i32) -> Placement {
+    Placement {
+        display_id: d.display_id.clone(),
+        x,
+        y,
+    }
+}
+
+fn placed_at(d: &Display, x: i32, y: i32) -> Placed {
+    Placed {
+        rect: Rect {
+            x,
+            y,
+            w: 527,
+            h: 296,
+        },
+        display: d.clone(),
+    }
+}
+
+#[test]
+fn a_changed_arrangement_keeps_the_first_persisting_display_where_it_was() {
+    let (other, a, b) = (
+        display(1, "o", (0, 0)),
+        display(2, "a", (0, 0)),
+        display(2, "b", (1920, 0)),
+    );
+    let kept = [placed_at(&other, 0, 0)];
+    // `b` is new and sits right of `a`; `a` stays at 527, 0.
+    let now = reposition(&kept, &[placement(&a, 527, 0)], &[a.clone(), b.clone()]);
+    assert_eq!((at(&now, "a"), at(&now, "b")), ((527, 0), (1054, 0)));
+    // `b` moved below `a` in the OS; `a` is still the anchor.
+    let b_below = display(2, "b", (0, 1080));
+    let now = reposition(
+        &kept,
+        &[placement(&a, 527, 0), placement(&b, 1054, 0)],
+        &[a, b_below],
+    );
+    assert_eq!((at(&now, "a"), at(&now, "b")), ((527, 0), (527, 296)));
+}
+
+#[test]
+fn the_anchor_is_the_first_display_that_persists() {
+    let (other, a, b) = (
+        display(1, "o", (0, 0)),
+        display(2, "a", (0, 0)),
+        display(2, "b", (1920, 0)),
+    );
+    let kept = [placed_at(&other, 0, 0)];
+    // `a` is gone; `b` persists and `c` is new on its right.
+    let c = display(2, "c", (3840, 0));
+    let now = reposition(&kept, &[placement(&b, 527, 0)], &[b, c]);
+    assert_eq!((at(&now, "b"), at(&now, "c")), ((527, 0), (1054, 0)));
+    let _ = a;
+}
+
+#[test]
+fn a_computer_without_a_persisting_display_is_placed_afresh() {
+    let (other, a) = (display(1, "o", (0, 0)), display(2, "a", (0, 0)));
+    let now = reposition(&[placed_at(&other, 0, 0)], &[], &[a]);
+    assert_eq!(at(&now, "a"), (527, 0));
+}
+
+#[test]
+fn a_group_that_would_overlap_or_lose_its_neighbours_is_placed_afresh() {
+    let (other, a, b) = (
+        display(1, "o", (0, 0)),
+        display(2, "a", (0, 0)),
+        display(2, "b", (1920, 0)),
+    );
+    let kept = [placed_at(&other, 0, 0)];
+    // Anchored on `b` at 527, `a` would land on the kept display.
+    let now = reposition(&kept, &[placement(&b, 527, 0)], &[a.clone(), b.clone()]);
+    assert_eq!((at(&now, "a"), at(&now, "b")), ((527, 0), (1054, 0)));
+    // Anchored away from the others it would touch none.
+    let now = reposition(&kept, &[placement(&a, 900, 0)], &[a, b]);
+    assert_eq!(at(&now, "a"), (527, 0));
+}
+
 mod on_the_wire {
     use crate::EngineEvent;
     use crate::testing::*;
@@ -325,5 +404,55 @@ mod on_the_wire {
         let mut at: Vec<_> = layout.placements.iter().map(|p| p.x).collect();
         at.sort();
         assert_eq!(at, [527, 1054]);
+    }
+
+    #[tokio::test]
+    async fn a_display_moved_in_the_os_moves_inside_its_computers_group_only() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+        let ctx = &nodes[0].engine.ctx;
+        let beta = nodes[1].engine.computer_id();
+        let mut core = ctx.core.lock().unwrap();
+        // Beta reports a second display below its first.
+        let mut shown = core.state.displays[&beta].clone();
+        let mut second = shown[0].clone();
+        second.display_id.key = "second".into();
+        second.origin_local = (0, shown[0].logical_size.1 as i32);
+        shown.push(second);
+        core.state.displays.insert(beta, shown.clone());
+        ctx.sync_layout(&mut core);
+        let at = |core: &crate::engine::Core, key: &str| {
+            let p = core
+                .state
+                .desk
+                .as_ref()
+                .unwrap()
+                .state
+                .layout
+                .placements
+                .iter()
+                .find(|p| p.display_id.key == key && p.display_id.computer == beta)
+                .unwrap()
+                .clone();
+            (p.x, p.y)
+        };
+        let first = shown[0].display_id.key.clone();
+        let (fx, fy) = at(&core, &first);
+        assert_eq!(
+            at(&core, "second"),
+            (fx, fy + shown[0].physical_size_mm.unwrap().1 as i32)
+        );
+        // The OS moves it to the right of the first: the first stays put.
+        shown[1].origin_local = (shown[0].logical_size.0 as i32, 0);
+        core.state.displays.insert(beta, shown.clone());
+        ctx.sync_layout(&mut core);
+        assert_eq!(at(&core, &first), (fx, fy));
+        assert_eq!(
+            at(&core, "second"),
+            (fx + shown[0].physical_size_mm.unwrap().0 as i32, fy)
+        );
+        let epoch = core.state.desk.as_ref().unwrap().state.epoch;
+        ctx.sync_layout(&mut core);
+        assert_eq!(core.state.desk.as_ref().unwrap().state.epoch, epoch);
     }
 }

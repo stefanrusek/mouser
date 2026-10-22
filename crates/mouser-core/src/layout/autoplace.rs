@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, Layout, Placement};
 
-use super::edges::{self, Placed, desk_size};
+use super::edges::{self, Placed, Rect, desk_size};
+use super::validate;
 
 /// Placements for `new` (one computer's displays): its leftmost display
 /// adjoins the right side of `kept`'s rightmost display, tops aligned; with
@@ -30,6 +31,62 @@ pub fn place(kept: &[Placed], new: &[Display]) -> Vec<Placement> {
             display_id: d.display_id.clone(),
             x: x + dx,
             y: y + dy,
+        })
+        .collect()
+}
+
+/// Like [`place`], for a computer that already has `old` placements: the
+/// displays take the arrangement the OS reports now, anchored on the
+/// persisting display that is first in it, so the computer keeps its place
+/// among the others. With no persisting display, or when that would overlap
+/// a kept display or leave the computer touching none, they are [`place`]d
+/// afresh.
+pub fn reposition(kept: &[Placed], old: &[Placement], new: &[Display]) -> Vec<Placement> {
+    let arranged = arrange(new);
+    let anchor = arranged
+        .iter()
+        .filter(|(d, ..)| old.iter().any(|p| p.display_id == d.display_id))
+        .min_by_key(|(d, ..)| d.origin_local);
+    let Some((anchor, ax, ay)) = anchor else {
+        return place(kept, new);
+    };
+    let at = old
+        .iter()
+        .find(|p| p.display_id == anchor.display_id)
+        .expect("the anchor has a placement");
+    let (dx, dy) = (at.x - ax, at.y - ay);
+    let moved: Vec<Placed> = arranged
+        .into_iter()
+        .map(|(d, x, y)| {
+            let (w, h) = desk_size(d);
+            Placed {
+                display: d.clone(),
+                rect: Rect {
+                    x: x + dx,
+                    y: y + dy,
+                    w,
+                    h,
+                },
+            }
+        })
+        .collect();
+    let overlapping = moved
+        .iter()
+        .any(|m| kept.iter().any(|k| edges::overlap(&k.rect, &m.rect)));
+    let together: Vec<Placed> = moved.iter().chain(kept).cloned().collect();
+    let touching = kept.is_empty()
+        || edges::edges(&together)
+            .iter()
+            .any(|e| (e.from < moved.len()) != (e.to < moved.len()));
+    if overlapping || !touching {
+        return place(kept, new);
+    }
+    moved
+        .into_iter()
+        .map(|m| Placement {
+            display_id: m.display.display_id,
+            x: m.rect.x,
+            y: m.rect.y,
         })
         .collect()
 }
@@ -60,7 +117,7 @@ fn density(d: &Display) -> (f64, f64) {
 /// neighbour's density, since one density for all of them would open gaps
 /// between displays of different densities. A display touching none keeps
 /// its offset from the first, at the first's density.
-fn arrange(new: &[Display]) -> Vec<(&Display, i32, i32)> {
+pub fn arrange(new: &[Display]) -> Vec<(&Display, i32, i32)> {
     let Some(first) = (0..new.len()).min_by_key(|&i| new[i].origin_local) else {
         return Vec::new();
     };
@@ -213,13 +270,23 @@ impl Ctx {
         let cut_off = isolated(&edges::placed(&all_displays, &old));
         let stale: BTreeSet<ComputerId> = known
             .keys()
-            .filter(|c| placed_for(c) != wanted(c) || cut_off.contains(*c))
+            .filter(|c| {
+                placed_for(c) != wanted(c)
+                    || cut_off.contains(*c)
+                    || !validate::rigid(&known[*c], &old)
+            })
             .copied()
             .collect();
         if stale.is_empty() {
             return;
         }
         let mut layout = old.clone();
+        let before: Vec<Placement> = layout
+            .placements
+            .iter()
+            .filter(|p| stale.contains(&p.display_id.computer))
+            .cloned()
+            .collect();
         layout
             .placements
             .retain(|p| !stale.contains(&p.display_id.computer));
@@ -238,7 +305,13 @@ impl Ctx {
                 .filter(|d| d.included)
                 .cloned()
                 .collect();
-            let placements = place(&kept, &displays);
+            // A computer cut off from the others is placed as if new; any
+            // other keeps its place among them.
+            let placements = if cut_off.contains(computer) {
+                place(&kept, &displays)
+            } else {
+                reposition(&kept, &before, &displays)
+            };
             kept.extend(edges::placed(
                 &displays,
                 &Layout {

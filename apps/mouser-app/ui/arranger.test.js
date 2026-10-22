@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deskSize, detailLines, fitView, init, snapPlacement } from './arranger.js';
+import { deskSize, detailLines, fitView, init, snapGroup, snapPlacement } from './arranger.js';
 import { click, fakeApi, flush, loadPage } from './test_helpers.js';
 import { makeStatus } from './status_fixture.js';
 
@@ -342,4 +342,59 @@ test('the arrangement refreshes on status changes, on focus and on a timer, but 
 test('a first load the engine refuses shows its sentence', async () => {
   const { doc } = await start(TWO(), { 'layout.get': new Error('This computer is not on a desk') });
   assert.equal(text(doc, 'error'), 'This computer is not on a desk');
+});
+
+// Desk Mac has two displays, side by side as its OS reports; Studio has one on the right.
+const A2 = display('aa', '2', 'Side Display', { origin_local: [1280, 0] });
+const GROUP = () =>
+  layoutOf([A, A2, B], [place(A.display_id, 0, 0), place(A2.display_id, 600, 0), place(B.display_id, 1200, 0)]);
+const SG = scaleOf(GROUP());
+
+test('dragging one display of a computer moves all of its displays together', async () => {
+  const { win, doc, api } = await start(GROUP());
+  const [a, a2] = [tileOf(doc, 'Built-in'), tileOf(doc, 'Side Display')];
+  const [left, left2] = [px(a, 'left'), px(a2, 'left')];
+  pointer(win, a2, 'pointerdown', 100, 100);
+  pointer(win, doc, 'pointermove', 100, 100 + 50 * SG);
+  assert.ok(Math.abs(px(a, 'top') - px(a2, 'top')) < 0.01, 'the siblings move as one');
+  assert.equal(px(a, 'left'), left);
+  assert.equal(px(a2, 'left'), left2);
+  pointer(win, doc, 'pointerup', 100, 100 + 50 * SG);
+  await flush();
+  // Dropped 50 mm lower: aligned to nothing, so Desk Mac's pair stays touching Studio, 50 mm down.
+  assert.deepEqual(sent(api)[0].placements, [place(A.display_id, 0, 50), place(A2.display_id, 600, 50), place(B.display_id, 1200, 0)]);
+});
+
+test('a computer is moved so that any one of its displays can meet another computer', async () => {
+  const { win, doc, api } = await start(GROUP());
+  // Studio is dragged under the left display of Desk Mac; its group is the one display.
+  drag(win, doc, tileOf(doc, 'Studio Display'), SG, -1200 + 10, 345);
+  await flush();
+  assert.deepEqual(sent(api)[0].placements.slice(-1), [place(B.display_id, 10, 340)]);
+  // Desk Mac is dragged down: still moved as a pair, its right display still meeting Studio.
+  const second = await start(GROUP());
+  drag(second.win, second.doc, tileOf(second.doc, 'Built-in'), SG, 0, 300);
+  await flush();
+  assert.deepEqual(sent(second.api)[0].placements, [place(A.display_id, 0, 300), place(A2.display_id, 600, 300), place(B.display_id, 1200, 0)]);
+});
+
+test('snapGroup reports why a computer cannot go there', () => {
+  const group = [
+    { x: 0, y: 0, w: 100, h: 100 },
+    { x: 100, y: 0, w: 100, h: 100 },
+  ];
+  const others = [{ x: 200, y: 0, w: 100, h: 100 }];
+  assert.deepEqual(snapGroup(group, 0, 0, others), { x: 0, y: 0 });
+  assert.deepEqual(snapGroup(group, 0, 50, others), { x: 0, y: 50 });
+  assert.deepEqual(snapGroup(group, 500, 500, others), { reason: 'disconnected' });
+  assert.deepEqual(snapGroup(group, 50, 0, others), { reason: 'overlap' });
+  assert.deepEqual(snapGroup(group, 0, 0, []), { x: 0, y: 0 });
+});
+
+test('a computer dropped on top of another is refused by name', async () => {
+  const { win, doc, api } = await start(GROUP());
+  drag(win, doc, tileOf(doc, 'Built-in'), SG, 400, 0);
+  await flush();
+  assert.deepEqual(sent(api), []);
+  assert.equal(text(doc, 'refusal'), 'Desk Mac would overlap another display, so it went back.');
 });
