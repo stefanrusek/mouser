@@ -63,6 +63,7 @@ struct State {
     elevated: bool,
     secure_input: Option<SecureInputHolder>,
     secrets: BTreeMap<String, Vec<u8>>,
+    secret_writes_fail: bool,
     autostart: bool,
 
     outgoing_drag: Option<Vec<PathBuf>>,
@@ -150,6 +151,7 @@ impl VirtualPlatform {
             elevated: false,
             secure_input: None,
             secrets: BTreeMap::new(),
+            secret_writes_fail: false,
             autostart: false,
             outgoing_drag: None,
             drop_target: PathBuf::from("/virtual/drop"),
@@ -340,6 +342,12 @@ impl VirtualPlatform {
 
     pub fn clipboard_contents(&self) -> Vec<ClipRep> {
         self.lock().clipboard.clone()
+    }
+
+    /// Whether writes and deletes in the secret store fail (reads still work),
+    /// like a credential store that is locked or out of space.
+    pub fn script_secret_writes_fail(&self, fail: bool) {
+        self.lock().secret_writes_fail = fail;
     }
 
     pub fn is_autostart_enabled(&self) -> bool {
@@ -605,6 +613,9 @@ impl SecretStore for VirtualSecrets {
     }
 
     fn set(&mut self, name: &str, value: &[u8]) -> Result<()> {
+        if self.0.lock().secret_writes_fail {
+            return Err(mouser_platform::Error::Os("secret store unwritable".into()));
+        }
         self.0
             .lock()
             .secrets
@@ -613,6 +624,9 @@ impl SecretStore for VirtualSecrets {
     }
 
     fn delete(&mut self, name: &str) -> Result<()> {
+        if self.0.lock().secret_writes_fail {
+            return Err(mouser_platform::Error::Os("secret store unwritable".into()));
+        }
         self.0.lock().secrets.remove(name);
         Ok(())
     }

@@ -319,3 +319,57 @@ async fn admit_helper_makes_two_computers_members() {
     admit(&a, &b).await;
     assert_eq!(connected(&a).await, 1);
 }
+
+#[tokio::test]
+async fn a_joiner_that_cannot_store_the_desk_key_stays_unjoined_and_is_told() {
+    let lab = Lab::new();
+    let a = lab.start("Alpha").await;
+    let desk = desk_on(&a, "Home office").await;
+    let b = lab.start("Beta").await;
+    let mut a_notes = a.engine.control().notifications();
+    let mut b_notes = b.engine.control().notifications();
+    let _: JoinPending = call(&b, Method::DeskJoin, json!({"desk_id": desk.desk_id})).await;
+    let prompt: PendingJoin =
+        serde_json::from_value(recv_topic(&mut a_notes, Topic::JoinRequest).await).unwrap();
+    b.platform.script_secret_writes_fail(true);
+    let _: Empty = call(
+        &a,
+        Method::JoinDecide,
+        json!({"request_id": prompt.request_id, "approve": true}),
+    )
+    .await;
+
+    let problem = recv_topic(&mut b_notes, Topic::Problem).await;
+    assert_eq!(problem["kind"], json!(ProblemKind::JoinRefused));
+    assert!(
+        problem["message"].as_str().unwrap().contains("desk key"),
+        "{problem}"
+    );
+    assert_eq!(status(&b).await.desk, None);
+    let saved = LocalState::load(&b.dir.path().join(crate::state::FILE));
+    assert_eq!(saved.membership, Membership::Unjoined);
+}
+
+#[tokio::test]
+async fn moving_desks_with_an_unwritable_store_keeps_the_old_desk() {
+    let lab = Lab::new();
+    let a = lab.start("Alpha").await;
+    let desk_a = desk_on(&a, "One").await;
+    let b = lab.start("Beta").await;
+    let desk_b = desk_on(&b, "Two").await;
+    let mut a_notes = a.engine.control().notifications();
+    let mut b_notes = b.engine.control().notifications();
+    let _: JoinPending = call(&b, Method::DeskMove, json!({"desk_id": desk_a.desk_id})).await;
+    let prompt: PendingJoin =
+        serde_json::from_value(recv_topic(&mut a_notes, Topic::JoinRequest).await).unwrap();
+    b.platform.script_secret_writes_fail(true);
+    let _: Empty = call(
+        &a,
+        Method::JoinDecide,
+        json!({"request_id": prompt.request_id, "approve": true}),
+    )
+    .await;
+    recv_topic(&mut b_notes, Topic::Problem).await;
+    let s = status(&b).await;
+    assert_eq!(s.desk.unwrap().id, desk_b.desk_id);
+}

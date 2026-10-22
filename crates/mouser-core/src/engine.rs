@@ -353,20 +353,15 @@ impl Ctx {
         core.state.save(&self.state_path());
     }
 
-    pub fn store_desk_key(&self, desk: &DeskId, key: &[u8; 32]) {
-        self.secrets
-            .lock()
-            .unwrap()
-            .set(&desk_key_name(desk), key)
-            .expect("secret store writable");
+    /// A failing store is an ordinary failure (locked keychain, full disk):
+    /// callers report it and leave their state alone. It must never panic
+    /// while the core lock or the store lock is held, which would poison it.
+    pub fn store_desk_key(&self, desk: &DeskId, key: &[u8; 32]) -> mouser_platform::Result<()> {
+        self.secrets.lock().unwrap().set(&desk_key_name(desk), key)
     }
 
-    pub fn delete_desk_key(&self, desk: &DeskId) {
-        self.secrets
-            .lock()
-            .unwrap()
-            .delete(&desk_key_name(desk))
-            .expect("secret store writable");
+    pub fn delete_desk_key(&self, desk: &DeskId) -> mouser_platform::Result<()> {
+        self.secrets.lock().unwrap().delete(&desk_key_name(desk))
     }
 
     /// Send the current `status` to subscribers.

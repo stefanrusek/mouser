@@ -36,6 +36,15 @@ pub(crate) fn invalid(message: impl Into<String>) -> RpcError {
     }
 }
 
+/// A JSON-RPC "internal error": the operating system refused something.
+pub(crate) fn internal(message: impl Into<String>) -> RpcError {
+    RpcError {
+        code: -32603,
+        message: message.into(),
+        data: None,
+    }
+}
+
 /// In-process access to the control API.
 #[derive(Clone)]
 pub struct ControlHandle {

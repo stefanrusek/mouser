@@ -260,6 +260,20 @@ fn file_drag_is_scripted() {
 }
 
 #[test]
+fn secret_writes_can_be_made_to_fail() {
+    let vp = VirtualPlatform::new();
+    let mut store = vp.secrets();
+    store.set("k", b"v").unwrap();
+    vp.script_secret_writes_fail(true);
+    assert!(store.set("k", b"w").is_err());
+    assert!(store.delete("k").is_err());
+    assert_eq!(store.get("k").unwrap(), Some(b"v".to_vec()));
+    vp.script_secret_writes_fail(false);
+    store.delete("k").unwrap();
+    assert_eq!(store.get("k").unwrap(), None);
+}
+
+#[test]
 fn info_can_be_replaced() {
     let vp = VirtualPlatform::new();
     vp.set_info(PlatformInfo {

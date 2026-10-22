@@ -79,3 +79,21 @@ async fn invalid_names_and_a_second_desk_are_refused() {
     let err = call_err(&node, Method::DeskCreate, json!({"name": "Second"})).await;
     assert!(err.message.contains("already"), "{}", err.message);
 }
+
+#[tokio::test]
+async fn a_secret_store_that_cannot_be_written_fails_the_call_and_leaves_no_desk() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    node.platform.script_secret_writes_fail(true);
+    let err = call_err(&node, Method::DeskCreate, json!({"name": "Home"})).await;
+    assert_eq!(err.code, -32603);
+    assert!(err.message.contains("desk key"), "{}", err.message);
+    assert_eq!(crate::testing::status(&node).await.desk, None);
+    let saved = LocalState::load(&node.dir.path().join(crate::state::FILE));
+    assert_eq!(saved.membership, Membership::Unjoined);
+
+    // Nothing is poisoned: the same call works once the store does.
+    node.platform.script_secret_writes_fail(false);
+    let desk: Desk = call(&node, Method::DeskCreate, json!({"name": "Home"})).await;
+    assert_eq!(desk.name, "Home");
+}

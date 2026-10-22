@@ -5,7 +5,7 @@ use std::sync::Arc;
 use mouser_proto::control::{Desk, RpcError};
 use mouser_proto::ids::DeskId;
 
-use crate::control::invalid;
+use crate::control::{internal, invalid};
 use crate::engine::Ctx;
 use crate::state::{Membership, PersistedDesk};
 
@@ -41,7 +41,8 @@ impl Ctx {
             let desk_id = DeskId(random());
             let key: [u8; 32] = random();
             let state = self.new_desk_state(&core);
-            self.store_desk_key(&desk_id, &key);
+            self.store_desk_key(&desk_id, &key)
+                .map_err(|e| internal(format!("cannot store the desk key: {e}")))?;
             core.desk_key = Some(key);
             core.state.membership = Membership::Member(desk_id);
             core.state.desk = Some(PersistedDesk {

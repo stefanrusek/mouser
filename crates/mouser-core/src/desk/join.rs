@@ -351,8 +351,7 @@ impl Ctx {
                 Ok(())
             }
             (Some(Phase::Authed), true) => {
-                self.rekeyed(open(&sealed.expect("rotation carries the desk")));
-                Ok(())
+                self.rekeyed(open(&sealed.expect("rotation carries the desk")))
             }
             _ => Err("unexpected JoinDecision".into()),
         }
@@ -370,15 +369,27 @@ impl Ctx {
     fn joined(self: &Arc<Self>, peer: ComputerId, sealed: Sealed) {
         let desk_id = {
             let mut core = self.core.lock().unwrap();
-            self.say_goodbye(&mut core);
-            if let Some(old) = core.state.desk.take() {
-                self.delete_desk_key(&old.desk_id);
-            }
             let desk_id = core.peers[&peer]
                 .hello
                 .desk_id
                 .expect("an approving member is on a desk");
-            self.store_desk_key(&desk_id, &sealed.key);
+            // Keys first: if the store refuses, we stay as we were.
+            let old = core
+                .state
+                .desk
+                .as_ref()
+                .map(|d| d.desk_id)
+                .filter(|old| *old != desk_id);
+            let stored = self
+                .store_desk_key(&desk_id, &sealed.key)
+                .and_then(|()| old.map_or(Ok(()), |old| self.delete_desk_key(&old)));
+            if let Err(e) = stored {
+                drop(core);
+                self.fail_pending(&format!("Could not store the desk key: {e}"));
+                return;
+            }
+            self.say_goodbye(&mut core);
+            core.state.desk = None;
             core.desk_key = Some(sealed.key);
             core.state.membership = Membership::Member(desk_id);
             core.state.desk = Some(PersistedDesk {
@@ -404,18 +415,21 @@ impl Ctx {
     }
 
     /// A member rotated the desk key and sent the new desk state.
-    fn rekeyed(self: &Arc<Self>, sealed: Sealed) {
+    fn rekeyed(self: &Arc<Self>, sealed: Sealed) -> Result<(), String> {
         let mut core = self.core.lock().unwrap();
         let desk = core.state.desk.as_mut().expect("authed peers imply a desk");
         if sealed.state.supersedes(&desk.state) {
+            let id = desk.desk_id;
+            self.store_desk_key(&id, &sealed.key)
+                .map_err(|e| format!("cannot store the desk key: {e}"))?;
+            let desk = core.state.desk.as_mut().expect("still on the desk");
             let old = desk.state.layout.clone();
             desk.state = sealed.state.clone();
-            let id = desk.desk_id;
             core.desk_key = Some(sealed.key);
-            self.store_desk_key(&id, &sealed.key);
             self.layout_changed(&mut core, &old, &sealed.state);
             drop(core);
             self.notify_status();
         }
+        Ok(())
     }
 }

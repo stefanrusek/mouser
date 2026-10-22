@@ -371,3 +371,85 @@ async fn nothing_is_expected_from_a_computer_that_has_left() {
     // Messages still in flight from it are ignored, not violations.
     assert_eq!(a.engine.ctx.on_message(beta, ControlMessage::Panic), Ok(()));
 }
+
+#[tokio::test]
+async fn leaving_with_an_unwritable_secret_store_fails_and_stays_on_the_desk() {
+    let lab = Lab::new();
+    let (a, b, _c, desk) = three_on_a_desk(&lab).await;
+    b.platform.script_secret_writes_fail(true);
+    let err = call_err(&b, Method::DeskLeave, json!({})).await;
+    assert_eq!(err.code, -32603);
+    assert!(status(&b).await.desk.is_some());
+    assert!(!b.platform_secret_missing(&desk));
+    assert_eq!(connected(&a).await, 2, "no goodbye was sent");
+
+    b.platform.script_secret_writes_fail(false);
+    let _: Empty = call(&b, Method::DeskLeave, json!({})).await;
+    assert_eq!(status(&b).await.desk, None);
+}
+
+#[tokio::test]
+async fn removing_a_member_with_an_unwritable_secret_store_fails_and_changes_nothing() {
+    let lab = Lab::new();
+    let (a, _b, c, desk) = three_on_a_desk(&lab).await;
+    let old_key = key_of(&a, &desk);
+    a.platform.script_secret_writes_fail(true);
+    let c_id = c.engine.computer_id();
+    let err = call_err(&a, Method::DeskRemoveMember, json!({ "computer_id": c_id })).await;
+    assert_eq!(err.code, -32603);
+    assert_eq!(status(&a).await.computers.len(), 3);
+    assert_eq!(key_of(&a, &desk), old_key);
+    assert_eq!(connected(&a).await, 2);
+}
+
+#[tokio::test]
+async fn a_member_that_cannot_store_the_new_key_keeps_the_old_one() {
+    let lab = Lab::new();
+    let (a, b, c, desk) = three_on_a_desk(&lab).await;
+    let old_key = key_of(&b, &desk);
+    b.platform.script_secret_writes_fail(true);
+    let c_id = c.engine.computer_id();
+    let _: Empty = call(&a, Method::DeskRemoveMember, json!({ "computer_id": c_id })).await;
+    eventually("Alpha to drop Gamma", || async {
+        status(&a).await.computers.len() == 2
+    })
+    .await;
+    eventually("Beta to refuse the key", || async {
+        connected(&b).await < 2
+    })
+    .await;
+    assert_eq!(key_of(&b, &desk), old_key);
+    assert_eq!(status(&b).await.computers.len(), 3);
+}
+
+#[tokio::test]
+async fn a_removed_member_that_cannot_forget_the_key_stays_as_it_was() {
+    let lab = Lab::new();
+    let (a, _b, c, desk) = three_on_a_desk(&lab).await;
+    c.platform.script_secret_writes_fail(true);
+    let c_id = c.engine.computer_id();
+    let _: Empty = call(&a, Method::DeskRemoveMember, json!({ "computer_id": c_id })).await;
+    eventually("Alpha to drop Gamma", || async {
+        status(&a).await.computers.len() == 2
+    })
+    .await;
+    eventually("Gamma to lose its link to Alpha", || async {
+        connected(&c).await < 2
+    })
+    .await;
+    assert!(status(&c).await.desk.is_some());
+    assert!(!c.platform_secret_missing(&desk));
+}
+
+#[tokio::test]
+async fn a_rotator_that_cannot_store_the_new_key_keeps_the_desk_as_it_was() {
+    let lab = Lab::new();
+    let (a, b, c, desk) = three_on_a_desk(&lab).await;
+    a.platform.script_secret_writes_fail(true);
+    c.platform.script_secret_writes_fail(true);
+    let old_key = key_of(&a, &desk);
+    let _: Empty = call(&b, Method::DeskLeave, json!({})).await;
+    eventually("Alpha to lose Beta", || async { connected(&a).await == 1 }).await;
+    assert_eq!(status(&a).await.computers.len(), 3);
+    assert_eq!(key_of(&a, &desk), old_key);
+}

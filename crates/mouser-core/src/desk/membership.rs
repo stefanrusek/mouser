@@ -11,7 +11,7 @@ use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{DeskState, Member};
 use mouser_proto::wire::ControlMessage;
 
-use crate::control::invalid;
+use crate::control::{internal, invalid};
 use crate::desk::create::random;
 use crate::desk::join::{Sealed, seal};
 use crate::engine::{Core, Ctx, Phase};
@@ -64,9 +64,11 @@ impl Ctx {
     }
 
     /// Become unjoined, forgetting the desk and its key.
-    fn forget_desk(&self, core: &mut Core) {
-        let desk = core.state.desk.take().expect("on a desk");
-        self.delete_desk_key(&desk.desk_id);
+    /// The key goes first: if the store refuses, nothing has changed.
+    fn forget_desk(&self, core: &mut Core) -> mouser_platform::Result<()> {
+        let id = core.state.desk.as_ref().expect("on a desk").desk_id;
+        self.delete_desk_key(&id)?;
+        core.state.desk = None;
         core.desk_key = None;
         core.state.displays.clear();
         core.needs_review.clear();
@@ -74,17 +76,23 @@ impl Ctx {
         core.pending = None;
         core.requests = Default::default();
         self.persist(core);
+        Ok(())
     }
 
     /// Install `state` with a fresh desk key and hand both to the other
     /// authenticated members (not `skip`).
-    fn rotate(&self, core: &mut Core, state: DeskState, skip: ComputerId) {
+    fn rotate(
+        &self,
+        core: &mut Core,
+        state: DeskState,
+        skip: ComputerId,
+    ) -> mouser_platform::Result<()> {
         let key: [u8; 32] = random();
         let desk = core.state.desk.as_mut().expect("on a desk");
-        desk.state = state.clone();
         let (id, name) = (desk.desk_id, desk.name.clone());
+        self.store_desk_key(&id, &key)?;
+        desk.state = state.clone();
         core.desk_key = Some(key);
-        self.store_desk_key(&id, &key);
         self.persist(core);
         let sealed = seal(&Sealed { key, name, state });
         for (_, peer) in core
@@ -97,6 +105,7 @@ impl Ctx {
                 sealed: Some(sealed.clone()),
             });
         }
+        Ok(())
     }
 
     /// `desk.leave`.
@@ -106,8 +115,9 @@ impl Ctx {
             if core.state.desk.is_none() {
                 return Err(invalid("this computer is not on a desk"));
             }
+            self.forget_desk(&mut core)
+                .map_err(|e| internal(format!("cannot forget the desk key: {e}")))?;
             self.say_goodbye(&mut core);
-            self.forget_desk(&mut core);
             self.refresh_map(&core);
         }
         self.announce();
@@ -128,7 +138,8 @@ impl Ctx {
                 return Err(invalid("that computer is not another member of this desk"));
             }
             let state = without_member(&desk.state, who, self.me());
-            self.rotate(&mut core, state, who);
+            self.rotate(&mut core, state, who)
+                .map_err(|e| internal(format!("cannot store the desk key: {e}")))?;
             if let Some(removed) = core.peers.get_mut(&who) {
                 removed.send(ControlMessage::Remove { computer_id: who });
                 removed.close();
@@ -152,7 +163,8 @@ impl Ctx {
         let desk = core.state.desk.as_ref().expect("authed peers imply a desk");
         let state = without_member(&desk.state, who, self.me());
         if rotator(&state) == self.me() {
-            self.rotate(&mut core, state, who);
+            self.rotate(&mut core, state, who)
+                .map_err(|e| format!("cannot store the desk key: {e}"))?;
         }
         let leaver = core.peers.get_mut(&peer).expect("authed");
         leaver.close();
@@ -173,11 +185,12 @@ impl Ctx {
         if who != self.me() || !Self::authed(&core, peer) {
             return Err(format!("invalid Remove from {peer}"));
         }
+        self.forget_desk(&mut core)
+            .map_err(|e| format!("cannot forget the desk key: {e}"))?;
         for other in core.peers.values_mut().filter(|p| p.phase == Phase::Authed) {
             other.close();
             other.phase = Phase::Departed;
         }
-        self.forget_desk(&mut core);
         self.refresh_map(&core);
         drop(core);
         self.announce();
