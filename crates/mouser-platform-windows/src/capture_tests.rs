@@ -595,12 +595,12 @@ impl Cycles {
         let sent = std::cell::Cell::new(false);
         watch_cycle(
             &mut self.judge,
-            || self.counters.get(),
-            || {
+            &|| self.counters.get(),
+            &mut || {
                 sent.set(true);
                 outcome
             },
-            || self.reinstalls.set(self.reinstalls.get() + 1),
+            &mut || self.reinstalls.set(self.reinstalls.get() + 1),
             &self.sink,
         );
         sent.get()
@@ -740,7 +740,7 @@ fn shared() -> Shared {
 fn a_probe_is_seen_when_both_hooks_count_it() {
     use std::sync::atomic::Ordering::SeqCst;
     let s = shared();
-    let out = probe_hooks_with(&s, Duration::from_secs(5), || {
+    let out = probe_hooks_with(&s, Duration::from_secs(5), &mut || {
         s.probed_mouse.fetch_add(1, SeqCst);
         s.probed_key.fetch_add(1, SeqCst);
         Ok(())
@@ -752,7 +752,7 @@ fn a_probe_is_seen_when_both_hooks_count_it() {
 fn a_probe_is_unseen_when_a_hook_does_not_count_it_in_time() {
     use std::sync::atomic::Ordering::SeqCst;
     let s = shared();
-    let out = probe_hooks_with(&s, Duration::from_millis(30), || {
+    let out = probe_hooks_with(&s, Duration::from_millis(30), &mut || {
         s.probed_mouse.fetch_add(1, SeqCst);
         Ok(())
     });
@@ -762,7 +762,7 @@ fn a_probe_is_unseen_when_a_hook_does_not_count_it_in_time() {
 #[test]
 fn a_probe_the_system_refuses_is_not_sent() {
     let s = shared();
-    let out = probe_hooks_with(&s, Duration::from_secs(5), || {
+    let out = probe_hooks_with(&s, Duration::from_secs(5), &mut || {
         Err(Error::Os("SendInput: blocked".into()))
     });
     assert_eq!(out, Outcome::NotSent);

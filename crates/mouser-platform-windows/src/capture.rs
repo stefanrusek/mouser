@@ -305,7 +305,7 @@ pub(crate) enum Outcome {
 /// Sends a one-pixel move and an F24 release tagged as probes, and reports whether
 /// both hooks saw theirs within `wait`.
 pub(crate) fn probe_hooks(shared: &Shared, wait: Duration) -> Outcome {
-    probe_hooks_with(shared, wait, || {
+    probe_hooks_with(shared, wait, &mut || {
         let mut nudge = mouse_input(MOUSEEVENTF_MOVE, 0, PROBE_TAG);
         nudge.Anonymous.mi.dx = 1;
         send(&[nudge]).and_then(|()| send(&[key_input(PROBE_SCAN, false, false, PROBE_TAG)]))
@@ -315,7 +315,7 @@ pub(crate) fn probe_hooks(shared: &Shared, wait: Duration) -> Outcome {
 pub(crate) fn probe_hooks_with(
     shared: &Shared,
     wait: Duration,
-    send_probe: impl FnOnce() -> Result<()>,
+    send_probe: &mut dyn FnMut() -> Result<()>,
 ) -> Outcome {
     let before = seen(shared);
     if send_probe().is_err() {
@@ -363,16 +363,10 @@ impl Judge {
     /// Records the outcome of the probe sent when the hooks had seen `before`.
     /// A probe that got through withdraws an earlier alarm.
     fn probed(&mut self, before: (u32, u32), outcome: Outcome) -> Option<PlatformProblem> {
-        match outcome {
-            Outcome::Seen => {
-                std::mem::take(&mut self.raised).then(|| PlatformProblem::Cleared(LOST_HOLD.into()))
-            }
-            Outcome::Unseen => {
-                self.unseen_since = Some(before);
-                None
-            }
-            Outcome::NotSent => None,
-        }
+        self.unseen_since = (outcome == Outcome::Unseen).then_some(before);
+        let seen = outcome == Outcome::Seen;
+        let cleared = seen && std::mem::take(&mut self.raised);
+        cleared.then(|| PlatformProblem::Cleared(LOST_HOLD.into()))
     }
 }
 
@@ -380,9 +374,9 @@ impl Judge {
 /// just reinstalled, send the next one.
 pub(crate) fn watch_cycle(
     judge: &mut Judge,
-    counters: impl Fn() -> (u32, u32),
-    probe: impl FnOnce() -> Outcome,
-    reinstall: impl FnOnce(),
+    counters: &dyn Fn() -> (u32, u32),
+    probe: &mut dyn FnMut() -> Outcome,
+    reinstall: &mut dyn FnMut(),
     problems: &Problems,
 ) {
     let before = counters();
@@ -410,9 +404,9 @@ fn watchdog_thread(
     while let Err(RecvTimeoutError::Timeout) = stop.recv_timeout(interval) {
         watch_cycle(
             &mut judge,
-            || seen(&shared),
-            || probe_hooks(&shared, PROBE_WAIT),
-            || {
+            &|| seen(&shared),
+            &mut || probe_hooks(&shared, PROBE_WAIT),
+            &mut || {
                 unsafe { PostThreadMessageW(hook_thread_id, WM_REINSTALL, WPARAM(0), LPARAM(0)) }
                     .expect("reinstall hooks");
             },
