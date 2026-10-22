@@ -1,11 +1,11 @@
 //! Windows backend for the `mouser-platform` seam.
 //!
 //! Interface classification, the machine-scope DPAPI secret store, Run-key
-//! autostart, (not applicable) permissions and displays. Capture, injection,
-//! clipboard and the rest arrive with their own phases;
-//! until then they report `Unsupported` and are declared as limitations
-//! (rule 9), which is the contract-conformant answer for a capability a
-//! backend does not yet have.
+//! autostart, (not applicable) permissions, displays, input capture and
+//! injection, and elevation detection. Clipboard and the rest arrive with
+//! their own phases; until then they report `Unsupported` and are declared as
+//! limitations (rule 9), which is the contract-conformant answer for a
+//! capability a backend does not yet have.
 //!
 //! Windows only: on any other system this crate is an empty library, so the
 //! workspace builds everywhere.
@@ -13,11 +13,15 @@
 #![cfg(windows)]
 
 mod autostart;
+mod capture;
 mod displays;
 mod dpi;
+mod inject;
+mod keymap;
 mod net;
 mod permissions;
 mod secrets;
+mod uipi;
 
 use mouser_platform::{
     Autostart, Capability, Clipboard, Error, FileDrag, InputCapture, InputInject, Limitation,
@@ -26,6 +30,7 @@ use mouser_platform::{
 };
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Registry::{
     HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
@@ -110,6 +115,7 @@ fn windows_version() -> String {
 /// The Windows implementation of [`Platform`].
 pub struct WinPlatform {
     settings: Settings,
+    problems: Arc<Mutex<Option<Sender<String>>>>,
 }
 
 impl WinPlatform {
@@ -117,8 +123,28 @@ impl WinPlatform {
         Self::with_settings(Settings::system())
     }
 
+    /// Where Mouser reports problems it noticed on this PC (a keyboard or
+    /// mouse hook the system took away); the app shows them. Replaces any
+    /// earlier listener.
+    pub fn watch_problems(&self, tx: Sender<String>) {
+        *self.problems.lock().unwrap() = Some(tx);
+    }
+
+    fn problem_sink(&self) -> capture::Problems {
+        let sink = self.problems.clone();
+        Arc::new(move |text| {
+            if let Some(tx) = sink.lock().unwrap().as_ref() {
+                // A listener that has gone away just means nobody is listening.
+                let _ = tx.send(text);
+            }
+        })
+    }
+
     pub fn with_settings(settings: Settings) -> Self {
-        WinPlatform { settings }
+        WinPlatform {
+            settings,
+            problems: Arc::new(Mutex::new(None)),
+        }
     }
 }
 
@@ -143,12 +169,12 @@ impl Platform for WinPlatform {
             session: SessionType::Native,
             limitations: vec![
                 limitation(
-                    Capability::Capture,
-                    "Sharing this PC's keyboard and mouse is not available yet.",
+                    Capability::Inject,
+                    "Some games and remote-desktop apps ignore Mouser's input on this PC.",
                 ),
                 limitation(
-                    Capability::Inject,
-                    "Controlling this PC from another computer is not available yet.",
+                    Capability::SecureAttention,
+                    "Ctrl-Alt-Del can't be sent to this PC yet.",
                 ),
                 limitation(
                     Capability::Clipboard,
@@ -179,11 +205,11 @@ impl Platform for WinPlatform {
     }
 
     fn capture(&self) -> Result<Box<dyn InputCapture>> {
-        Err(Error::Unsupported)
+        Ok(Box::new(capture::WinCapture::new(self.problem_sink())))
     }
 
     fn inject(&self) -> Result<Box<dyn InputInject>> {
-        Err(Error::Unsupported)
+        Ok(Box::new(inject::WinInject::new(None)))
     }
 
     fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
@@ -207,7 +233,7 @@ impl Platform for WinPlatform {
     }
 
     fn foreground_elevated(&self) -> bool {
-        false
+        uipi::foreground_elevated()
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
@@ -230,7 +256,15 @@ impl Platform for WinPlatform {
 #[cfg(test)]
 mod autostart_tests;
 #[cfg(test)]
+mod capture_tests;
+#[cfg(test)]
 mod displays_tests;
+#[cfg(test)]
+mod info_tests;
+#[cfg(test)]
+mod inject_tests;
+#[cfg(test)]
+mod keymap_tests;
 #[cfg(test)]
 mod lib_tests;
 #[cfg(test)]
@@ -239,3 +273,15 @@ mod net_tests;
 mod permissions_tests;
 #[cfg(test)]
 mod secrets_tests;
+
+#[cfg(test)]
+mod uipi_tests;
+
+/// Tests that send or capture real input share the machine's one input queue
+/// and one set of hooks, so they take turns.
+#[cfg(test)]
+pub(crate) fn live_input() -> std::sync::MutexGuard<'static, ()> {
+    static LIVE: Mutex<()> = Mutex::new(());
+    LIVE.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}

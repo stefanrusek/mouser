@@ -239,3 +239,113 @@ pub(crate) fn start_watch(tx: Sender<Vec<LocalDisplay>>) -> (HWND, WatchHandle) 
 pub(crate) fn watch(tx: Sender<Vec<LocalDisplay>>) -> Result<WatchHandle> {
     Ok(start_watch(tx).1)
 }
+
+/// The display holding physical pixel `(x, y)`; the first when none does.
+fn display_at_pixel(all: &[LocalDisplay], x: f64, y: f64) -> &LocalDisplay {
+    all.iter()
+        .find(|d| {
+            x >= d.origin.0
+                && x < d.origin.0 + f64::from(d.pixel_size.0)
+                && y >= d.origin.1
+                && y < d.origin.1 + f64::from(d.pixel_size.1)
+        })
+        .unwrap_or(&all[0])
+}
+
+/// A physical pixel as desktop logical coordinates, with the scale of the
+/// display it is on (the module header gives the mapping).
+pub(crate) fn pixel_to_logical(all: &[LocalDisplay], x: i32, y: i32) -> ((f64, f64), f64) {
+    let d = display_at_pixel(all, f64::from(x), f64::from(y));
+    let scale = f64::from(d.scale);
+    (
+        (
+            d.origin.0 + (f64::from(x) - d.origin.0) / scale,
+            d.origin.1 + (f64::from(y) - d.origin.1) / scale,
+        ),
+        scale,
+    )
+}
+
+/// Desktop logical coordinates as a physical pixel; the first display stands
+/// in for a point outside every display.
+pub(crate) fn logical_to_pixel(all: &[LocalDisplay], x: f64, y: f64) -> (i32, i32) {
+    let d = all
+        .iter()
+        .find(|d| {
+            x >= d.origin.0
+                && x < d.origin.0 + d.logical_size.0
+                && y >= d.origin.1
+                && y < d.origin.1 + d.logical_size.1
+        })
+        .unwrap_or(&all[0]);
+    let scale = f64::from(d.scale);
+    (
+        (d.origin.0 + (x - d.origin.0) * scale).round() as i32,
+        (d.origin.1 + (y - d.origin.1) * scale).round() as i32,
+    )
+}
+
+/// Read access to a [`DisplayCache`] from another thread.
+#[derive(Clone)]
+pub(crate) struct DisplayView(std::sync::Arc<std::sync::Mutex<Vec<LocalDisplay>>>);
+
+impl DisplayView {
+    pub(crate) fn snapshot(&self) -> Vec<LocalDisplay> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// The current displays, kept fresh by a watch, for code that converts
+/// coordinates on every input event.
+pub(crate) struct DisplayCache {
+    shown: std::sync::Arc<std::sync::Mutex<Vec<LocalDisplay>>>,
+    #[cfg_attr(not(test), allow(dead_code))]
+    updates: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    #[cfg_attr(not(test), allow(dead_code))]
+    hwnd: isize,
+    _watch: WatchHandle,
+}
+
+impl DisplayCache {
+    pub(crate) fn new() -> Self {
+        let shown = std::sync::Arc::new(std::sync::Mutex::new(displays().expect("displays")));
+        let updates = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (hwnd, watch) = start_watch(tx);
+        let (into, count) = (shown.clone(), updates.clone());
+        // Ends when the watch drops its sender.
+        std::thread::spawn(move || {
+            while let Ok(next) = rx.recv() {
+                *into.lock().unwrap() = next;
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        });
+        DisplayCache {
+            shown,
+            updates,
+            hwnd: hwnd.0 as isize,
+            _watch: watch,
+        }
+    }
+
+    /// The watch window, for tests to post display messages to.
+    #[cfg(test)]
+    pub(crate) fn hwnd(&self) -> HWND {
+        HWND(self.hwnd as _)
+    }
+
+    pub(crate) fn snapshot(&self) -> Vec<LocalDisplay> {
+        self.shown.lock().unwrap().clone()
+    }
+
+    /// A handle other threads can read the displays through.
+    pub(crate) fn view(&self) -> DisplayView {
+        DisplayView(self.shown.clone())
+    }
+
+    /// How many watch updates have been applied.
+    #[cfg(test)]
+    pub(crate) fn updates(&self) -> u32 {
+        self.updates.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}

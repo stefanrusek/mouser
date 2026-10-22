@@ -749,6 +749,8 @@ fn main() {
         Some("hooktest") => run_hooktest(),
         Some("listen") => run_listen(),
         Some("stall") => run_stall(false),
+        Some("setcursor") => run_setcursor(),
+        Some("edge") => run_edge(),
         Some("slow") => run_slow(),
         Some("stall-self") => run_stall(true),
         Some("inject") => std::println!("inject accepted/err={:?}", inject_batch_body()),
@@ -886,5 +888,77 @@ fn run_slow() {
             let kr = UnhookWindowsHookEx(kh).is_ok();
             println!("slow callback {slow} ms: UnhookWindowsHookEx mouse ok={mr} key ok={kr}");
         }
+    }
+}
+
+/// Does `SetCursorPos` reach LL mouse hooks (and with which flags/extra info)?
+fn run_setcursor() {
+    create_windows();
+    let (mh, kh) = install_hooks();
+    pump_for(Duration::from_millis(200));
+    reset();
+    let start = cursor();
+    let calls = while_pumping(move || {
+        for i in 0..10 {
+            unsafe { SetCursorPos(start.x + (i % 2) * 5, start.y).unwrap() };
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        unsafe { SetCursorPos(start.x, start.y).unwrap() };
+    });
+    let () = calls;
+    pump_for(Duration::from_millis(300));
+    report("setcursor 11 SetCursorPos calls");
+    unsafe {
+        UnhookWindowsHookEx(mh).unwrap();
+        UnhookWindowsHookEx(kh).unwrap();
+    }
+}
+
+static LAST_PT: std::sync::Mutex<Vec<(i32, i32, i32, i32)>> = std::sync::Mutex::new(Vec::new());
+
+unsafe extern "system" fn edge_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 && wp.0 as u32 == WM_MOUSEMOVE {
+        let info = unsafe { &*(lp.0 as *const MSLLHOOKSTRUCT) };
+        let mut now = POINT::default();
+        unsafe { GetCursorPos(&mut now).unwrap() };
+        LAST_PT.lock().unwrap().push((info.pt.x, info.pt.y, now.x, now.y));
+        if SWALLOW.load(SeqCst) {
+            return LRESULT(1);
+        }
+    }
+    unsafe { CallNextHookEx(None, code, wp, lp) }
+}
+
+/// At the right edge of the virtual screen, a relative +10 px move: is the hook's
+/// `pt` clamped, and what does GetCursorPos say inside the hook? Pass-through,
+/// then swallowed (the cursor parked at the edge).
+fn run_edge() {
+    create_windows();
+    let hinst: HINSTANCE = unsafe { GetModuleHandleW(None).unwrap().into() };
+    let h = unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(edge_proc), Some(hinst), 0).unwrap() };
+    let right = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) } - 1;
+    let start = cursor();
+    for swallow in [false, true] {
+        SWALLOW.store(swallow, SeqCst);
+        unsafe { SetCursorPos(right - 2, start.y).unwrap() };
+        pump_for(Duration::from_millis(100));
+        LAST_PT.lock().unwrap().clear();
+        while_pumping(|| {
+            for _ in 0..3 {
+                unsafe { SendInput(&[mouse_rel(10, 0)], size_of::<INPUT>() as i32) };
+                std::thread::sleep(Duration::from_millis(30));
+            }
+        });
+        pump_for(Duration::from_millis(200));
+        println!(
+            "edge (swallow={swallow}): screen right pixel={right}; hook (pt.x, pt.y, cursor.x, cursor.y) per +10 move: {:?}; cursor after: {:?}",
+            LAST_PT.lock().unwrap(),
+            (cursor().x, cursor().y)
+        );
+    }
+    SWALLOW.store(false, SeqCst);
+    unsafe {
+        SetCursorPos(start.x, start.y).unwrap();
+        UnhookWindowsHookEx(h).unwrap();
     }
 }

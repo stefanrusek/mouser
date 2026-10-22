@@ -78,3 +78,14 @@ Data object: `FileGroupDescriptorW` (HGLOBAL; `FD_FILESIZE | FD_PROGRESSUI`) and
 Drop location: Explorer does not tell the source where it dropped. After `DoDragDrop` returned, `WindowFromPoint(drop point)` → `GetAncestor(GA_ROOT)` gave the `CabinetWClass` window. In `IShellWindows`, the entry whose `IWebBrowserApp::HWND` equals that window then yielded the folder (`IServiceProvider::QueryService(SID_STopLevelBrowser, IShellBrowser)` → `QueryActiveShellView` → `IFolderView::GetFolder(IPersistFolder2)` → `GetCurFolder` → `SHGetPathFromIDListW`), which was exactly the drop folder in both runs. `IShellBrowser::GetWindow` returns an inner window, not the `CabinetWClass` window, so it cannot be used for the match.
 
 Not exercised: dropping on the desktop, into a folder that already holds the names (overwrite prompt), cancelling Explorer's copy, and drops into non-Explorer targets.
+
+### Added with US2 capture (`spike_hooks setcursor`, `spike_hooks edge`)
+
+Same VM and conditions as above.
+
+| Observation | Result |
+|---|---|
+| `SetCursorPos` reaches the LL mouse hook | **no**: 11 calls, 0 hook events. Parking the cursor does not echo into capture |
+| Hook point `pt` at the right screen edge, pass-through, +10 relative moves | not clamped: `pt.x` 2572, 2580, 2581 with the screen's last pixel 2559 and the cursor clamped to 2557, 2559, 2559 |
+| Same, hook swallowing | cursor stays put (2557); `pt.x` 2578 every time, i.e. cursor plus the accelerated delta. So a swallowed move's delta is `pt` minus the parked point, also at an edge |
+| A zero-length tagged relative move reaches the LL mouse hook | **no**; a one-pixel one does. The capture watchdog's probe is a tagged one-pixel move, which the hook swallows so the cursor never moves |

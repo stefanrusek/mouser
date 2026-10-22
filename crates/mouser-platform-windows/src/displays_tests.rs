@@ -1,4 +1,5 @@
 use crate::displays::*;
+use mouser_platform::LocalDisplay;
 use std::time::Duration;
 use windows::Win32::Foundation::{LPARAM, RECT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -162,4 +163,44 @@ fn a_watch_whose_receiver_is_gone_keeps_running() {
     drop(handle);
     let (tx, _rx) = std::sync::mpsc::channel();
     drop(watch(tx).unwrap());
+}
+
+fn two_displays() -> Vec<LocalDisplay> {
+    let at = |origin: f64, scale: f32, px: u32| LocalDisplay {
+        key: String::new(),
+        name: String::new(),
+        pixel_size: (px, 1000),
+        logical_size: (f64::from(px) / f64::from(scale), 1000.0 / f64::from(scale)),
+        scale,
+        physical_size_mm: None,
+        origin: (origin, 0.0),
+    };
+    vec![at(0.0, 1.0, 2000), at(2000.0, 2.0, 2000)]
+}
+
+#[test]
+fn pixels_and_logical_points_convert_per_display_scale() {
+    let all = two_displays();
+    assert_eq!(pixel_to_logical(&all, 500, 40), ((500.0, 40.0), 1.0));
+    // 400 px into the 2x display is 200 logical points.
+    assert_eq!(pixel_to_logical(&all, 2400, 100), ((2200.0, 50.0), 2.0));
+    assert_eq!(logical_to_pixel(&all, 500.0, 40.0), (500, 40));
+    assert_eq!(logical_to_pixel(&all, 2200.0, 50.0), (2400, 100));
+    // Outside every display: the first display stands in.
+    assert_eq!(pixel_to_logical(&all, -5, -5), ((-5.0, -5.0), 1.0));
+    assert_eq!(logical_to_pixel(&all, -5.0, 3.0), (-5, 3));
+}
+
+#[test]
+fn the_cache_follows_display_changes() {
+    let cache = DisplayCache::new();
+    assert_eq!(cache.snapshot(), displays().unwrap());
+    let before = cache.updates();
+    unsafe { PostMessageW(Some(cache.hwnd()), WM_DISPLAYCHANGE, WPARAM(0), LPARAM(0)) }.unwrap();
+    let end = std::time::Instant::now() + Duration::from_secs(5);
+    while cache.updates() == before {
+        assert!(std::time::Instant::now() < end, "no update");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(cache.snapshot(), displays().unwrap());
 }

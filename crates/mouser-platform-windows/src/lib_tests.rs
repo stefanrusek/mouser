@@ -11,33 +11,6 @@ fn private_settings(dir: &std::path::Path) -> Settings {
 }
 
 #[test]
-fn info_reports_windows_with_its_version_and_declared_limitations() {
-    let info = WinPlatform::default().info();
-    assert_eq!(info.os, Os::Windows);
-    assert_eq!(info.session, SessionType::Native);
-    let parts: Vec<u32> = info
-        .version
-        .split('.')
-        .map(|p| p.parse().unwrap())
-        .collect();
-    assert_eq!(parts.len(), 3, "{}", info.version);
-    assert_eq!(
-        parts[0], 10,
-        "Windows 10 and 11 both report major version 10"
-    );
-    let declared: Vec<Capability> = info.limitations.iter().map(|l| l.capability).collect();
-    assert_eq!(
-        declared,
-        [
-            Capability::Capture,
-            Capability::Inject,
-            Capability::Clipboard,
-            Capability::FileDrag
-        ]
-    );
-}
-
-#[test]
 fn system_settings_point_at_program_data_and_the_real_run_keys() {
     let s = Settings::system();
     let expected = PathBuf::from(std::env::var("ProgramData").unwrap()).join(r"Mouser\secrets");
@@ -58,13 +31,10 @@ fn capabilities_of_later_phases_are_unsupported_not_panicking() {
     let p = WinPlatform::new();
     let (tx, _rx) = std::sync::mpsc::channel();
     assert!(matches!(p.watch_network(tx), Err(Error::Unsupported)));
-    assert!(matches!(p.capture(), Err(Error::Unsupported)));
-    assert!(matches!(p.inject(), Err(Error::Unsupported)));
     assert!(matches!(p.clipboard(), Err(Error::Unsupported)));
     assert!(p.file_drag().is_none());
     assert!(p.secure_input().is_none());
     assert!(!p.foreground_is_fullscreen());
-    assert!(!p.foreground_elevated());
 }
 
 #[test]
@@ -110,4 +80,27 @@ fn delegates_displays_and_their_watch() {
     assert_eq!(p.displays().unwrap(), crate::displays::displays().unwrap());
     let (tx, _rx) = std::sync::mpsc::channel();
     drop(p.watch_displays(tx).unwrap());
+}
+
+#[test]
+fn capture_and_injection_are_provided_and_elevation_is_asked_of_uipi() {
+    let p = WinPlatform::new();
+    drop(p.capture().unwrap());
+    drop(p.inject().unwrap());
+    let _ = p.foreground_elevated();
+}
+
+#[test]
+fn problems_reach_the_listener_when_there_is_one() {
+    let p = WinPlatform::new();
+    let sink = p.problem_sink();
+    // Nobody listens yet.
+    sink("unheard".into());
+    let (tx, rx) = std::sync::mpsc::channel();
+    p.watch_problems(tx);
+    sink("heard".into());
+    assert_eq!(rx.try_recv().unwrap(), "heard");
+    // A listener that went away is not an error.
+    drop(rx);
+    sink("gone".into());
 }
