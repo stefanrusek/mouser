@@ -70,7 +70,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         rtt_ms: None,
         last_seen: None,
         permissions,
-        limitations: info.limitations.into_iter().map(|l| l.text).collect(),
+        limitations: ctx.limitations().into_iter().map(|l| l.text).collect(),
         displays: my_displays,
     }];
     if let Some(desk) = &core.state.desk {

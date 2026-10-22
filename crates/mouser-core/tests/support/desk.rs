@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use mouser_core::discovery::{Advert, Discovery, Found};
 use mouser_core::{ControlClient, Engine, EngineEvent, EngineParams};
+use mouser_platform::Platform as _;
 use mouser_proto::config::Config;
 use mouser_proto::control::{Method, Notification, RpcError, Status, Topic};
 use mouser_proto::ids::ComputerId;
@@ -129,6 +130,8 @@ pub struct Setup {
     pub installer: Option<mouser_core::release::Installer>,
     /// The updater public key releases must be signed with (default: Mouser's).
     pub release_pubkey: Option<String>,
+    /// Run from a removable drive: `MouserData/` beside the executable.
+    pub portable: bool,
 }
 
 impl Default for Setup {
@@ -142,6 +145,7 @@ impl Default for Setup {
             clipboard_holds: None,
             installer: None,
             release_pubkey: None,
+            portable: false,
         }
     }
 }
@@ -152,6 +156,8 @@ pub struct Node {
     pub platform: VirtualPlatform,
     pub sim: SimNode,
     pub dir: tempfile::TempDir,
+    /// The removable drive a portable build runs from.
+    pub drive: Option<tempfile::TempDir>,
     pub events: Arc<Events>,
     setup: Setup,
     control_path: PathBuf,
@@ -179,6 +185,15 @@ fn free_port() -> u16 {
 }
 
 impl Node {
+    /// Where a portable build keeps its files, on its removable drive.
+    pub fn drive_data(&self) -> PathBuf {
+        self.drive
+            .as_ref()
+            .expect("a portable computer")
+            .path()
+            .join("MouserData")
+    }
+
     pub fn id(&self) -> ComputerId {
         self.engine.as_ref().expect("node is running").computer_id()
     }
@@ -308,6 +323,18 @@ impl Node {
             self.name.clone(),
             self.setup.mouser_version.clone(),
         );
+        if let Some(drive) = &self.drive {
+            // This computer's own folders are inside `dir`.
+            let home = Some(self.dir.path().to_path_buf());
+            let env = mouser_core::paths::Env {
+                home: home.clone(),
+                appdata: home,
+                xdg_config_home: None,
+            };
+            let exe = drive.path().join("mouser");
+            let paths = mouser_core::paths::Paths::resolve(&exe, self.platform.info().os, &env);
+            params = params.with_paths(&paths);
+        }
         params.protocol_version = self.setup.protocol_version;
         params.discovery = Some(Arc::new(discovery));
         params.installer = self.setup.installer.clone();
@@ -389,8 +416,16 @@ impl Lab {
     pub async fn add_with(&mut self, name: &str, mut setup: Setup) {
         let port = free_port();
         let dir = tempfile::tempdir().unwrap();
+        let drive = setup.portable.then(|| {
+            let drive = tempfile::tempdir().unwrap();
+            std::fs::create_dir(drive.path().join("MouserData")).unwrap();
+            drive
+        });
         setup.config.advanced.port = u32::from(port);
-        mouser_core::config::save(dir.path(), &setup.config);
+        let config_dir = drive
+            .as_ref()
+            .map_or_else(|| dir.path().to_path_buf(), |d| d.path().join("MouserData"));
+        mouser_core::config::save(&config_dir, &setup.config);
         let control_path = if cfg!(windows) {
             let n = PIPES.fetch_add(1, Ordering::Relaxed);
             PathBuf::from(format!(r"\\.\pipe\mouser-acc-{}-{n}", std::process::id()))
@@ -406,6 +441,7 @@ impl Lab {
             platform: setup.platform.clone(),
             sim,
             dir,
+            drive,
             events: Arc::new(Events::default()),
             setup,
             control_path,

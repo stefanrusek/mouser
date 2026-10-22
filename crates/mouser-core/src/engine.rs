@@ -72,6 +72,9 @@ pub struct EngineParams {
     /// [`crate::engine_headless`]) is given the machine-scope store, since
     /// no user store is open before anyone logs in.
     pub secrets: Option<Box<dyn SecretStore>>,
+    /// Running from `MouserData/` (see [`crate::paths`]): nothing is installed
+    /// on this computer, so start at login is never registered.
+    pub portable: bool,
 }
 
 impl EngineParams {
@@ -95,6 +98,7 @@ impl EngineParams {
             http: Http::system(),
             check_schedule: None,
             secrets: None,
+            portable: false,
         }
     }
 }
@@ -203,6 +207,7 @@ pub(crate) struct Ctx {
     pub identity: Identity,
     pub platform: Arc<dyn Platform>,
     pub config_dir: PathBuf,
+    pub portable: bool,
     pub computer_name: String,
     pub mouser_version: String,
     pub protocol_version: u16,
@@ -450,6 +455,7 @@ impl Engine {
         let ctx = Arc::new(Ctx {
             identity,
             platform: params.platform,
+            portable: params.portable,
             config_dir: params.config_dir,
             computer_name: params.computer_name,
             mouser_version: params.mouser_version,

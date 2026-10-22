@@ -20,7 +20,7 @@ impl Ctx {
     /// Raise a `platform_limitation` problem for each limitation the
     /// platform reports. They are facts about the platform, so once at start.
     pub(crate) fn raise_limitations(&self) {
-        for limitation in self.platform.info().limitations {
+        for limitation in self.limitations() {
             self.problems.raise(
                 ProblemKind::PlatformLimitation,
                 slug(limitation.capability),

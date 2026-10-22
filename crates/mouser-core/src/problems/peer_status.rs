@@ -22,13 +22,7 @@ impl Ctx {
                 .into_iter()
                 .map(|(k, s)| (permission_kind(k), permission_state(s)))
                 .collect::<BTreeMap<_, _>>(),
-            limitations: self
-                .platform
-                .info()
-                .limitations
-                .into_iter()
-                .map(|l| l.text)
-                .collect(),
+            limitations: self.limitations().into_iter().map(|l| l.text).collect(),
             secure_input_holder: self.platform.secure_input().map(|h| SecureInputHolder {
                 pid: h.pid,
                 app_name: h.app_name,

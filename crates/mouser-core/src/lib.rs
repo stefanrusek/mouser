@@ -12,6 +12,8 @@ pub mod engine_headless;
 pub mod identity;
 pub mod layout;
 pub mod logging;
+pub mod paths;
+pub mod portable;
 pub mod problems;
 pub mod quickjump;
 pub mod release;
@@ -24,6 +26,10 @@ pub mod transport;
 mod engine_headless_tests;
 #[cfg(test)]
 mod engine_tests;
+#[cfg(test)]
+mod paths_tests;
+#[cfg(test)]
+mod portable_tests;
 #[cfg(test)]
 mod testing;
 

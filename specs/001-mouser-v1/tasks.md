@@ -351,13 +351,13 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us13` passes: with a portable marker next to the executable all state lives under `MouserData/` and autostart is never enabled.
 
-- [ ] T225 [US13-core] Write the acceptance runner `crates/mouser-core/tests/acc_us13.rs` and steps `crates/mouser-core/tests/steps/us13.rs` for every scenario in `tests/features/us13.feature`
-- [ ] T226 [P] [US13-core] Write unit tests for portable paths in `crates/mouser-core/src/paths_tests.rs`: when `MouserData/` exists beside the executable, config, state, logs and the file-backed `SecretStore` live there and nothing is written elsewhere; otherwise the per-OS paths from contracts/config.md are used (Story 13 sc. 1–2)
-- [ ] T227 [US13-core] Implement portable path resolution in `crates/mouser-core/src/paths.rs`
-- [ ] T228 [P] [US13-core] Write unit tests for portable behaviour in `crates/mouser-core/src/portable_tests.rs`: in portable mode `Autostart::set` is never called and the platform's portable limitations are reported (D3 item 4)
-- [ ] T229 [US13-core] Implement portable behaviour in `crates/mouser-core/src/portable.rs`
-- [ ] T230 [US13-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T231 [US13-core] Commit: phase boundary "US13-core" (5.3)
+- [X] T225 [US13-core] Write the acceptance runner `crates/mouser-core/tests/acc_us13.rs` and steps `crates/mouser-core/tests/steps/us13.rs` for every scenario in `tests/features/us13.feature`
+- [X] T226 [P] [US13-core] Write unit tests for portable paths in `crates/mouser-core/src/paths_tests.rs`: when `MouserData/` exists beside the executable, config, state, logs and the file-backed `SecretStore` live there and nothing is written elsewhere; otherwise the per-OS paths from contracts/config.md are used (Story 13 sc. 1–2)
+- [X] T227 [US13-core] Implement portable path resolution in `crates/mouser-core/src/paths.rs`
+- [X] T228 [P] [US13-core] Write unit tests for portable behaviour in `crates/mouser-core/src/portable_tests.rs`: in portable mode `Autostart::set` is never called and the platform's portable limitations are reported (D3 item 4)
+- [X] T229 [US13-core] Implement portable behaviour in `crates/mouser-core/src/portable.rs`
+- [X] T230 [US13-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T231 [US13-core] Commit: phase boundary "US13-core" (5.3)
 
 ### Lane: app
 

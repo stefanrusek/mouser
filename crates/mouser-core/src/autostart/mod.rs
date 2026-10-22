@@ -8,10 +8,7 @@ impl Ctx {
     /// not) for start at login as `general.start_at_login` says.
     pub(crate) fn complete_first_run(&self) {
         let on = self.core.lock().unwrap().config.general.start_at_login;
-        self.platform
-            .autostart()
-            .set(on)
-            .expect("autostart can be set");
+        self.set_autostart(on);
     }
 
     /// On start, rejoin the persisted desk with no action: announce it so

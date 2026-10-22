@@ -151,3 +151,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - `--headless` (app lane): start `Engine` with `secrets = Some(FileSecrets)` and `config_dir` = the machine directory (macOS: e.g. `/Library/Application Support/Mouser`).
 - `send_cad` returns `{}`; non-Windows target or input not running → error -32001, `data.kind = platform_limitation`, "Ctrl-Alt-Del cannot be sent to <name>.". A received `SecureAttention` is honoured only from the computer currently controlling this one.
 - QuickJump: a vanished display cancels; the showing computer going offline hides desk-mates' letters; a jump probes `set_grabbed(true)` and on `Error::Unsupported` sends nothing. Edge crossings tolerate `Unsupported` from `set_grabbed`. Wayland's `set_grabbed` should return `Err(Error::Unsupported)`.
+
+## core US13 decisions (for app US13)
+
+- `mouser_core::paths::{Paths, Env, PORTABLE_DIR}`: `Paths::resolve(current_exe, os, &Env::from_process())` → `{dir, portable}`; portable when `MouserData/` is a directory beside the executable, else the per-OS config dir.
+- `EngineParams::with_paths(&paths)` sets `config_dir`, `portable`, and (portable) `FileSecrets` at `MouserData/secrets`; state and logs follow `config_dir`. On macOS also pass `MacPlatform::portable(paths.dir)` when portable.
+- Portable never calls `Autostart::set`. Windows portable adds the limitation "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator." (under `Capability::SecureAttention`). `Ctx::limitations()` is the single source for problems, status and peer status.

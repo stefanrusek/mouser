@@ -116,10 +116,7 @@ impl Ctx {
             }
         }
         if matches!(core.state.membership, Membership::Member(_)) {
-            self.platform
-                .autostart()
-                .set(core.config.general.start_at_login)
-                .expect("autostart can be set");
+            self.set_autostart(core.config.general.start_at_login);
         }
         if shared {
             self.share_config(&mut core);
