@@ -9,7 +9,7 @@ use mouser_platform::Os;
 use mouser_proto::control::{EngineState, Method, Status, UpdateResult};
 use tauri::{AppHandle, Manager, Runtime, Theme};
 
-use crate::{updater, windows};
+use crate::{tray_sas, updater, windows};
 
 /// The system's light or dark appearance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +146,8 @@ pub fn view(
         },
     ];
     entries.splice(1..1, version);
+    let quit = entries.len() - 1;
+    entries.splice(quit..quit, tray_sas::entry(status));
     TrayView {
         icon: Icon::choose(os, appearance, paused),
         entries,
@@ -247,6 +249,7 @@ pub enum Action {
     Arrange,
     Health,
     Update,
+    SendCad,
     Quit,
 }
 
@@ -258,6 +261,7 @@ pub fn action(id: &str) -> Action {
         ARRANGE_ID => Action::Arrange,
         HEALTH_ID => Action::Health,
         UPDATE_ID => Action::Update,
+        tray_sas::SEND_CAD_ID => Action::SendCad,
         QUIT_ID => Action::Quit,
         other => panic!("the tray has no menu line \"{other}\""),
     }

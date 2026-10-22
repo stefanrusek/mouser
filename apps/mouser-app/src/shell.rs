@@ -225,6 +225,13 @@ pub fn run() {
                             updater::apply(&control).await;
                         });
                     }
+                    tray::Action::SendCad => {
+                        let (control, app) = (menu_control.clone(), app.clone());
+                        tauri::async_runtime::spawn(async move {
+                            let result = crate::tray_sas::send(&control).await;
+                            crate::tray_sas::report(result, &LiveNotifier(app));
+                        });
+                    }
                     tray::Action::Quit => app.exit(0),
                 })
                 .build(app)?;

@@ -64,6 +64,8 @@ export async function init({ doc, api, every, onFocus }) {
   const errorLine = doc.getElementById('error');
   const logging = doc.getElementById('logging');
   const openLog = doc.getElementById('open-log');
+  const sendCad = doc.getElementById('send-cad');
+  const cadSection = doc.getElementById('cad-section');
   const state = { logPath: '' };
 
   const fix = guarded(errorLine, (problem) => api.fix(problem.problem_id, problem.fix));
@@ -74,6 +76,9 @@ export async function init({ doc, api, every, onFocus }) {
     doc.getElementById('computers').replaceChildren(
       ...status.computers.map((c) => renderComputer(doc, c, status.problems, status.computer.id, fix)),
     );
+    // Only a Windows computer can receive it; no active computer means this one.
+    const active = status.active_computer ?? status.computer.id;
+    show(cadSection, status.computers.some((c) => c.id === active && c.os === 'windows'));
     logging.checked = status.logging.enabled;
     state.logPath = status.logging.path;
     showLog(status.logging.enabled);
@@ -88,6 +93,7 @@ export async function init({ doc, api, every, onFocus }) {
       showLog(logging.checked);
     }),
   );
+  sendCad.addEventListener('click', guarded(errorLine, () => api.call('send_cad')));
   openLog.addEventListener('click', guarded(errorLine, () => api.openFolder(state.logPath)));
 
   await api.onNotification((note) => {

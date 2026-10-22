@@ -456,10 +456,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: tray model test passes for the Send Ctrl-Alt-Del item.
 
-- [ ] T281 [P] [US12-app] Write unit tests in `apps/mouser-app/src/tray_sas_tests.rs`: the tray menu shows "Send Ctrl-Alt-Del" only while a Windows computer is active and invokes `send_cad`; when there is no tray (GNOME without AppIndicator) the same action is in the main window (Story 12 sc. 4; D3 item 5)
-- [ ] T282 [US12-app] Implement the Send Ctrl-Alt-Del menu item in `apps/mouser-app/src/tray_sas.rs`
-- [ ] T283 [US12-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T284 [US12-app] Commit: phase boundary "US12-app" (5.3)
+- [X] T281 [P] [US12-app] Write unit tests in `apps/mouser-app/src/tray_sas_tests.rs`: the tray menu shows "Send Ctrl-Alt-Del" only while a Windows computer is active and invokes `send_cad`; when there is no tray (GNOME without AppIndicator) the same action is in the main window (Story 12 sc. 4; D3 item 5)
+- [X] T282 [US12-app] Implement the Send Ctrl-Alt-Del menu item in `apps/mouser-app/src/tray_sas.rs`
+- [X] T283 [US12-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T284 [US12-app] Commit: phase boundary "US12-app" (5.3)
 
 #### Phase 25: US13-app — As a desk owner, I want to run Mouser without installing it (P3)
 

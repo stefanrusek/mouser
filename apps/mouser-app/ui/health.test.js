@@ -206,3 +206,24 @@ test('a failed refresh is shown', async () => {
   const { doc } = await start(new Error('Mouser is not running.'));
   assert.equal(doc.getElementById('error').textContent, 'Mouser is not running.');
 });
+
+test('Send Ctrl-Alt-Del shows only while a Windows computer is active and calls send_cad', async () => {
+  const hidden = await start(full());
+  assert.equal(hidden.doc.getElementById('cad-section').hidden, true);
+
+  const home = await start({ ...full(), computers: [{ ...full().computers[0], os: 'windows' }] });
+  assert.equal(home.doc.getElementById('cad-section').hidden, false);
+
+  const remote = await start({ ...full(), active_computer: 'bb' }, { send_cad: {} });
+  assert.equal(remote.doc.getElementById('cad-section').hidden, false);
+  click(remote.win, remote.doc.getElementById('send-cad'));
+  await flush();
+  assert.deepEqual(remote.api.calls.at(-1), ['send_cad', undefined]);
+});
+
+test('a refused Send Ctrl-Alt-Del shows the engine message', async () => {
+  const page = await start({ ...full(), active_computer: 'bb' }, { send_cad: new Error('Ctrl-Alt-Del cannot be sent to Studio.') });
+  click(page.win, page.doc.getElementById('send-cad'));
+  await flush();
+  assert.equal(page.doc.getElementById('error').textContent, 'Ctrl-Alt-Del cannot be sent to Studio.');
+});
