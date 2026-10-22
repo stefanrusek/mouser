@@ -604,8 +604,7 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 39: US1-platform-windows — As a desk owner, I want to put my computers on a desk (P1)
 
-- [X] T366 [US1-platform-windows] Run hardware probe 1 from FINDINGS-windows-linux "Probes to schedule" on the owner's Windows 11 machine as `crates/mouser-platform-windows/probes/spike_hooks/` (LL hooks vs Raw Input for swallowed events; LL hooks with an elevated foreground window; ClipCursor across a desktop switch) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
-- [ ] T367 [US1-platform-windows] Run hardware probe 2 as `crates/mouser-platform-windows/probes/spike_service/` (winlogon-token agent at cold boot, on UAC and fast user switching; SendSAS with SoftwareSASGeneration 1 vs 3) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
+- [X] T366 [US1-platform-windows] (the elevated-foreground-window part is deferred with the UAC work, 2026-10-22) Run hardware probe 1 from FINDINGS-windows-linux "Probes to schedule" on the owner's Windows 11 machine as `crates/mouser-platform-windows/probes/spike_hooks/` (LL hooks vs Raw Input for swallowed events; LL hooks with an elevated foreground window; ClipCursor across a desktop switch) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
 - [X] T368 [US1-platform-windows] Run hardware probe 3 as `crates/mouser-platform-windows/probes/spike_drag/` (DoDragDrop started by an injected button-down; virtual-file drop into Explorer with IDataObjectAsyncCapability) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
 - [X] T369 [P] [US1-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_us1.rs` running conformance rules 6, 8, 9 against `WinPlatform`
 - [X] T370 [P] [US1-platform-windows] Write unit tests for interface classification in `crates/mouser-platform-windows/src/net_tests.rs`: `GetAdaptersAddresses` IfType Ethernet/Wi-Fi → `PhysicalLan`; vEthernet, Hyper-V, VMware, VirtualBox, TAP, WireGuard, Tailscale, tunnel types → `Virtual`; loopback → `Loopback`
@@ -674,22 +673,12 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 ### Lane: service-win
 
-Package `apps/mouser-service-win` (Windows SYSTEM service + per-session agent; Complexity Tracking in plan.md). Gate per phase: `cargo xtask gate --packages mouser-service-win --lane service-win` **on the Windows runner**. Depends on the hardware probe 2 results recorded in the platform-windows lane.
+Package `apps/mouser-service-win` (Windows SYSTEM service + per-session agent; Complexity Tracking in plan.md). Gate per phase: `cargo xtask gate --packages mouser-service-win --lane service-win` **on the Windows runner**. **Deferred (owner decision 2026-10-22): the lane does not run in this feature; see the last section.** Depends on the hardware probe 2 results recorded in the platform-windows lane.
 
 #### Phase 46: US12-service-win — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 
-- [ ] T415 [P] [US12-service-win] Write unit tests for the service in `apps/mouser-service-win/src/service_tests.rs`: installs as `MouserService` (LocalSystem, automatic start); runs a headless `mouser_core::Engine` that loads machine-scope desk secrets and joins the desk before any user logs in (Story 12 sc. 2)
-- [ ] T416 [US12-service-win] Implement the Windows service entry point in `apps/mouser-service-win/src/service.rs`
-- [ ] T417 [P] [US12-service-win] Write unit tests for session tracking in `apps/mouser-service-win/src/session_tests.rs`: on console-session change the service duplicates the `winlogon.exe` token of the active session and starts the agent with `CreateProcessAsUserW`, restarting it on session switch (Story 12 sc. 3)
-- [ ] T418 [US12-service-win] Implement session tracking and agent launch in `apps/mouser-service-win/src/session.rs`
-- [ ] T419 [P] [US12-service-win] Write unit tests for the agent in `apps/mouser-service-win/src/agent_tests.rs`: the agent follows the input desktop with `OpenInputDesktop(DF_ALLOWOTHERACCOUNTHOOK)` + `SetThreadDesktop` and injects input received from the service on the login screen, UAC secure desktop and lock screen (Story 12 sc. 2–3)
-- [ ] T420 [US12-service-win] Implement the per-session agent in `apps/mouser-service-win/src/agent.rs`
-- [ ] T421 [P] [US12-service-win] Write unit tests for service ↔ agent IPC in `apps/mouser-service-win/src/ipc_tests.rs`: a named pipe restricted to SYSTEM and the agent's session carries input and secure-attention requests
-- [ ] T422 [US12-service-win] Implement the service ↔ agent IPC in `apps/mouser-service-win/src/ipc.rs`
-- [ ] T423 [P] [US12-service-win] Write unit tests for Ctrl-Alt-Del in `apps/mouser-service-win/src/sas_tests.rs`: a secure-attention request calls `SendSAS(FALSE)`; when the `SoftwareSASGeneration` policy is not 1 or 3 a `platform_limitation` Problem says Group Policy blocks it (Story 12 sc. 4)
-- [ ] T424 [US12-service-win] Implement `SendSAS` handling in `apps/mouser-service-win/src/sas.rs`
-- [ ] T425 [US12-service-win] Gate: `cargo xtask gate --packages mouser-service-win --lane service-win` on the Windows runner
-- [ ] T426 [US12-service-win] Commit: phase boundary "US12-service-win" (5.3)
+Deferred to a future feature: all of this phase (T415–T426) moved to "Deferred to a future feature (owner decision 2026-10-22)" below. `apps/mouser-service-win` stays a stub.
+
 
 ### Lane: platform-linux
 
@@ -836,14 +825,14 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 | app | 16–25 (US1, US2, US4, US5, US7, US8, US10, US11, US12, US13) | macOS locally; CI all |
 | cli | 26–30 (US1, US2, US9, US10, US12) | any |
 | platform-macos | 31–38 (US1, US2, US3, US5, US6, US7, US12, US13) | macOS |
-| platform-windows | 39–45 (US1, US2, US3, US5, US6, US7, US13) | Windows (+ owner's PC for probes) |
-| service-win | 46 (US12) | Windows; after platform-windows probe 2 |
+| platform-windows | 39–45 (US1, US2, US3, US5, US6, US7, US13) | Windows (+ owner's PC for probes; probe 2 deferred) |
+| service-win | 46 (US12) | Deferred (owner decision 2026-10-22); not run in this feature |
 | platform-linux | 47–53 (US1, US2, US3, US5, US6, US7, US13) | Ubuntu (+ owner's Linux desktops for probes) |
 
 ### Cross-lane dependencies
 
 - Lanes compile against the frozen `mouser-proto` and `mouser-platform` only; `app` and `cli` tests use `mouser-core` and `VirtualPlatform`, so they need the matching core phase merged first (e.g. US1-app after US1-core).
-- `service-win` Phase 46 needs platform-windows Phase 39 probe 2 recorded.
+- `service-win` Phase 46 is deferred (owner decision 2026-10-22); the Convergence (T495) and Polish (T504) gates do not wait for it or for probe 2 (T367).
 - A refuted hardware probe (Phases 39, 47) halts that lane and returns to the plan (contracts are frozen; changes are plan-level, 3.3).
 
 ### Story completion
@@ -853,7 +842,7 @@ A story is complete when all its `USn-*` phases and Convergence have passed (5.2
 ## Parallel Example: after Foundational
 
 ```bash
-# Seven concurrent lanes (separate worktrees, each bootstrapped with
+# Six active lanes (service-win is deferred) (separate worktrees, each bootstrapped with
 #   cargo fetch --locked && cargo xtask bootstrap):
 lane core              → Phase 3  (US1-core)
 lane app               → Phase 16 (US1-app)          # after US1-core merged
@@ -861,7 +850,7 @@ lane cli               → Phase 26 (US1-cli)          # after US1-core merged
 lane platform-macos    → Phase 31 (US1-platform-macos)
 lane platform-windows  → Phase 39 (probes, then US1-platform-windows)
 lane platform-linux    → Phase 47 (probes, then US1-platform-linux)
-lane service-win       → Phase 46 (after probe 2)
+lane service-win       → deferred (owner decision 2026-10-22)
 ```
 
 Within a phase, `[P]` test tasks for different files can be written together; each implementation task follows its own test task.
@@ -884,3 +873,21 @@ Add P2 (US4–US8) then P3 (US9–US13) phases lane by lane; each lane phase is 
 - Field constraints from data-model.md are quoted in the tasks that implement them.
 - Do not add behaviour, error handling or defensive branches beyond spec.md (5.5, 5.6); unspecified failures crash loudly.
 - Touched-file ownership (5.7): fix any defect found in a file you modify, with a test, in the same task.
+
+## Deferred to a future feature (owner decision 2026-10-22)
+
+Reason: Windows UAC, secure-desktop and login-screen tooling (winlogon-token agent, SYSTEM service, SendSAS) is postponed to a later feature run; nothing here is done, and none of it gates Convergence or Polish. `apps/mouser-service-win` stays a stub.
+
+- [ ] T367 [US1-platform-windows] Run hardware probe 2 as `crates/mouser-platform-windows/probes/spike_service/` (winlogon-token agent at cold boot, on UAC and fast user switching; SendSAS with SoftwareSASGeneration 1 vs 3) and record observed output in `crates/mouser-platform-windows/probes/FINDINGS.md`
+- [ ] T415 [P] [US12-service-win] Write unit tests for the service in `apps/mouser-service-win/src/service_tests.rs`: installs as `MouserService` (LocalSystem, automatic start); runs a headless `mouser_core::Engine` that loads machine-scope desk secrets and joins the desk before any user logs in (Story 12 sc. 2)
+- [ ] T416 [US12-service-win] Implement the Windows service entry point in `apps/mouser-service-win/src/service.rs`
+- [ ] T417 [P] [US12-service-win] Write unit tests for session tracking in `apps/mouser-service-win/src/session_tests.rs`: on console-session change the service duplicates the `winlogon.exe` token of the active session and starts the agent with `CreateProcessAsUserW`, restarting it on session switch (Story 12 sc. 3)
+- [ ] T418 [US12-service-win] Implement session tracking and agent launch in `apps/mouser-service-win/src/session.rs`
+- [ ] T419 [P] [US12-service-win] Write unit tests for the agent in `apps/mouser-service-win/src/agent_tests.rs`: the agent follows the input desktop with `OpenInputDesktop(DF_ALLOWOTHERACCOUNTHOOK)` + `SetThreadDesktop` and injects input received from the service on the login screen, UAC secure desktop and lock screen (Story 12 sc. 2–3)
+- [ ] T420 [US12-service-win] Implement the per-session agent in `apps/mouser-service-win/src/agent.rs`
+- [ ] T421 [P] [US12-service-win] Write unit tests for service ↔ agent IPC in `apps/mouser-service-win/src/ipc_tests.rs`: a named pipe restricted to SYSTEM and the agent's session carries input and secure-attention requests
+- [ ] T422 [US12-service-win] Implement the service ↔ agent IPC in `apps/mouser-service-win/src/ipc.rs`
+- [ ] T423 [P] [US12-service-win] Write unit tests for Ctrl-Alt-Del in `apps/mouser-service-win/src/sas_tests.rs`: a secure-attention request calls `SendSAS(FALSE)`; when the `SoftwareSASGeneration` policy is not 1 or 3 a `platform_limitation` Problem says Group Policy blocks it (Story 12 sc. 4)
+- [ ] T424 [US12-service-win] Implement `SendSAS` handling in `apps/mouser-service-win/src/sas.rs`
+- [ ] T425 [US12-service-win] Gate: `cargo xtask gate --packages mouser-service-win --lane service-win` on the Windows runner
+- [ ] T426 [US12-service-win] Commit: phase boundary "US12-service-win" (5.3)
