@@ -2,8 +2,8 @@
 //!
 //! Session detection, portal permissions, interface classification, the
 //! Secret Service / 0600-file secret store, XDG autostart and tray detection.
-//! Capabilities a later phase adds report `Unsupported` and are declared as
-//! limitations (rule 9) until it lands.
+//! Capabilities the platform lacks report `Unsupported` (or `None`) and are
+//! declared as limitations (rule 9).
 //!
 //! Linux only: on any other system this crate is an empty library, so the
 //! workspace builds everywhere.
@@ -12,9 +12,13 @@
 
 mod autostart;
 mod bus;
+mod clipboard;
+mod drag;
 mod keymap;
 mod net;
+mod netwatch;
 mod permissions;
+mod portable;
 mod secrets;
 mod session;
 mod tray;
@@ -24,7 +28,7 @@ mod x11;
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
-    Result, SecretStore, SecureInputHolder, SessionType, Unsupported, WatchHandle,
+    Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -65,6 +69,10 @@ impl Settings {
 /// The Linux implementation of [`Platform`].
 pub struct LinuxPlatform {
     settings: Settings,
+    /// `MouserData/` of a portable run; `None` when installed.
+    data_dir: Option<PathBuf>,
+    /// The RemoteDesktop grant input injection and the clipboard share.
+    desktop: Arc<wayland::desktop::Desktop>,
     /// What the injector sent, so the capture does not report it back.
     echo: Arc<x11::echo::Echo>,
     /// The Wayland display zones once known.
@@ -77,8 +85,15 @@ impl LinuxPlatform {
     }
 
     pub fn with_settings(settings: Settings) -> Self {
+        Self::build(settings, None)
+    }
+
+    fn build(settings: Settings, data_dir: Option<PathBuf>) -> Self {
+        let vault = secrets::Vault::new(&settings.env, data_dir.clone());
         LinuxPlatform {
+            desktop: wayland::desktop::Desktop::new(settings.env.clone(), vault),
             settings,
+            data_dir,
             echo: Arc::default(),
             zones: Arc::default(),
         }
@@ -102,20 +117,13 @@ fn limitation(capability: Capability, text: &str) -> Limitation {
     }
 }
 
-/// Capabilities whose Linux backend lands in a later phase.
-fn pending_limitations() -> Vec<Limitation> {
-    vec![limitation(
-        Capability::Clipboard,
-        "Sharing the clipboard is not available yet on Linux.",
-    )]
-}
-
 impl Platform for LinuxPlatform {
     fn info(&self) -> PlatformInfo {
         let session = self.session();
         let wayland = session == SessionType::Wayland;
         let env = self.settings.env.clone();
-        let (portals, tray) = bus::block_on(async move {
+        let gnome = wayland::clipboard::is_gnome(&env);
+        let (portals, tray, shell) = bus::block_on(async move {
             match bus::connect(&env).await {
                 Ok(conn) => (
                     if wayland {
@@ -124,23 +132,29 @@ impl Platform for LinuxPlatform {
                         session::PortalFacts::default()
                     },
                     tray::has_watcher(&conn).await,
+                    if wayland && gnome {
+                        wayland::clipboard::shell_major(&conn).await
+                    } else {
+                        None
+                    },
                 ),
-                Err(_) => (session::PortalFacts::default(), false),
+                Err(_) => (session::PortalFacts::default(), false, None),
             }
         });
-        let mut limitations = pending_limitations();
+        let mut limitations = Vec::new();
         if wayland {
             limitations.extend(session::wayland_limitations(&portals));
+            limitations.push(limitation(Capability::Capture, session::NO_FULLSCREEN));
+            limitations.push(limitation(Capability::Capture, session::NO_QUICKJUMP));
+            limitations.extend(wayland::clipboard::limitations(gnome, shell));
         }
-        limitations.push(limitation(
-            Capability::FileDrag,
-            "Dragging files between computers is not available on Linux; copy and paste the files instead.",
-        ));
+        limitations.push(limitation(Capability::FileDrag, drag::NO_FILE_DRAG));
         limitations.push(limitation(
             Capability::SecureAttention,
             "Ctrl-Alt-Del can only be sent to Windows computers.",
         ));
         limitations.extend(tray::limitations(tray));
+        limitations.extend(portable::limitations(self.data_dir.is_some(), session));
         PlatformInfo {
             os: Os::Linux,
             version: session::os_version(
@@ -201,7 +215,7 @@ impl Platform for LinuxPlatform {
     fn inject(&self) -> Result<Box<dyn InputInject>> {
         match self.session() {
             SessionType::Wayland => Ok(Box::new(wayland::inject::WaylandInject::new(
-                &self.settings.env,
+                self.desktop.clone(),
                 self.settings.device_wait,
             ))),
             _ => Ok(Box::new(x11::inject::X11Inject::new(
@@ -212,7 +226,15 @@ impl Platform for LinuxPlatform {
     }
 
     fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
-        Err(Unsupported)
+        match self.session() {
+            SessionType::Wayland => Ok(Box::new(wayland::clipboard::WaylandClipboard::new(
+                self.desktop.clone(),
+                &self.settings.env,
+            ))),
+            _ => Ok(Box::new(x11::clipboard::X11Clipboard::new(
+                &self.settings.env,
+            ))),
+        }
     }
 
     fn secure_input(&self) -> Option<SecureInputHolder> {
@@ -220,7 +242,13 @@ impl Platform for LinuxPlatform {
     }
 
     fn foreground_is_fullscreen(&self) -> bool {
-        false
+        match self.session() {
+            SessionType::Wayland => false,
+            _ => {
+                let (conn, root) = x11::connect(&self.settings.env);
+                x11::fullscreen::foreground_is_fullscreen(&conn, root)
+            }
+        }
     }
 
     fn interfaces(&self) -> Vec<NetInterface> {
@@ -228,7 +256,7 @@ impl Platform for LinuxPlatform {
     }
 
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle> {
-        Ok(net::watch(self.settings.sys_class_net.clone(), tx))
+        Ok(netwatch::watch(&self.settings.env, tx))
     }
 
     fn foreground_elevated(&self) -> bool {
@@ -236,14 +264,17 @@ impl Platform for LinuxPlatform {
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
-        secrets::open(&self.settings.env)
+        secrets::Vault::new(&self.settings.env, self.data_dir.clone()).open()
     }
 
     fn autostart(&self) -> Box<dyn Autostart> {
-        Box::new(autostart::XdgAutostart::new(
-            secrets::config_dir(&self.settings.env),
-            &self.settings.exe,
-        ))
+        match self.data_dir {
+            Some(_) => Box::new(portable::NoAutostart),
+            None => Box::new(autostart::XdgAutostart::new(
+                secrets::config_dir(&self.settings.env),
+                &self.settings.exe,
+            )),
+        }
     }
 
     fn file_drag(&self) -> Option<Box<dyn FileDrag>> {
@@ -256,13 +287,21 @@ mod autostart_tests;
 #[cfg(test)]
 mod bus_tests;
 #[cfg(test)]
+mod clipboard_tests;
+#[cfg(test)]
+mod drag_tests;
+#[cfg(test)]
 mod keymap_tests;
 #[cfg(test)]
 mod lib_tests;
 #[cfg(test)]
 mod net_tests;
 #[cfg(test)]
+mod netwatch_tests;
+#[cfg(test)]
 mod permissions_tests;
+#[cfg(test)]
+mod portable_tests;
 #[cfg(test)]
 mod secrets_tests;
 #[cfg(test)]

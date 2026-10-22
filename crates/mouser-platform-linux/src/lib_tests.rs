@@ -1,5 +1,5 @@
 use crate::{LinuxPlatform, Settings};
-use mouser_platform::{Capability, Error, Os, Platform, SessionType};
+use mouser_platform::{Capability, Os, Platform, SessionType};
 use std::collections::HashMap;
 
 fn platform(session: &str) -> (LinuxPlatform, tempfile::TempDir) {
@@ -43,11 +43,7 @@ fn info_reports_linux_and_declares_what_is_unavailable() {
     assert_eq!(info.session, SessionType::X11);
     assert_eq!(info.version, "Testix 3");
     let declared: Vec<Capability> = info.limitations.iter().map(|l| l.capability).collect();
-    for capability in [
-        Capability::Clipboard,
-        Capability::FileDrag,
-        Capability::SecureAttention,
-    ] {
+    for capability in [Capability::FileDrag, Capability::SecureAttention] {
         assert!(declared.contains(&capability), "{capability:?}");
     }
 }
@@ -79,16 +75,38 @@ fn wayland_capture_and_injection_start_on_first_use() {
 }
 
 #[test]
-fn clipboard_is_unsupported_until_its_backend_lands() {
-    let (p, _dir) = platform("x11");
-    assert_eq!(p.clipboard().err(), Some(Error::Unsupported));
+fn wayland_lists_that_quickjump_cannot_start_here_and_x11_does_not() {
+    let text = "QuickJump and hotkey crossings can't start from this computer on Wayland; push the pointer off the screen edge instead.";
+    let has = |p: &LinuxPlatform| {
+        p.info()
+            .limitations
+            .iter()
+            .any(|l| l.capability == Capability::Capture && l.text == text)
+    };
+    let (wayland, _a) = platform("wayland");
+    let (x11, _b) = platform("x11");
+    assert!(has(&wayland));
+    assert!(!has(&x11));
+}
+
+#[test]
+fn x11_has_a_clipboard() {
+    use crate::x11::testserver::Xvfb;
+    let server = Xvfb::start();
+    let (p, _dir) = platform_on("x11", server.env());
+    assert!(p.clipboard().is_ok());
+}
+
+#[test]
+fn wayland_has_a_clipboard_that_starts_on_first_use() {
+    let (p, _dir) = platform("wayland");
+    assert!(p.clipboard().is_ok());
 }
 
 #[test]
 fn windows_and_macos_only_features_are_absent() {
     let (p, _dir) = platform("x11");
     assert!(p.secure_input().is_none());
-    assert!(!p.foreground_is_fullscreen());
     assert!(!p.foreground_elevated());
     assert!(p.file_drag().is_none());
 }

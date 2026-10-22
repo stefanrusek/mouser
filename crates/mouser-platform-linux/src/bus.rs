@@ -47,3 +47,16 @@ pub(crate) async fn connect(env: &HashMap<String, String>) -> zbus::Result<Conne
         .build()
         .await
 }
+
+/// The system bus address: `DBUS_SYSTEM_BUS_ADDRESS`, else the standard socket.
+pub(crate) fn system_address(env: &HashMap<String, String>) -> String {
+    env.get("DBUS_SYSTEM_BUS_ADDRESS")
+        .cloned()
+        .unwrap_or_else(|| "unix:path=/var/run/dbus/system_bus_socket".into())
+}
+
+pub(crate) async fn connect_system(env: &HashMap<String, String>) -> zbus::Result<Connection> {
+    zbus::connection::Builder::address(system_address(env).as_str())?
+        .build()
+        .await
+}

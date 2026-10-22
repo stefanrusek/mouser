@@ -1,4 +1,4 @@
-use crate::net::{classify, group, interfaces, watch, watch_with};
+use crate::net::{classify, group, interfaces};
 use mouser_platform::InterfaceKind::{Loopback, PhysicalLan, Virtual};
 use std::net::IpAddr;
 use std::path::Path;
@@ -100,44 +100,4 @@ fn the_machine_has_a_loopback_interface() {
     let lo = all.iter().find(|i| i.name == "lo").unwrap();
     assert_eq!(lo.kind, Loopback);
     assert!(lo.addrs.contains(&"127.0.0.1".parse().unwrap()));
-}
-
-fn iface(name: &str, ip: &str) -> mouser_platform::NetInterface {
-    mouser_platform::NetInterface {
-        name: name.into(),
-        kind: Virtual,
-        addrs: vec![ip.parse().unwrap()],
-    }
-}
-
-#[test]
-fn the_network_watch_fires_only_when_an_address_changes_and_stops_on_drop() {
-    use std::sync::mpsc::channel;
-    use std::time::Duration;
-    let (snapshots_tx, snapshots) = channel();
-    for ip in ["10.0.0.1", "10.0.0.1", "10.0.0.2"] {
-        snapshots_tx.send(vec![iface("eth0", ip)]).unwrap();
-    }
-    let (tx, rx) = channel();
-    let handle = watch_with(
-        move || {
-            snapshots
-                .try_recv()
-                .unwrap_or_else(|_| vec![iface("eth0", "10.0.0.2")])
-        },
-        Duration::from_millis(20),
-        tx,
-    );
-    // The first snapshot is the baseline; the repeat is silent; the new
-    // address fires exactly once.
-    rx.recv_timeout(Duration::from_secs(5)).unwrap();
-    assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
-    drop(handle);
-    assert!(rx.recv_timeout(Duration::from_secs(5)).is_err());
-}
-
-#[test]
-fn watching_this_machines_network_can_be_started_and_stopped() {
-    let (tx, _rx) = std::sync::mpsc::channel();
-    drop(watch(Path::new("/sys/class/net").to_path_buf(), tx));
 }

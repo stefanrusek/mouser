@@ -38,6 +38,32 @@ pub(crate) fn open(env: &HashMap<String, String>) -> Box<dyn SecretStore> {
     }
 }
 
+/// Where this platform keeps its secrets: the portable drive's `MouserData/`
+/// when there is one, else the session's store.
+#[derive(Clone)]
+pub(crate) struct Vault {
+    env: HashMap<String, String>,
+    data_dir: Option<PathBuf>,
+}
+
+impl Vault {
+    pub(crate) fn new(env: &HashMap<String, String>, data_dir: Option<PathBuf>) -> Self {
+        Vault {
+            env: env.clone(),
+            data_dir,
+        }
+    }
+
+    pub(crate) fn open(&self) -> Box<dyn SecretStore> {
+        match &self.data_dir {
+            Some(dir) => Box::new(FileSecrets {
+                dir: dir.join("secrets"),
+            }),
+            None => open(&self.env),
+        }
+    }
+}
+
 /// One 0600 file per secret.
 pub(crate) struct FileSecrets {
     pub(crate) dir: PathBuf,

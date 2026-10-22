@@ -5,7 +5,7 @@ use super::daemon::{Daemon, wait_until};
 use super::eis::Emit;
 use super::portals::{InputCaptureConfig, PortalConfig, Portals};
 use super::{full_portals, machine, machine_waiting};
-use mouser_platform::{InputCapture, InputInject, LocalInput, Platform};
+use mouser_platform::{Error, InputCapture, InputInject, LocalInput, Platform};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
@@ -201,14 +201,14 @@ fn a_push_through_a_barrier_activates_and_libei_input_becomes_local_input() {
     assert_eq!(next(&rx), LocalInput::Scroll { dx: 0.0, dy: 15.0 });
     // The grab is the activation: asking for it changes nothing, and
     // releasing hands the cursor back where Mouser last warped it.
-    capture.set_grabbed(true).unwrap();
+    assert_eq!(capture.set_grabbed(true), Err(Error::Unsupported));
     capture.warp(100.0, 200.0).unwrap();
-    capture.set_grabbed(false).unwrap();
+    assert_eq!(capture.set_grabbed(false), Err(Error::Unsupported));
     assert!(
         p.calls
             .contains("ic.release id=Some(5) at=Some((100.0, 200.0))")
     );
-    capture.set_grabbed(false).unwrap();
+    assert_eq!(capture.set_grabbed(false), Err(Error::Unsupported));
     assert_eq!(
         p.calls
             .all()
@@ -224,7 +224,7 @@ fn a_push_through_a_barrier_activates_and_libei_input_becomes_local_input() {
     p.deactivate(6);
     p.activate(7, (0.0, 310.0), 1);
     next(&rx);
-    capture.set_grabbed(false).unwrap();
+    assert_eq!(capture.set_grabbed(false), Err(Error::Unsupported));
     assert!(p.calls.contains("ic.release id=Some(7) at=None"));
     assert!(
         !p.calls
@@ -271,8 +271,8 @@ fn start_returns_while_the_approval_dialog_is_open_and_stop_still_works() {
     assert!(!p.calls.contains("ic.start.done"));
     // Until the session exists there is nothing to move or release.
     capture.warp(1.0, 1.0).unwrap();
-    capture.set_grabbed(true).unwrap();
-    capture.set_grabbed(false).unwrap();
+    assert_eq!(capture.set_grabbed(true), Err(Error::Unsupported));
+    assert_eq!(capture.set_grabbed(false), Err(Error::Unsupported));
     capture.stop();
     // The late approval finds Mouser stopped and closes the session.
     wait_until("the late session to be closed", || {

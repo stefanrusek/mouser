@@ -2,10 +2,10 @@
 //! persisted until revoked (`persist_mode = 2`) with the single-use restore
 //! token replaced after every `Start`.
 
+use super::portal_clip::PortalClip;
 use ashpd::AppID;
 use ashpd::desktop::PersistMode;
 use ashpd::desktop::Session;
-use ashpd::desktop::clipboard::Clipboard;
 use ashpd::desktop::input_capture::{
     Capabilities, CreateSession2Options, CreateSessionOptions, GetZonesOptions, InputCapture,
     StartOptions as CaptureStart,
@@ -13,6 +13,7 @@ use ashpd::desktop::input_capture::{
 use ashpd::desktop::remote_desktop::{
     DeviceType, RemoteDesktop, SelectDevicesOptions, StartOptions as RemoteStart,
 };
+use std::sync::Arc;
 use zbus::Connection;
 
 pub(crate) const APP_ID: &str = "com.mouser.app";
@@ -108,8 +109,10 @@ pub(crate) async fn zones(capture: &CaptureSession) -> (Vec<Zone>, u32) {
 
 pub(crate) struct DesktopSession {
     pub(crate) remote: RemoteDesktop,
-    pub(crate) session: Session<RemoteDesktop>,
+    pub(crate) session: Arc<Session<RemoteDesktop>>,
     pub(crate) token: Option<String>,
+    /// The clipboard, when the desktop offers one and the grant includes it.
+    pub(crate) clipboard: Option<PortalClip>,
 }
 
 /// The RemoteDesktop grant: keyboard and pointer, with the clipboard asked up
@@ -120,13 +123,8 @@ pub(crate) async fn start_remote_desktop(
 ) -> DesktopSession {
     register(&conn).await;
     let remote = RemoteDesktop::with_connection(conn.clone()).await.unwrap();
-    let session = remote.create_session(Default::default()).await.unwrap();
-    Clipboard::with_connection(conn)
-        .await
-        .unwrap()
-        .request(&session, Default::default())
-        .await
-        .unwrap();
+    let session = Arc::new(remote.create_session(Default::default()).await.unwrap());
+    let clipboard = PortalClip::request(conn, session.clone()).await;
     remote
         .select_devices(
             &session,
@@ -149,5 +147,6 @@ pub(crate) async fn start_remote_desktop(
         remote,
         session,
         token: selected.restore_token().map(str::to_owned),
+        clipboard: clipboard.filter(|_| selected.is_clipboard_enabled()),
     }
 }

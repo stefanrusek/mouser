@@ -11,7 +11,7 @@ use ashpd::desktop::input_capture::{
     Activated, ActivatedBarrier, Barrier, BarrierID, ReleaseOptions,
 };
 use futures_util::StreamExt;
-use mouser_platform::{InputCapture, LocalInput, Result};
+use mouser_platform::{Error, InputCapture, LocalInput, Result};
 use reis::ei;
 use reis::event::{DeviceCapability, EiEvent};
 use std::collections::HashMap;
@@ -429,7 +429,9 @@ impl InputCapture for WaylandCapture {
     }
 
     /// Input is captured when the pointer is pushed through a barrier, not on
-    /// request; releasing hands it back to the desktop.
+    /// request, so a grab is `Unsupported` (core then refuses QuickJump and
+    /// hotkey crossings). Asking to release still hands the input back to
+    /// the desktop before saying so.
     fn set_grabbed(&mut self, grabbed: bool) -> Result<()> {
         if let (false, Some(running)) = (grabbed, &*self.running.lock().unwrap()) {
             let released = std::mem::take(&mut *running.link.active.lock().unwrap());
@@ -450,7 +452,7 @@ impl InputCapture for WaylandCapture {
                 });
             }
         }
-        Ok(())
+        Err(Error::Unsupported)
     }
 
     /// The cursor cannot be moved while the desktop owns it; the position is

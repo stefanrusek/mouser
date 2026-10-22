@@ -170,3 +170,14 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The app resolves `Paths` at startup, builds the engine with `EngineParams::with_paths`, and on macOS uses `MacPlatform::portable` when portable; WebView data goes to `MouserData/webview` (may be ignored by WKWebView: unverified).
 - The main window is created in `shell.rs` (`"create": false` in tauri.conf.json) so it can get the WebView data folder: a real GUI launch must be smoke-tested before release.
 - "Allow control at the login screen" is hidden in portable runs. The control socket stays at the default path (socket path length). Open: Linux `create_platform` should use `LinuxPlatform::portable(dir)` now that the Linux lane adds it; portable zip packaging in release.yml is not done.
+
+## platform-linux US3/US5/US6/US7/US13 decisions
+
+- netwatch: rtnetlink (link + v4/v6 addr) plus logind PrepareForSleep(false); no system bus → logind skipped.
+- Full screen: X11 via _NET_ACTIVE_WINDOW + _NET_WM_STATE_FULLSCREEN; Wayland always false with a limitation.
+- Clipboard: X11 owner with TARGETS/INCR/XFixes; Wayland via the portal clipboard on the shared RemoteDesktop session (requested before Start), falling back to wl-clipboard-rs data-control on non-GNOME; GNOME < 51 lists "Mouser cannot share the clipboard from this computer while it shares its mouse. This needs GNOME 51 or later."
+- File drag: `file_drag()` is None; limitation "Dragging files between computers isn't available on Linux; use copy and paste".
+- Portable: `LinuxPlatform::portable(dir)` (secrets + restore token under `<dir>/secrets`, autostart Unsupported). Open: app `create_platform` should call it.
+- Wayland `set_grabbed` returns Unsupported; QuickJump limitation listed.
+- VM note: llvm-cov on the virtiofs-mounted repo loses profraw data; symlink `target/llvm-cov-<lane>` to local disk in the VM. CI is unaffected.
+- Not verified: real GNOME/KDE clipboard, X11 INCR against real GTK/Qt clients.

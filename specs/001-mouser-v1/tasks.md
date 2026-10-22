@@ -738,40 +738,40 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 
 #### Phase 49: US3-platform-linux — As a desk user, I want my desk to keep working through sleep, network changes, and VPNs (P1)
 
-- [ ] T462 [P] [US3-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/netwatch_tests.rs`: rtnetlink `RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR` events and logind `PrepareForSleep(false)` fire `watch_network`
-- [ ] T463 [US3-platform-linux] Implement `watch_network()` in `crates/mouser-platform-linux/src/netwatch.rs`
-- [ ] T464 [US3-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T465 [US3-platform-linux] Commit: phase boundary "US3-platform-linux" (5.3)
+- [X] T462 [P] [US3-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/netwatch_tests.rs`: rtnetlink `RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR` events and logind `PrepareForSleep(false)` fire `watch_network`
+- [X] T463 [US3-platform-linux] Implement `watch_network()` in `crates/mouser-platform-linux/src/netwatch.rs`
+- [X] T464 [US3-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T465 [US3-platform-linux] Commit: phase boundary "US3-platform-linux" (5.3)
 
 #### Phase 50: US5-platform-linux — As a desk user, I want the pointer to stay put when I don't mean to cross (P2)
 
-- [ ] T466 [P] [US5-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/x11/fullscreen_tests.rs`: on X11 `_NET_ACTIVE_WINDOW` with `_NET_WM_STATE_FULLSCREEN` means full-screen; on Wayland `foreground_is_fullscreen()` is always false and the "no full-screen blocking on Wayland" limitation is listed (D3 item 2)
-- [ ] T467 [US5-platform-linux] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-linux/src/x11/fullscreen.rs`
-- [ ] T468 [US5-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T469 [US5-platform-linux] Commit: phase boundary "US5-platform-linux" (5.3)
+- [X] T466 [P] [US5-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/x11/fullscreen_tests.rs`: on X11 `_NET_ACTIVE_WINDOW` with `_NET_WM_STATE_FULLSCREEN` means full-screen; on Wayland `foreground_is_fullscreen()` is always false and the "no full-screen blocking on Wayland" limitation is listed (D3 item 2)
+- [X] T467 [US5-platform-linux] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-linux/src/x11/fullscreen.rs`
+- [X] T468 [US5-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T469 [US5-platform-linux] Commit: phase boundary "US5-platform-linux" (5.3)
 
 #### Phase 51: US6-platform-linux — As a desk user, I want copy and paste to work between computers (P2)
 
-- [ ] T470 [P] [US6-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_us6.rs` running conformance rule 5 against the X11 clipboard under Xvfb (`UTF8_STRING`, `text/html`, `text/rtf`, `image/png`, `text/uri-list` + `x-special/gnome-copied-files`)
-- [ ] T471 [US6-platform-linux] Implement the X11 `Clipboard` (CLIPBOARD ownership, TARGETS, INCR, XFixes owner-change counter, remote files staged in a local cache dir before offering paths) in `crates/mouser-platform-linux/src/x11/clipboard.rs`
-- [ ] T472 [P] [US6-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/wayland/clipboard_tests.rs`: the portal Clipboard on the RemoteDesktop/InputCapture session is used first; on KDE `ext-data-control` (wl-clipboard-rs 0.9.4) is the fallback; on GNOME before 51 the "cannot share the clipboard from this computer while it shares its mouse" limitation is listed (L4, D3 item 2)
-- [ ] T473 [US6-platform-linux] Implement the Wayland `Clipboard` in `crates/mouser-platform-linux/src/wayland/clipboard.rs`
-- [ ] T474 [US6-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T475 [US6-platform-linux] Commit: phase boundary "US6-platform-linux" (5.3)
+- [X] T470 [P] [US6-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_us6.rs` running conformance rule 5 against the X11 clipboard under Xvfb (`UTF8_STRING`, `text/html`, `text/rtf`, `image/png`, `text/uri-list` + `x-special/gnome-copied-files`)
+- [X] T471 [US6-platform-linux] Implement the X11 `Clipboard` (CLIPBOARD ownership, TARGETS, INCR, XFixes owner-change counter, remote files staged in a local cache dir before offering paths) in `crates/mouser-platform-linux/src/x11/clipboard.rs`
+- [X] T472 [P] [US6-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/wayland/clipboard_tests.rs`: the portal Clipboard on the RemoteDesktop/InputCapture session is used first; on KDE `ext-data-control` (wl-clipboard-rs 0.9.4) is the fallback; on GNOME before 51 the "cannot share the clipboard from this computer while it shares its mouse" limitation is listed (L4, D3 item 2)
+- [X] T473 [US6-platform-linux] Implement the Wayland `Clipboard` in `crates/mouser-platform-linux/src/wayland/clipboard.rs`
+- [X] T474 [US6-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T475 [US6-platform-linux] Commit: phase boundary "US6-platform-linux" (5.3)
 
 #### Phase 52: US7-platform-linux — As a desk user, I want to drag files from one computer to another (P2)
 
-- [ ] T476 [P] [US7-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/drag_tests.rs`: `file_drag()` returns `None` and `limitations` includes "Dragging files between computers isn't available on Linux; use copy and paste" (D3 item 3)
-- [ ] T477 [US7-platform-linux] Implement the file-drag limitation in `crates/mouser-platform-linux/src/drag.rs`
-- [ ] T478 [US7-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T479 [US7-platform-linux] Commit: phase boundary "US7-platform-linux" (5.3)
+- [X] T476 [P] [US7-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/drag_tests.rs`: `file_drag()` returns `None` and `limitations` includes "Dragging files between computers isn't available on Linux; use copy and paste" (D3 item 3)
+- [X] T477 [US7-platform-linux] Implement the file-drag limitation in `crates/mouser-platform-linux/src/drag.rs`
+- [X] T478 [US7-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T479 [US7-platform-linux] Commit: phase boundary "US7-platform-linux" (5.3)
 
 #### Phase 53: US13-platform-linux — As a desk owner, I want to run Mouser without installing it (P3)
 
-- [ ] T480 [P] [US13-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/portable_tests.rs`: in portable mode secrets are file-backed under `MouserData/`, no autostart file is written, and on Wayland `limitations` states that the desktop keeps Mouser's permission after the drive is removed (L9)
-- [ ] T481 [US13-platform-linux] Implement portable mode in `crates/mouser-platform-linux/src/portable.rs`
-- [ ] T482 [US13-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T483 [US13-platform-linux] Commit: phase boundary "US13-platform-linux" (5.3)
+- [X] T480 [P] [US13-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/portable_tests.rs`: in portable mode secrets are file-backed under `MouserData/`, no autostart file is written, and on Wayland `limitations` states that the desktop keeps Mouser's permission after the drive is removed (L9)
+- [X] T481 [US13-platform-linux] Implement portable mode in `crates/mouser-platform-linux/src/portable.rs`
+- [X] T482 [US13-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T483 [US13-platform-linux] Commit: phase boundary "US13-platform-linux" (5.3)
 
 ---
 

@@ -4,8 +4,12 @@
 
 #![cfg(target_os = "linux")]
 
+mod clipboard;
+mod compositor;
 mod daemon;
+mod datacontrol;
 mod eis;
+mod netwatch;
 mod portals;
 mod secret_service;
 mod wayland;
@@ -29,6 +33,16 @@ pub fn machine(bus: Option<&Daemon>, session: &str) -> Machine {
 
 /// Like [`machine`], with Wayland input waiting `wait` for a device.
 pub fn machine_waiting(bus: Option<&Daemon>, session: &str, wait: std::time::Duration) -> Machine {
+    machine_with(bus, session, wait, &[])
+}
+
+/// Like [`machine_waiting`], with more environment variables.
+pub fn machine_with(
+    bus: Option<&Daemon>,
+    session: &str,
+    wait: std::time::Duration,
+    extra: &[(&str, &str)],
+) -> Machine {
     let home = tempfile::tempdir().unwrap();
     std::fs::write(
         home.path().join("os-release"),
@@ -45,6 +59,7 @@ pub fn machine_waiting(bus: Option<&Daemon>, session: &str, wait: std::time::Dur
     if let Some(bus) = bus {
         env.insert("DBUS_SESSION_BUS_ADDRESS".into(), bus.address.clone());
     }
+    env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
     let platform = LinuxPlatform::with_settings(Settings {
         env,
         sys_class_net: "/sys/class/net".into(),
@@ -64,6 +79,7 @@ pub fn full_portals() -> PortalConfig {
         dialog_ms: 0,
         no_rd_token: false,
         no_keyboard: false,
+        clipboard_enabled: true,
     }
 }
 
@@ -216,6 +232,7 @@ fn the_secret_service_holds_secrets_when_its_collection_is_unlocked() {
         SecretServiceConfig {
             locked: false,
             has_default: true,
+            alias_fails: false,
         },
     );
     let m = machine(Some(&bus), "x11");
@@ -244,10 +261,17 @@ fn a_locked_or_missing_default_collection_falls_back_to_the_file_store() {
         SecretServiceConfig {
             locked: true,
             has_default: true,
+            alias_fails: false,
         },
         SecretServiceConfig {
             locked: false,
             has_default: false,
+            alias_fails: false,
+        },
+        SecretServiceConfig {
+            locked: false,
+            has_default: true,
+            alias_fails: true,
         },
     ] {
         let bus = Daemon::start();
@@ -472,5 +496,38 @@ fn without_a_session_bus_the_wayland_portals_are_missing() {
     assert_eq!(
         state(&m.platform, PermissionKind::RemoteDesktopPortal),
         PermissionState::Missing
+    );
+}
+
+#[test]
+fn a_portable_run_keeps_secrets_on_the_drive_even_with_a_secret_service() {
+    let bus = Daemon::start();
+    let _service = SecretService::start(
+        &bus.address,
+        SecretServiceConfig {
+            locked: false,
+            has_default: true,
+            alias_fails: false,
+        },
+    );
+    let drive = tempfile::tempdir().unwrap();
+    let data = drive.path().join("MouserData");
+    let platform = LinuxPlatform::portable_with_settings(
+        Settings {
+            env: HashMap::from([
+                ("XDG_SESSION_TYPE".to_string(), "x11".to_string()),
+                ("DBUS_SESSION_BUS_ADDRESS".to_string(), bus.address.clone()),
+            ]),
+            sys_class_net: "/sys/class/net".into(),
+            os_release: "/etc/os-release".into(),
+            exe: "/media/drive/mouser".into(),
+            device_wait: std::time::Duration::from_secs(1),
+        },
+        &data,
+    );
+    platform.secrets().set("desk-key", b"abc").unwrap();
+    assert_eq!(
+        std::fs::read(data.join("secrets/desk-key")).unwrap(),
+        b"abc"
     );
 }

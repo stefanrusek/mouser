@@ -2,8 +2,10 @@
 //! injection.
 
 pub(crate) mod capture;
+pub(crate) mod clipboard;
 pub(crate) mod displays;
 pub(crate) mod echo;
+pub(crate) mod fullscreen;
 pub(crate) mod inject;
 
 use std::collections::HashMap;
@@ -56,9 +58,13 @@ pub(crate) fn wake(env: &HashMap<String, String>, stop: Window) {
 #[cfg(test)]
 mod capture_tests;
 #[cfg(test)]
+mod clipboard_tests;
+#[cfg(test)]
 mod displays_tests;
 #[cfg(test)]
 mod echo_tests;
+#[cfg(test)]
+mod fullscreen_tests;
 #[cfg(test)]
 mod inject_tests;
 #[cfg(test)]

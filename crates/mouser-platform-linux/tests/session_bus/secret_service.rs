@@ -13,6 +13,8 @@ pub struct SecretServiceConfig {
     pub locked: bool,
     /// Whether a default collection exists at all.
     pub has_default: bool,
+    /// `ReadAlias` fails outright.
+    pub alias_fails: bool,
 }
 
 type Attributes = HashMap<String, String>;
@@ -37,9 +39,12 @@ impl Service {
         )
     }
 
-    fn read_alias(&self, name: String) -> OwnedObjectPath {
+    fn read_alias(&self, name: String) -> zbus::fdo::Result<OwnedObjectPath> {
         assert_eq!(name, "default");
-        OwnedObjectPath::try_from(if self.0.has_default { COLLECTION } else { "/" }).unwrap()
+        if self.0.alias_fails {
+            return Err(zbus::fdo::Error::Failed("no aliases".into()));
+        }
+        Ok(OwnedObjectPath::try_from(if self.0.has_default { COLLECTION } else { "/" }).unwrap())
     }
 }
 

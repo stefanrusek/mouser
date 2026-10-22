@@ -48,6 +48,8 @@ pub struct PortalConfig {
     pub no_rd_token: bool,
     /// The desktop's libei endpoint offers no keyboard device.
     pub no_keyboard: bool,
+    /// The RemoteDesktop grant includes the clipboard.
+    pub clipboard_enabled: bool,
 }
 
 #[derive(Clone, Default)]
@@ -87,6 +89,11 @@ struct Shared {
     dialog_ms: u64,
     no_rd_token: bool,
     no_keyboard: bool,
+    clipboard_enabled: bool,
+    /// What other applications have on the clipboard, by MIME type.
+    contents: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    /// The read ends of the pipes handed out by SelectionWrite, by serial.
+    writes: Arc<Mutex<HashMap<u32, std::io::PipeReader>>>,
     /// RemoteDesktop restore tokens handed out so far.
     issued: Arc<Mutex<u32>>,
     /// The libei servers handed out through ConnectToEIS, oldest first.
@@ -247,7 +254,10 @@ impl RemoteDesktop {
         };
         let mut results = HashMap::from([
             ("devices".to_string(), ov(3u32)),
-            ("clipboard_enabled".to_string(), ov(true)),
+            (
+                "clipboard_enabled".to_string(),
+                ov(self.0.clipboard_enabled),
+            ),
         ]);
         if !self.0.no_rd_token {
             results.insert("restore_token".to_string(), ov(token));
@@ -267,7 +277,7 @@ impl RemoteDesktop {
     }
 }
 
-struct ClipboardPortal(Calls);
+struct ClipboardPortal(Shared);
 
 #[interface(name = "org.freedesktop.portal.Clipboard")]
 impl ClipboardPortal {
@@ -277,7 +287,51 @@ impl ClipboardPortal {
     }
 
     fn request_clipboard(&self, _session: ObjectPath<'_>, _options: HashMap<String, OwnedValue>) {
-        self.0.push("clipboard.request");
+        self.0.calls.push("clipboard.request");
+    }
+
+    fn set_selection(&self, _session: ObjectPath<'_>, options: HashMap<String, OwnedValue>) {
+        let mimes: Vec<String> = options
+            .get("mime_types")
+            .map(|v| Vec::<String>::try_from(v.try_clone().unwrap()).unwrap())
+            .unwrap_or_default();
+        self.0
+            .calls
+            .push(format!("clipboard.set_selection {}", mimes.join(",")));
+    }
+
+    fn selection_read(
+        &self,
+        _session: ObjectPath<'_>,
+        mime_type: String,
+    ) -> zbus::fdo::Result<OwnedFd> {
+        let data = self
+            .0
+            .contents
+            .lock()
+            .unwrap()
+            .get(&mime_type)
+            .cloned()
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("nothing offered as {mime_type}")))?;
+        self.0.calls.push(format!("clipboard.read {mime_type}"));
+        let (reader, mut writer) = std::io::pipe().unwrap();
+        std::thread::spawn(move || {
+            use std::io::Write;
+            writer.write_all(&data).unwrap();
+        });
+        Ok(OwnedFd::from(std::os::fd::OwnedFd::from(reader)))
+    }
+
+    fn selection_write(&self, _session: ObjectPath<'_>, serial: u32) -> OwnedFd {
+        let (reader, writer) = std::io::pipe().unwrap();
+        self.0.writes.lock().unwrap().insert(serial, reader);
+        OwnedFd::from(std::os::fd::OwnedFd::from(writer))
+    }
+
+    fn selection_write_done(&self, _session: ObjectPath<'_>, serial: u32, success: bool) {
+        self.0
+            .calls
+            .push(format!("clipboard.write_done {serial} {success}"));
     }
 }
 
@@ -449,6 +503,9 @@ impl Portals {
             dialog_ms: config.dialog_ms,
             no_rd_token: config.no_rd_token,
             no_keyboard: config.no_keyboard,
+            clipboard_enabled: config.clipboard_enabled,
+            contents: Arc::default(),
+            writes: Arc::default(),
             issued: Arc::default(),
             eis: Arc::default(),
             sessions: Arc::default(),
@@ -466,7 +523,7 @@ impl Portals {
         }
         if config.clipboard {
             builder = builder
-                .serve_at(path, ClipboardPortal(calls.clone()))
+                .serve_at(path, ClipboardPortal(shared.clone()))
                 .unwrap();
         }
         if config.registry {
@@ -489,6 +546,73 @@ impl Portals {
             self.shared.eis.lock().unwrap().len() > n
         });
         self.shared.eis.lock().unwrap()[n].clone()
+    }
+
+    /// What other applications have on the clipboard.
+    pub fn set_contents(&self, contents: &[(&str, &[u8])]) {
+        *self.shared.contents.lock().unwrap() = contents
+            .iter()
+            .map(|(m, d)| (m.to_string(), d.to_vec()))
+            .collect();
+    }
+
+    /// The portal announces a new selection owner.
+    pub fn owner_changed(&self, mime_types: &[&str], session_is_owner: bool) {
+        let session = self.shared.sessions.lock().unwrap().last().unwrap().clone();
+        let options = HashMap::from([
+            (
+                "mime_types".to_string(),
+                ov(mime_types
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<String>>()),
+            ),
+            ("session_is_owner".to_string(), ov(session_is_owner)),
+        ]);
+        FAKES
+            .block_on(self.conn.emit_signal(
+                None::<&str>,
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Clipboard",
+                "SelectionOwnerChanged",
+                &(ObjectPath::try_from(session).unwrap(), options),
+            ))
+            .unwrap();
+    }
+
+    /// An application pastes `mime`: the portal asks the session for the data.
+    pub fn transfer(&self, mime: &str, serial: u32) {
+        let session = self.shared.sessions.lock().unwrap().last().unwrap().clone();
+        FAKES
+            .block_on(self.conn.emit_signal(
+                None::<&str>,
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Clipboard",
+                "SelectionTransfer",
+                &(ObjectPath::try_from(session).unwrap(), mime, serial),
+            ))
+            .unwrap();
+    }
+
+    /// What the session wrote for `serial`, once it reported being done.
+    pub fn written(&self, serial: u32) -> Vec<u8> {
+        use std::io::Read;
+        crate::daemon::wait_until("the transfer to finish", || {
+            self.calls
+                .all()
+                .iter()
+                .any(|c| c.starts_with(&format!("clipboard.write_done {serial} ")))
+        });
+        let mut data = Vec::new();
+        self.shared
+            .writes
+            .lock()
+            .unwrap()
+            .remove(&serial)
+            .unwrap()
+            .read_to_end(&mut data)
+            .unwrap();
+        data
     }
 
     /// The portal tells the capture it was activated at `at` through `barrier`.

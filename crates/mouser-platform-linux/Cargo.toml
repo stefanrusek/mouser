@@ -16,7 +16,9 @@ ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "
 if-addrs = { version = "=0.15.0", features = ["link-local"] }
 futures-util = "=0.3.34"
 reis = "=0.7.1"
+rustix = { version = "=1.1.5", features = ["event", "net"] }
 tokio = { version = "=1.54.0", features = ["rt-multi-thread", "sync"] }
+wl-clipboard-rs = "=0.9.4"
 x11rb = { version = "=0.14.0", features = ["randr", "xfixes", "xinput", "xtest"] }
 zbus = { version = "=5.19.0", default-features = false, features = ["tokio"] }
 
@@ -26,4 +28,6 @@ calloop = "=0.14.3"
 enumflags2 = "=0.7.12"
 reis = { version = "=0.7.1", features = ["calloop"] }
 tempfile = "=3.27.0"
+wayland-protocols = { version = "=0.32.13", features = ["server", "staging"] }
+wayland-server = "=0.31.14"
 tokio = { version = "=1.54.0", features = ["rt-multi-thread", "time", "sync"] }

@@ -1,4 +1,4 @@
-use crate::bus::{address, block_on, connect};
+use crate::bus::{address, block_on, connect, connect_system, system_address};
 use std::collections::HashMap;
 
 fn env(pairs: &[(&str, &str)]) -> HashMap<String, String> {
@@ -37,4 +37,22 @@ fn block_on_works_inside_another_runtime() {
         .unwrap()
         .block_on(async { block_on(async { 41 + 1 }) });
     assert_eq!(value, 42);
+}
+
+#[test]
+fn system_bus_address_prefers_the_variable_then_the_standard_socket() {
+    assert_eq!(
+        system_address(&env(&[("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/s")])),
+        "unix:path=/s"
+    );
+    assert_eq!(
+        system_address(&env(&[])),
+        "unix:path=/var/run/dbus/system_bus_socket"
+    );
+}
+
+#[test]
+fn connecting_to_a_missing_system_bus_fails() {
+    let env = env(&[("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/nonexistent/bus")]);
+    assert!(block_on(async move { connect_system(&env).await.is_err() }));
 }
