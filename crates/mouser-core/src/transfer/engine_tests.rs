@@ -255,6 +255,29 @@ fn a_transfer_of_folders_only_is_completed_the_moment_it_is_accepted() {
 }
 
 #[test]
+fn a_cancelled_drag_ends_quietly_and_tells_the_source_it_is_done() {
+    let (mut t, ids) = engine(1 << 20);
+    run(&mut t, offer(manifest_items()));
+    assert!(ids.contains(&id()));
+    let outs = run(&mut t, Command::Cancelled { id: id() });
+    assert_eq!(
+        outs,
+        [Out::To(
+            peer(),
+            ControlMessage::TransferDone { transfer_id: id() }
+        )]
+    );
+    // Forgotten: no state, no id, nothing late is of interest.
+    assert_eq!(t.state_of(&id()), None);
+    assert!(!ids.contains(&id()));
+    // A cancel for what nobody offered is a protocol violation.
+    assert!(
+        t.handle(Command::Cancelled { id: id() }, Instant::now())
+            .is_err()
+    );
+}
+
+#[test]
 fn what_nobody_offered_is_a_protocol_violation_or_ignored_when_it_is_late() {
     let (mut t, _) = engine(0);
     let dropped = Command::Dropped {

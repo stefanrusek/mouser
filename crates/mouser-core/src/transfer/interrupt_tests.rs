@@ -237,6 +237,13 @@ fn files_still_arriving_for_a_failed_transfer_are_set_aside() {
 }
 
 #[test]
+fn a_drag_cancelled_after_the_computer_went_is_of_no_interest() {
+    let (mut t, _, _drop) = receiving();
+    gone(&mut t, peer(), "Alpha");
+    assert!(run(&mut t, Command::Cancelled { id: id() }).is_empty());
+}
+
+#[test]
 fn only_a_copy_that_is_going_on_can_fail() {
     for (state, going) in [
         (State::Pending, true),

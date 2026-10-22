@@ -112,6 +112,8 @@ Transitions: `Local → Remote(c)` on crossing/QuickJump; `Remote(c) → Local` 
 
 Validation: total size is compared with free space before any byte is written (Story 7 sc. 4); a name conflict pauses that item for the user's choice (Story 7 sc. 3).
 
+Cancelled drop (owner decision 2026-10-22): if the user cancels the incoming drag on the destination (Esc, or a drop on something that is not a folder; the platform `FileDrag::begin_incoming` returns an error), the transfer ends quietly with nothing copied and no new state. The destination forgets the transfer while it is still `Pending`, publishes no `transfer` notification (none had been published, so no progress display opens or stays), raises no Problem, and sends `TransferDone` so the source forgets it as if the files had been dropped back where they started (the source, like for any `TransferDone`, publishes nothing). No wire change. Future item (v2, owner wish): put the files in a scratch folder instead.
+
 Interruption (orchestrator decision 2026-10-21; the spec is silent): if the other computer goes offline mid-transfer, both sides move the transfer to `Failed(peer_offline)` and publish a `transfer` notification in state `failed` with `reason: "peer_offline"` and a plain-language `message` naming the computer and how many items were completed (e.g. "The copy stopped because Beta went offline. 2 of 5 files were copied."). The destination deletes the partially written item (completed items are kept). Nothing is retried automatically.
 
 ## Problem

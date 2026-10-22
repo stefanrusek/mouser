@@ -88,6 +88,9 @@ pub enum Command {
     Drag { to: ComputerId, paths: Vec<PathBuf> },
     /// The dragged files were dropped in the folder `dir`.
     Dropped { id: TransferId, dir: PathBuf },
+    /// The user cancelled the drag of the files of `id` (Esc, or a drop on
+    /// something that is not a folder).
+    Cancelled { id: TransferId },
     /// The stream of item `index` arrived.
     ItemStart { id: TransferId, index: usize },
     /// `bytes` more of the current item arrived.
@@ -219,6 +222,7 @@ impl Transfers {
             Command::Message(from, message) => self.on_message(from, message, now),
             Command::Drag { to, paths } => Ok(self.offer(to, &paths)),
             Command::Dropped { id, dir } => self.on_dropped(id, dir, now),
+            Command::Cancelled { id } => self.on_cancelled(id),
             Command::ItemStart { id, index } => self.on_item_start(id, index, now),
             Command::Chunk { id, bytes } => Ok(self.on_chunk(id, bytes, now)),
             Command::ItemDone { id } => Ok(self.on_item_done(id, now)),
@@ -416,6 +420,23 @@ impl Transfers {
             outs.extend(self.finish(id, now));
         }
         Ok(outs)
+    }
+
+    /// The destination: the drag ended without a drop. Nothing was written
+    /// or shown; the source is told it is done, as if the files had been
+    /// dropped back where they started.
+    fn on_cancelled(&mut self, id: TransferId) -> Result<Vec<Out>, String> {
+        if self.failed.contains(&id) {
+            return Ok(Vec::new());
+        }
+        let Some(transfer) = self.inbound.remove(&id) else {
+            return Err("a cancel for files nobody offered".into());
+        };
+        self.ids.remove(&id);
+        Ok(vec![Out::To(
+            transfer.from,
+            ControlMessage::TransferDone { transfer_id: id },
+        )])
     }
 
     /// The destination: bytes of the current file arrived.

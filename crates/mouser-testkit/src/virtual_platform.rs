@@ -67,6 +67,7 @@ struct State {
 
     outgoing_drag: Option<Vec<PathBuf>>,
     drop_target: PathBuf,
+    drag_cancelled: bool,
     incoming_drags: Vec<Vec<String>>,
 }
 
@@ -152,6 +153,7 @@ impl VirtualPlatform {
             autostart: false,
             outgoing_drag: None,
             drop_target: PathBuf::from("/virtual/drop"),
+            drag_cancelled: false,
             incoming_drags: Vec::new(),
         };
         VirtualPlatform {
@@ -343,6 +345,12 @@ impl VirtualPlatform {
     /// Where `FileDrag::begin_incoming` reports the drop landed.
     pub fn script_drop_target(&self, dir: PathBuf) {
         self.lock().drop_target = dir;
+    }
+
+    /// Whether the user cancels (Esc, or a drop that is not on a folder) the
+    /// drags `FileDrag::begin_incoming` starts: it then returns an error.
+    pub fn script_drag_cancelled(&self, cancelled: bool) {
+        self.lock().drag_cancelled = cancelled;
     }
 
     /// File-name lists passed to `FileDrag::begin_incoming`, in order.
@@ -623,6 +631,9 @@ impl FileDrag for VirtualFileDrag {
     fn begin_incoming(&mut self, names: Vec<String>) -> Result<DropTarget> {
         let mut s = self.0.lock();
         s.incoming_drags.push(names);
+        if s.drag_cancelled {
+            return Err(Error::Os("the drag was cancelled".into()));
+        }
         Ok(DropTarget(s.drop_target.clone()))
     }
 }

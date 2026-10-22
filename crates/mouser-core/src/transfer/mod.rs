@@ -125,13 +125,13 @@ impl Ctx {
                     std::thread::Builder::new()
                         .name("mouser-drag".into())
                         .spawn(move || {
-                            let target = drag
-                                .lock()
-                                .unwrap()
-                                .begin_incoming(names)
-                                .expect("the drag begins");
-                            // The engine outlives the drag unless it is shutting down.
-                            let _ = commands.send(Command::Dropped { id, dir: target.0 });
+                            let dropped = drag.lock().unwrap().begin_incoming(names);
+                            // A drag that was cancelled ends quietly. The engine
+                            // outlives the drag unless it is shutting down.
+                            let _ = commands.send(match dropped {
+                                Ok(target) => Command::Dropped { id, dir: target.0 },
+                                Err(_) => Command::Cancelled { id },
+                            });
                         })
                         .expect("drag thread starts");
                 }

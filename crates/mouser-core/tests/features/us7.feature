@@ -21,6 +21,11 @@ Feature: As a desk user, I want to drag files from one computer to another
     When the drop happens
     Then the desk user is told there is not enough space and nothing is copied
 
+  Scenario: Story 7 scenario 5: cancelled drag
+    Given the desk user has dragged files to another computer
+    When they cancel the drag there or drop it on something that is not a folder
+    Then nothing is copied, the progress display closes without an error, the computer the files came from is told the drag ended, and no problem is raised
+
   Scenario: Accepted limitation: file drag unavailable on Linux
     Given file drag between computers is unavailable on Linux
     When the desk user looks at the app on a Linux computer

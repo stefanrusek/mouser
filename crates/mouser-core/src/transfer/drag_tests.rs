@@ -91,6 +91,29 @@ async fn files_dragged_across_the_edge_are_offered_and_copied_to_the_drop_folder
 }
 
 #[tokio::test]
+async fn a_cancelled_drag_ends_on_both_computers_without_a_word() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let (_src, paths) = dragged();
+    let drop = tempfile::tempdir().unwrap();
+    b.platform.script_drop_target(drop.path().to_path_buf());
+    b.platform.script_drag_cancelled(true);
+    a.platform.script_outgoing_drag(Some(paths));
+    push_right(a);
+    eventually("Beta's drag", || async {
+        !b.platform.incoming_drags().is_empty()
+    })
+    .await;
+    // Beta told Alpha, so both forget the transfer.
+    eventually("both ends to forget the transfer", || async {
+        a.engine.ctx.transfer_ids.is_empty() && b.engine.ctx.transfer_ids.is_empty()
+    })
+    .await;
+    assert_eq!(std::fs::read_dir(drop.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
 async fn nothing_is_offered_when_nothing_is_being_dragged() {
     let lab = Lab::new();
     let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;

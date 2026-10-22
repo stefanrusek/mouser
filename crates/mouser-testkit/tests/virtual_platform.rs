@@ -244,6 +244,11 @@ fn file_drag_is_scripted() {
     let target = drag.begin_incoming(vec!["b.txt".into()]).unwrap();
     assert_eq!(target, DropTarget(PathBuf::from("/drop/here")));
     assert_eq!(vp.incoming_drags(), vec![vec!["b.txt".to_string()]]);
+
+    // A cancelled drag is still recorded, and ends in an error.
+    vp.script_drag_cancelled(true);
+    assert!(drag.begin_incoming(vec!["c.txt".into()]).is_err());
+    assert_eq!(vp.incoming_drags().len(), 2);
 }
 
 #[test]

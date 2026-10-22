@@ -160,6 +160,7 @@ Dragging a file or folder across the screen edge and dropping it on another comp
 2. **Given** a transfer is under way, **When** the desk user looks at the screen, **Then** it shows the file being copied, how much is done, the speed, and the time remaining.
 3. **Given** a dropped file has the same name as one already at the destination, **When** the transfer reaches it, **Then** the desk user is asked whether to overwrite it.
 4. **Given** the destination does not have room for the transfer, **When** the drop happens, **Then** the desk user is told there is not enough space and nothing is copied.
+5. **Given** the desk user has dragged files to another computer, **When** they cancel the drag there (Esc) or drop it on something that is not a folder, **Then** nothing is copied, the progress display closes without an error, the computer the files came from is told the drag ended (as if the files were dropped back where they started), and no problem is raised. *(Owner decision 2026-10-22. Future item for v2: put such files in a scratch folder instead of discarding the drag.)*
 
 ---
 
@@ -270,6 +271,7 @@ The owner can run Mouser from a folder or removable drive on a computer where th
 - The clipboard contains a format the receiving computer cannot represent: the best available representation is pasted (for example plain text for formatted text). (Story 6)
 - A computer joins with a different screen arrangement than last time (for example a laptop docked or undocked): its current displays replace its previous ones in the layout, in the arrangement its operating system reports and anchored on a display that was there before, and the desk owner is offered a review. (Story 2, Story 4)
 - The desk owner removes every display of a computer from the layout: that computer stays a desk member, receives clipboard content, and the pointer never crosses onto it. (Story 4)
+- A file drag is cancelled on the receiving computer (Esc, or a drop on something that is not a folder): it ends quietly with nothing copied and no problem raised. (Story 7, scenario 5)
 - An agent edits the configuration file while Mouser is running: the change takes effect without restarting Mouser. (Story 9)
 
 ## Requirements *(mandatory)*

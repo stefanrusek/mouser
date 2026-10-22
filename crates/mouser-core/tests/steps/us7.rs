@@ -290,6 +290,45 @@ async fn told_no_space(w: &mut DragWorld) {
     assert_eq!(std::fs::read_dir(w.drop_dir()).unwrap().count(), 0);
 }
 
+// ---- scenario 5: cancelled drag ---------------------------------------------------------
+
+#[given("the desk user has dragged files to another computer")]
+async fn dragged_away(w: &mut DragWorld) {
+    w.two().await;
+    write(w.source().join("a.txt"), b"a");
+    w.drag(&["a.txt"]);
+    // Beta's user will cancel the drag there.
+    w.platform("Beta").script_drag_cancelled(true);
+}
+
+#[when("they cancel the drag there or drop it on something that is not a folder")]
+async fn cancel_the_drag(w: &mut DragWorld) {
+    w.cross().await;
+    let beta = w.platform("Beta");
+    until("Beta's drag", || !beta.incoming_drags().is_empty()).await;
+}
+
+#[then(
+    "nothing is copied, the progress display closes without an error, the computer the files came from is told the drag ended, and no problem is raised"
+)]
+async fn ended_quietly(w: &mut DragWorld) {
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(std::fs::read_dir(w.drop_dir()).unwrap().count(), 0);
+    // No progress display, no failure on either computer.
+    assert!(w.shown().is_empty(), "{:?}", w.shown());
+    assert!(w.lab.node("Alpha").events.all(Topic::Transfer).is_empty());
+    for name in ["Alpha", "Beta"] {
+        // (Every virtual computer lists its standing platform limitations.)
+        let problems = w.lab.node(name).status().await.problems;
+        assert!(
+            problems
+                .iter()
+                .all(|p| p.kind == ProblemKind::PlatformLimitation),
+            "{name}: {problems:?}"
+        );
+    }
+}
+
 // ---- accepted limitation: Linux ---------------------------------------------------------
 
 const LINUX: &str = "File drag between computers is unavailable on Linux. Copy and paste (Story 6) is the alternative.";
