@@ -54,6 +54,20 @@ impl ControlHandle {
         self.ctx.events.subscribe()
     }
 
+    /// Answer the question a `transfer` notification in state
+    /// `awaiting_overwrite_decision` asked: replace the file (or not).
+    pub fn resolve_transfer(&self, transfer_id: &str, overwrite: bool) {
+        // No transfer task means this platform cannot drag files, and then
+        // there is no question to answer.
+        let _ = self
+            .ctx
+            .xfer
+            .send(crate::transfer::engine::Command::Resolve {
+                transfer_id: transfer_id.into(),
+                overwrite,
+            });
+    }
+
     /// Every notification from now on (the caller filters by topic).
     pub fn notifications(&self) -> broadcast::Receiver<Notification> {
         self.ctx.notify.subscribe()

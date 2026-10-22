@@ -255,6 +255,11 @@ impl Node {
         }
     }
 
+    /// The control API in-process, as the app's user interface uses it.
+    pub fn control(&self) -> mouser_core::ControlHandle {
+        self.engine.as_ref().expect("node is running").control()
+    }
+
     /// The desk layout this computer holds.
     pub fn layout(&self) -> mouser_proto::model::Layout {
         self.engine.as_ref().expect("node is running").layout()
@@ -302,7 +307,12 @@ impl Node {
             .await
             .expect("control socket");
         stream
-            .subscribe(vec![Topic::Problem, Topic::JoinRequest, Topic::Status])
+            .subscribe(vec![
+                Topic::Problem,
+                Topic::JoinRequest,
+                Topic::Status,
+                Topic::Transfer,
+            ])
             .await
             .expect("subscribe");
         self.events = Arc::new(Events::default());
@@ -398,6 +408,70 @@ impl Lab {
         // shutdown; a real restart is a new process and never races.
         tokio::time::sleep(Duration::from_millis(100)).await;
         node.start(&registry).await;
+    }
+
+    /// A desk called `desk` of the computers `creator` (which creates it) and
+    /// `joiners` (which join with a one-click approval), each started with its
+    /// setup; returns once every one is connected to all the others and the
+    /// whole layout is known.
+    pub async fn form_desk(
+        &mut self,
+        desk: &str,
+        creator: &str,
+        joiners: &[&str],
+        setups: Vec<(&str, Setup)>,
+    ) {
+        for (name, setup) in setups {
+            self.add_with(name, setup).await;
+        }
+        let _: mouser_proto::control::Desk = self
+            .node(creator)
+            .call(Method::DeskCreate, json!({ "name": desk }))
+            .await;
+        for joiner in joiners {
+            let target = self.node(creator).sim.clone();
+            let address = self.node(joiner).sim.route_to(&target).to_string();
+            let _: mouser_proto::control::JoinPending = self
+                .node(joiner)
+                .call(Method::DeskJoin, json!({ "address": address }))
+                .await;
+            let value = self
+                .node(creator)
+                .notification("a join request", Topic::JoinRequest, |p| {
+                    p["computer"]["name"] == *joiner
+                })
+                .await;
+            let request: mouser_proto::control::PendingJoin =
+                serde_json::from_value(value).unwrap();
+            let _: mouser_proto::control::Empty = self
+                .node(creator)
+                .call(
+                    Method::JoinDecide,
+                    json!({"request_id": request.request_id, "approve": true}),
+                )
+                .await;
+        }
+        let all = joiners.len() + 1;
+        for name in std::iter::once(&creator).chain(joiners) {
+            let node = self.node(name);
+            node.wait_status("everyone connected with their displays", |s| {
+                s.computers.len() == all
+                    && s.computers.iter().all(|c| {
+                        c.connection == mouser_proto::control::ConnectionState::SelfComputer
+                            || (c.connection == mouser_proto::control::ConnectionState::Connected
+                                && c.displays > 0)
+                    })
+            })
+            .await;
+            let end = Instant::now() + WAIT;
+            while node.layout().placements.len() != all {
+                assert!(
+                    Instant::now() < end,
+                    "{name}: timed out waiting for the layout"
+                );
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }
     }
 
     pub fn node(&mut self, name: &str) -> &mut Node {

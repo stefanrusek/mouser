@@ -13,6 +13,7 @@ pub mod layout;
 pub mod problems;
 pub mod session;
 pub mod state;
+pub mod transfer;
 pub mod transport;
 
 #[cfg(test)]

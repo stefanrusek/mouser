@@ -13,8 +13,8 @@ use mouser_proto::wire::{
     ClipboardKind, ClipboardPayload, ClipboardRepresentation, ControlMessage, TransferItem,
 };
 
-use super::files::manifest;
 use super::{Clip, INLINE_LIMIT, Out, encode, kind_of};
+use crate::transfer::streams::manifest;
 
 pub struct Watcher {
     /// The counter as last seen, including after our own writes.

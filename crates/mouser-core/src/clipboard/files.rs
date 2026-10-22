@@ -8,7 +8,7 @@
 //! those local copies.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use mouser_platform::{ClipRep, Clipboard};
@@ -17,41 +17,7 @@ use mouser_proto::wire::{ClipboardKind, ControlMessage, TransferId, TransferItem
 use tokio::io::AsyncWriteExt;
 
 use super::{Clip, Out};
-
-/// Every file or folder under `paths`, with its path relative to the folder
-/// the copied item sits in (so a copied folder keeps its name).
-pub fn manifest(paths: &[PathBuf]) -> Vec<(TransferItem, PathBuf)> {
-    let mut items = Vec::new();
-    for path in paths {
-        let name = path.file_name().expect("a copied path has a name");
-        walk(path, name.to_str().expect("UTF-8 name"), &mut items);
-    }
-    items
-}
-
-fn walk(path: &Path, relative: &str, items: &mut Vec<(TransferItem, PathBuf)>) {
-    let meta = std::fs::metadata(path).expect("copied file readable");
-    let is_dir = meta.is_dir();
-    items.push((
-        TransferItem {
-            relative_path: relative.to_string(),
-            size: if is_dir { 0 } else { meta.len() },
-            is_dir,
-        },
-        path.to_path_buf(),
-    ));
-    if is_dir {
-        let mut names: Vec<_> = std::fs::read_dir(path)
-            .expect("copied folder readable")
-            .map(|entry| entry.expect("folder entry readable").file_name())
-            .collect();
-        names.sort();
-        for name in names {
-            let name = name.to_str().expect("UTF-8 name");
-            walk(&path.join(name), &format!("{relative}/{name}"), items);
-        }
-    }
-}
+use crate::transfer::streams::{hex, refuse_escapes, top_level};
 
 /// The transfers we expect streams for.
 #[derive(Clone, Default)]
@@ -64,15 +30,6 @@ struct Incoming {
     remaining: usize,
 }
 
-/// The items directly in the transfer's directory: what the clipboard holds.
-fn top_level(dir: &Path, items: &[TransferItem]) -> Vec<PathBuf> {
-    items
-        .iter()
-        .filter(|item| !item.relative_path.contains('/'))
-        .map(|item| dir.join(&item.relative_path))
-        .collect()
-}
-
 impl Inbox {
     /// Expect `items` under `dir`: make the folders, and refuse any path that
     /// would leave `dir`. The top-level paths if there are no files to wait for.
@@ -82,14 +39,7 @@ impl Inbox {
         dir: &Path,
         items: &[TransferItem],
     ) -> Result<Option<Vec<PathBuf>>, String> {
-        for item in items {
-            let escapes = Path::new(&item.relative_path)
-                .components()
-                .any(|part| !matches!(part, Component::Normal(_)));
-            if escapes {
-                return Err(format!("{:?} is outside the transfer", item.relative_path));
-            }
-        }
+        refuse_escapes(items)?;
         std::fs::create_dir_all(dir).expect("transfer directory");
         for item in items.iter().filter(|item| item.is_dir) {
             std::fs::create_dir_all(dir.join(&item.relative_path)).expect("transfer folder");
@@ -109,18 +59,14 @@ impl Inbox {
         Ok(None)
     }
 
-    /// Read one file's stream; the top-level paths once the last file is in.
+    /// Read file `index` of transfer `id` from its stream; the top-level
+    /// paths once the last file is in.
     pub async fn receive(
         &self,
+        id: TransferId,
+        index: usize,
         mut stream: quinn::RecvStream,
     ) -> std::io::Result<Option<Vec<PathBuf>>> {
-        let mut header = [0u8; 20];
-        stream
-            .read_exact(&mut header)
-            .await
-            .map_err(std::io::Error::other)?;
-        let id = TransferId(header[..16].try_into().expect("16 bytes"));
-        let index = u32::from_be_bytes(header[16..].try_into().expect("4 bytes")) as usize;
         let path = {
             let transfers = self.0.lock().unwrap();
             let incoming = transfers.get(&id).expect("a transfer we expect");
@@ -138,31 +84,6 @@ impl Inbox {
         let done = transfers.remove(&id).expect("just found");
         Ok(Some(top_level(&done.dir, &done.items)))
     }
-}
-
-/// Send the files of a transfer, one unidirectional stream each.
-pub async fn send(
-    conn: &quinn::Connection,
-    id: TransferId,
-    files: &[(TransferItem, PathBuf)],
-) -> std::io::Result<()> {
-    for (index, (item, path)) in files.iter().enumerate() {
-        if item.is_dir {
-            continue;
-        }
-        let mut stream = conn.open_uni().await.map_err(std::io::Error::other)?;
-        let mut header = id.0.to_vec();
-        header.extend((index as u32).to_be_bytes());
-        stream.write_all(&header).await?;
-        let mut file = tokio::fs::File::open(path).await?;
-        tokio::io::copy(&mut file, &mut stream).await?;
-        stream.finish().map_err(std::io::Error::other)?;
-    }
-    Ok(())
-}
-
-fn hex(id: &TransferId) -> String {
-    id.0.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl Clip {

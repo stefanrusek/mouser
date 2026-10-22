@@ -121,6 +121,7 @@ impl Crossing {
             seq_base: seq,
             modifiers_down: held_modifiers(&self.session.held.keys),
         });
+        self.hand_off_drag(display.computer);
         self.panic.reset();
         self.session.control = Control::Remote(Remote {
             computer: display.computer,

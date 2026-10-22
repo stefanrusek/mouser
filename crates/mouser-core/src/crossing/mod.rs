@@ -52,7 +52,8 @@ use std::sync::mpsc;
 
 use bytes::Bytes;
 use mouser_platform::{
-    Error, InputCapture, InputInject, LocalInput, PermissionKind, PermissionState, Platform,
+    Error, FileDrag, InputCapture, InputInject, LocalInput, PermissionKind, PermissionState,
+    Platform,
 };
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, EdgeOptions, Os};
@@ -139,6 +140,11 @@ pub(crate) struct Crossing {
     pub targeted_paste: Chord,
     /// The clipboard task, told of the paste shortcut and the hotkey.
     pub clipboard: UnboundedSender<Command>,
+    /// Files being dragged out of this computer; `None` where the platform
+    /// cannot tell.
+    pub drag: Option<Box<dyn FileDrag>>,
+    /// The transfer task, told when files are dragged across.
+    pub transfers: UnboundedSender<crate::transfer::engine::Command>,
 }
 
 /// What the input path reports to and asks of the rest of the engine.
@@ -149,6 +155,8 @@ pub(crate) struct Host {
     pub platform: Arc<dyn Platform>,
     pub problems: Arc<Problems>,
     pub clipboard: UnboundedSender<Command>,
+    pub drag: Option<Box<dyn FileDrag>>,
+    pub transfers: UnboundedSender<crate::transfer::engine::Command>,
 }
 
 impl Crossing {
@@ -177,6 +185,8 @@ impl Crossing {
             bumps: Bumps::default(),
             targeted_paste,
             clipboard: host.clipboard,
+            drag: host.drag,
+            transfers: host.transfers,
         }
     }
 

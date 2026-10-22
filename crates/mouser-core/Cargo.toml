@@ -30,6 +30,12 @@ toml = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ipnet = "2.12"
 
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 mouser-testkit = { path = "../mouser-testkit" }
 cucumber = "=0.23.0"
@@ -58,4 +64,8 @@ harness = false
 
 [[test]]
 name = "acc_us6"
+harness = false
+
+[[test]]
+name = "acc_us7"
 harness = false

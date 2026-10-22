@@ -97,9 +97,14 @@ async fn motion_loop(ctx: Arc<Ctx>, peer: ComputerId, conn: quinn::Connection) {
 
 /// Receives the files that desk-mates stream to us until the connection ends.
 async fn file_loop(ctx: Arc<Ctx>, conn: quinn::Connection) {
-    while let Ok(stream) = conn.accept_uni().await {
+    while let Ok(mut stream) = conn.accept_uni().await {
         // A stream cut short by a lost connection is a transfer that did not finish.
-        if let Ok(Some(paths)) = ctx.clip_inbox.receive(stream).await {
+        let Ok((id, index)) = crate::transfer::streams::read_header(&mut stream).await else {
+            continue;
+        };
+        if ctx.transfer_ids.contains(&id) {
+            ctx.spawn(ctx.clone().receive_dragged(id, index, stream));
+        } else if let Ok(Some(paths)) = ctx.clip_inbox.receive(id, index, stream).await {
             // No clipboard task means this platform shares no clipboard.
             let _ = ctx
                 .clip
@@ -292,6 +297,10 @@ impl Ctx {
             .clear(ProblemKind::SecureInput, &peer.to_string());
         // No clipboard task means this platform shares no clipboard.
         let _ = self.clip.send(crate::clipboard::Command::PeerGone(peer));
+        // Likewise for dragged files.
+        let _ = self
+            .xfer
+            .send(crate::transfer::engine::Command::PeerGone(peer));
         if waiting {
             self.fail_pending("The request to join the desk was not answered.");
         }
@@ -342,10 +351,13 @@ impl Ctx {
             ControlMessage::Status(status) => self.on_peer_status(peer, status),
             message @ (ControlMessage::ClipboardOffer { .. }
             | ControlMessage::ClipboardFetch { .. }
-            | ControlMessage::ClipboardData { .. }
-            | ControlMessage::TransferOffer { .. }
+            | ControlMessage::ClipboardData { .. }) => self.clipboard_message(peer, message),
+            message @ (ControlMessage::TransferOffer { .. }
             | ControlMessage::TransferAccept { .. }
-            | ControlMessage::TransferDone { .. }) => self.clipboard_message(peer, message),
+            | ControlMessage::TransferReject { .. }
+            | ControlMessage::TransferConflict { .. }
+            | ControlMessage::TransferResolve { .. }
+            | ControlMessage::TransferDone { .. }) => self.transfer_message(peer, message),
             ControlMessage::Enter {
                 display_id,
                 x,

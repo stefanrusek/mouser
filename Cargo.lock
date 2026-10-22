@@ -3190,6 +3190,7 @@ dependencies = [
  "if-addrs",
  "ipnet",
  "jsonschema",
+ "libc",
  "mdns-sd",
  "mouser-platform",
  "mouser-proto",
@@ -3205,6 +3206,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 1.1.8+spec-1.1.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -225,12 +225,7 @@ impl Ctx {
                     files,
                 } => {
                     if let Some(entry) = core.peers.get(&to) {
-                        let conn = entry.conn.clone();
-                        self.spawn(async move {
-                            // A lost connection ends the transfer; the paster notices the
-                            // computer is gone.
-                            let _ = files::send(&conn, transfer, &files).await;
-                        });
+                        self.stream_files(entry.conn.clone(), transfer, files);
                     }
                 }
             }

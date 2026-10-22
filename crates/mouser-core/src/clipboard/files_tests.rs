@@ -10,11 +10,12 @@ use mouser_proto::wire::{
 };
 use mouser_testkit::VirtualPlatform;
 
-use super::files::{Inbox, manifest};
+use super::files::Inbox;
 use super::watch::offer;
 use super::{Clip, Command, Out};
 use crate::crossing::modifiers::LEFT_CTRL;
 use crate::testing::*;
+use crate::transfer::streams::manifest;
 
 const V: u32 = 0x0007_0019;
 

@@ -75,3 +75,12 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Files: receiver sends `ClipboardFetch{Files}`, origin answers `TransferOffer`; `TransferAccept` → one uni stream per file (16-byte transfer id + 4-byte item index) → `TransferDone`. Files land in `<config_dir>/clipboard/<transfer id>/` (never cleaned up: open item); escaping paths refused. US7 must share the Transfer* dispatch now owned by clipboard.
 - Large `ClipboardData` rides the control stream and can briefly delay input (open item).
 - `hotkeys.targeted_paste` must parse as modifiers + key; `config.set` refuses bad values, applies live.
+
+## core US7 decisions (for app US7, platform lanes)
+
+- Shared transfer machinery lives in `transfer/streams.rs` (manifest, escape check, per-file uni streams); clipboard files and drags both use it.
+- A drag offer is marked by `TransferOffer.destination_dir = "drop"` (`transfer::drag::DRAG_DESTINATION`); clipboard offers use `""`. Accept/Done route by transfer id; Reject/Conflict/Resolve are drag-only.
+- Hand-off: `Crossing::begin` calls `FileDrag::outgoing()` after `Enter`; the receiver calls `begin_incoming(names)` on a dedicated thread (macOS blocks until the drop), checks free space, accepts, writes under the drop folder.
+- Overwrite: destination publishes a `transfer` notification in state `awaiting_overwrite_decision` (`item`, `message`); the app answers via in-process `ControlHandle::resolve_transfer(transfer_id_hex, overwrite)` (no control method yet: open item). Declining skips that file.
+- `transfer` notifications: `transfer_id` (hex), `state` (pending|checking|copying|awaiting_overwrite_decision|completed|rejected), `current_item`, `bytes_done`, `bytes_total`, `rate` (B/s), `eta_seconds`; throttled to 100 ms; conflict/rejected add `item`, `reason`, `message`.
+- Open items: peer disconnect drops transfers silently (no notification), partial and completed files are never cleaned up; Linux backend must report a FileDrag limitation pointing to copy/paste.

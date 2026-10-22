@@ -267,19 +267,19 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us7` passes: a scripted drag copies files with progress, prompts on conflict and refuses when space is short.
 
-- [ ] T171 [US7-core] Write the acceptance runner `crates/mouser-core/tests/acc_us7.rs` and steps `crates/mouser-core/tests/steps/us7.rs` for every scenario in `tests/features/us7.feature`
-- [ ] T172 [P] [US7-core] Write unit tests for the transfer engine in `crates/mouser-core/src/transfer/engine_tests.rs`: states `Pending → Checking (space) → Copying → Completed`; one unidirectional stream per item; copies appear in `destination_dir` with relative paths preserved (Story 7 sc. 1)
-- [ ] T173 [US7-core] Implement the transfer engine in `crates/mouser-core/src/transfer/engine.rs`
-- [ ] T174 [P] [US7-core] Write unit tests for transfer progress in `crates/mouser-core/src/transfer/progress_tests.rs`: `transfer` notifications carry current item, bytes done/total, rate and ETA (Story 7 sc. 2)
-- [ ] T175 [US7-core] Implement transfer progress reporting in `crates/mouser-core/src/transfer/progress.rs`
-- [ ] T176 [P] [US7-core] Write unit tests for name conflicts in `crates/mouser-core/src/transfer/conflict_tests.rs`: an existing name moves the transfer to `AwaitingOverwriteDecision`, emits a conflict notification, and `TransferResolve{overwrite}` continues or skips that item (Story 7 sc. 3)
-- [ ] T177 [US7-core] Implement name-conflict handling in `crates/mouser-core/src/transfer/conflict.rs`
-- [ ] T178 [P] [US7-core] Write unit tests for the space check in `crates/mouser-core/src/transfer/space_tests.rs`: total size is compared with free space before any byte is written; insufficient space sends `TransferReject(no_space)`, writes nothing, and notifies the user (Story 7 sc. 4)
-- [ ] T179 [US7-core] Implement the free-space check in `crates/mouser-core/src/transfer/space.rs`
-- [ ] T180 [P] [US7-core] Write unit tests for drag hand-off in `crates/mouser-core/src/transfer/drag_tests.rs`: when the pointer crosses while `FileDrag::outgoing()` returns paths, `TransferOffer` follows `Enter`; the receiver calls `begin_incoming` and starts the transfer on the reported drop target; when `Platform::file_drag()` is `None` the limitation is reported instead (D3 item 3)
-- [ ] T181 [US7-core] Implement drag hand-off in `crates/mouser-core/src/transfer/drag.rs`
-- [ ] T182 [US7-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T183 [US7-core] Commit: phase boundary "US7-core" (5.3)
+- [X] T171 [US7-core] Write the acceptance runner `crates/mouser-core/tests/acc_us7.rs` and steps `crates/mouser-core/tests/steps/us7.rs` for every scenario in `tests/features/us7.feature`
+- [X] T172 [P] [US7-core] Write unit tests for the transfer engine in `crates/mouser-core/src/transfer/engine_tests.rs`: states `Pending → Checking (space) → Copying → Completed`; one unidirectional stream per item; copies appear in `destination_dir` with relative paths preserved (Story 7 sc. 1)
+- [X] T173 [US7-core] Implement the transfer engine in `crates/mouser-core/src/transfer/engine.rs`
+- [X] T174 [P] [US7-core] Write unit tests for transfer progress in `crates/mouser-core/src/transfer/progress_tests.rs`: `transfer` notifications carry current item, bytes done/total, rate and ETA (Story 7 sc. 2)
+- [X] T175 [US7-core] Implement transfer progress reporting in `crates/mouser-core/src/transfer/progress.rs`
+- [X] T176 [P] [US7-core] Write unit tests for name conflicts in `crates/mouser-core/src/transfer/conflict_tests.rs`: an existing name moves the transfer to `AwaitingOverwriteDecision`, emits a conflict notification, and `TransferResolve{overwrite}` continues or skips that item (Story 7 sc. 3)
+- [X] T177 [US7-core] Implement name-conflict handling in `crates/mouser-core/src/transfer/conflict.rs`
+- [X] T178 [P] [US7-core] Write unit tests for the space check in `crates/mouser-core/src/transfer/space_tests.rs`: total size is compared with free space before any byte is written; insufficient space sends `TransferReject(no_space)`, writes nothing, and notifies the user (Story 7 sc. 4)
+- [X] T179 [US7-core] Implement the free-space check in `crates/mouser-core/src/transfer/space.rs`
+- [X] T180 [P] [US7-core] Write unit tests for drag hand-off in `crates/mouser-core/src/transfer/drag_tests.rs`: when the pointer crosses while `FileDrag::outgoing()` returns paths, `TransferOffer` follows `Enter`; the receiver calls `begin_incoming` and starts the transfer on the reported drop target; when `Platform::file_drag()` is `None` the limitation is reported instead (D3 item 3)
+- [X] T181 [US7-core] Implement drag hand-off in `crates/mouser-core/src/transfer/drag.rs`
+- [X] T182 [US7-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T183 [US7-core] Commit: phase boundary "US7-core" (5.3)
 
 #### Phase 10: US8-core — As a desk owner, I want Mouser to tell me what is wrong and how to fix it (P2)
 

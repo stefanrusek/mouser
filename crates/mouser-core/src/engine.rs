@@ -182,6 +182,12 @@ pub(crate) struct Ctx {
     pub clip: mpsc::UnboundedSender<Command>,
     /// Files pasted from other computers, which streams are expected for.
     pub clip_inbox: Inbox,
+    /// Tells the transfer task what to do.
+    pub xfer: mpsc::UnboundedSender<crate::transfer::engine::Command>,
+    /// The dragged-file transfers in progress.
+    pub transfer_ids: crate::transfer::engine::Ids,
+    /// Dragged-file streams waiting to hear what to do.
+    pub xfer_waiters: crate::transfer::Waiters,
     pub core: Mutex<Core>,
     pub next_link: AtomicU64,
     stop: CancellationToken,
@@ -357,6 +363,7 @@ impl Engine {
         let targeted_paste =
             Chord::parse(&config.hotkeys.targeted_paste).expect("hotkeys.targeted_paste is valid");
         let (clip, clip_commands) = mpsc::unbounded_channel();
+        let (xfer, xfer_commands) = mpsc::unbounded_channel();
         let crossing = Arc::new(Mutex::new(Crossing::new(
             identity.computer_id(),
             crate::platform_os(params.platform.info().os),
@@ -369,6 +376,8 @@ impl Engine {
                 platform: params.platform.clone(),
                 problems: problems.clone(),
                 clipboard: clip.clone(),
+                drag: params.platform.file_drag(),
+                transfers: xfer.clone(),
             },
         )));
         let interfaces = params.platform.interfaces();
@@ -388,6 +397,9 @@ impl Engine {
             secrets: Mutex::new(secrets),
             clip,
             clip_inbox: Inbox::default(),
+            xfer,
+            transfer_ids: Default::default(),
+            xfer_waiters: Default::default(),
             core: Mutex::new(Core {
                 config,
                 state,
@@ -411,6 +423,7 @@ impl Engine {
         ctx.raise_limitations();
         ctx.try_start_input();
         ctx.start_clipboard(clip_commands);
+        ctx.start_transfers(xfer_commands);
         let (tx, rx) = std::sync::mpsc::channel();
         let watch = ctx
             .platform
