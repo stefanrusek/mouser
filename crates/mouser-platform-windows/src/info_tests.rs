@@ -16,14 +16,7 @@ fn info_reports_windows_with_its_version_and_declared_limitations() {
         "Windows 10 and 11 both report major version 10"
     );
     let declared: Vec<Capability> = info.limitations.iter().map(|l| l.capability).collect();
-    assert_eq!(
-        declared,
-        [
-            Capability::Inject,
-            Capability::SecureAttention,
-            Capability::FileDrag
-        ]
-    );
+    assert_eq!(declared, [Capability::Inject, Capability::SecureAttention,]);
 }
 
 #[test]

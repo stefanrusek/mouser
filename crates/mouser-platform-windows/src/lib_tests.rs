@@ -28,9 +28,9 @@ fn system_settings_point_at_program_data_and_the_real_run_keys() {
 }
 
 #[test]
-fn capabilities_of_later_phases_are_unsupported_not_panicking() {
+fn secure_input_is_not_offered_yet() {
     let p = WinPlatform::new();
-    assert!(p.file_drag().is_none());
+    assert!(p.file_drag().is_some());
     assert!(p.secure_input().is_none());
     let _ = p.foreground_is_fullscreen();
 }

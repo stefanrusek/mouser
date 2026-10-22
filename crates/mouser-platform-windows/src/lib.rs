@@ -17,6 +17,9 @@ mod clipboard;
 mod cursor;
 mod displays;
 mod dpi;
+mod drag;
+mod dropdir;
+mod edge;
 mod fullscreen;
 mod inject;
 mod keymap;
@@ -25,6 +28,7 @@ mod netwatch;
 mod permissions;
 mod secrets;
 mod uipi;
+mod vfiles;
 
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
@@ -181,10 +185,6 @@ impl Platform for WinPlatform {
                     Capability::SecureAttention,
                     "Ctrl-Alt-Del can't be sent to this PC yet.",
                 ),
-                limitation(
-                    Capability::FileDrag,
-                    "Dragging files between computers is not available yet.",
-                ),
             ],
         }
     }
@@ -250,7 +250,7 @@ impl Platform for WinPlatform {
     }
 
     fn file_drag(&self) -> Option<Box<dyn FileDrag>> {
-        None
+        Some(Box::new(drag::WinFileDrag::new()))
     }
 }
 
@@ -264,6 +264,8 @@ mod clipboard_tests;
 mod cursor_tests;
 #[cfg(test)]
 mod displays_tests;
+#[cfg(test)]
+mod drag_tests;
 #[cfg(test)]
 mod fullscreen_tests;
 #[cfg(test)]
