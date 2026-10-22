@@ -1,11 +1,13 @@
-//! J1 steps for Story 2: cross between the two Macs by OS-level pointer
-//! movement on the controller (computer A), type on B and read it back over SSH,
-//! and the panic key (quickstart.md section 2, steps 5 and 6).
+//! J1 steps for Story 2: cross between the Mac (computer A, the controller)
+//! and the Windows VM (computer B) by OS-level pointer movement on A, type on
+//! B and read it back over SSH, and the panic key (quickstart.md section 2,
+//! steps 5 and 6).
 //!
-//! Computer A is the controller: its pointer and keyboard are driven by
-//! `input.rs`. Computer B shows what arrived in a plain-text file open in
-//! TextEdit; the file is read back with `cat` over SSH. Computer B is placed to
-//! the right of A by Mouser's automatic placement (data-model.md).
+//! Computer A's pointer and keyboard are driven by `input.rs`. Computer B shows
+//! what arrived in a plain-text file open in Notepad (started in the user's
+//! desktop session by a scheduled task, see `Computer::interactive`); Command-S
+//! on A reaches Notepad as Ctrl-S, which saves, and the file is read back over
+//! SSH. Computer B is placed to the right of A by Mouser's automatic placement.
 
 use cucumber::{given, then, when};
 
@@ -13,8 +15,8 @@ use crate::input;
 use crate::us1_cli::status_where;
 use crate::world::{Computer, J1World};
 
-/// The file TextEdit holds open on computer B.
-pub(crate) const NOTE: &str = "/tmp/mouser-j1-note.txt";
+/// The file Notepad holds open on computer B.
+const NOTE: &str = r"C:\Users\Public\mouser-j1-note.txt";
 
 /// Far enough to cross any plausible pair of displays.
 const FAR: i32 = 10_000;
@@ -35,17 +37,26 @@ pub(crate) fn wait_active(observer: Computer, controlled: Computer) {
     });
 }
 
-#[given("a plain text file is open in TextEdit on computer B")]
+#[given("a plain text file is open in Notepad on computer B")]
 async fn note_open(_world: &mut J1World) {
-    let opened = Computer::B.run(
-        "sh",
-        &[
-            "-c",
-            &format!("printf '' > {NOTE} && open -a TextEdit {NOTE}"),
-        ],
+    let created = Computer::B.script(&format!("[IO.File]::WriteAllText('{NOTE}', '')"));
+    assert!(created.status.success(), "create the note on B");
+    Computer::B.interactive(
+        "note",
+        &format!(
+            "Start-Process notepad.exe -ArgumentList '{NOTE}'; Start-Sleep 3; \
+             (New-Object -ComObject WScript.Shell).AppActivate('mouser-j1-note') | Out-Null"
+        ),
     );
-    assert!(opened.status.success(), "open the note on B");
-    input::settle(3);
+    Computer::B.wait_for("Notepad to start on computer B", |c| {
+        c.script(
+            "if (Get-Process notepad -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }",
+        )
+        .status
+        .success()
+        .then_some(())
+    });
+    input::settle(5);
 }
 
 #[when("the owner moves the pointer off the right edge of computer A's display")]
@@ -83,17 +94,21 @@ async fn file_contains(_world: &mut J1World, text: String) {
     read_back(&text);
 }
 
-/// Wait for the note on B to equal `expected`, then close TextEdit and remove it.
+/// Wait for the note on B to equal `expected`, then close Notepad and remove it.
 pub(crate) fn read_back(expected: &str) {
     let found = Computer::B.wait_for("the typed text to be saved on computer B", |c| {
-        let out = c.run("cat", &[NOTE]);
+        let out = c.script(&format!(
+            "[Console]::Out.Write([IO.File]::ReadAllText('{NOTE}'))"
+        ));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         (text == expected).then_some(text)
     });
     assert_eq!(found, expected);
-    let closed = Computer::B.run("osascript", &["-e", "quit app \"TextEdit\""]);
-    assert!(closed.status.success(), "quit TextEdit on B");
-    Computer::B.run("rm", &["-f", NOTE]);
+    let closed = Computer::B.script(&format!(
+        "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; \
+         Remove-Item -Force '{NOTE}'"
+    ));
+    assert!(closed.status.success(), "close Notepad on B");
 }
 
 #[when("the owner presses Escape twice on computer A")]

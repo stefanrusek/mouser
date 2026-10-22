@@ -23,6 +23,12 @@ path = "tests/contract_cli.rs"
 name = "e2e_steps"
 path = "tests/e2e_steps.rs"
 
+[[test]]
+name = "e2e_j1"
+path = "tests/e2e_j1.rs"
+harness = false
+required-features = ["e2e"]
+
 [features]
 # J1 end-to-end step definitions (run only through `cargo xtask gate --e2e j1`).
 e2e = ["dep:cucumber"]
