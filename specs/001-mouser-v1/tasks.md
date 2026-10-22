@@ -567,36 +567,36 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 
 - [X] T346 [P] [US5-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/fullscreen_tests.rs`: frontmost app's first layer-0 window on the cursor's display with bounds equal to the display bounds (±1 pt), or any window at or above the shielding level covering the display, means full-screen
 - [X] T347 [US5-platform-macos] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-macos/src/fullscreen.rs`
-- [ ] T348 [US5-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T349 [US5-platform-macos] Commit: phase boundary "US5-platform-macos" (5.3)
+- [X] T348 [US5-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T349 [US5-platform-macos] Commit: phase boundary "US5-platform-macos" (5.3)
 
 #### Phase 35: US6-platform-macos — As a desk user, I want copy and paste to work between computers (P2)
 
 - [X] T350 [P] [US6-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_us6.rs` running conformance rule 5 (clipboard write/read) for Text, Html, Rtf, Png and Files against `MacPlatform`, restoring the original clipboard afterwards
 - [X] T351 [US6-platform-macos] Implement `Clipboard` on clipboard-rs 0.3.5 (multi-format `set`, `NSPasteboard.changeCount` for `change_count`, path normalisation) in `crates/mouser-platform-macos/src/clipboard.rs`
-- [ ] T352 [US6-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T353 [US6-platform-macos] Commit: phase boundary "US6-platform-macos" (5.3)
+- [X] T352 [US6-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T353 [US6-platform-macos] Commit: phase boundary "US6-platform-macos" (5.3)
 
 #### Phase 36: US7-platform-macos — As a desk user, I want to drag files from one computer to another (P2)
 
 - [X] T354 [P] [US7-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/drag_tests.rs`: `outgoing()` returns the file URLs on the drag pasteboard while a drag is in progress; `begin_incoming(names)` starts a drag from a transparent window at the cursor whose drop reports the destination folder
 - [X] T355 [US7-platform-macos] Implement `FileDrag` in `crates/mouser-platform-macos/src/drag.rs`
-- [ ] T356 [US7-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T357 [US7-platform-macos] Commit: phase boundary "US7-platform-macos" (5.3)
+- [X] T356 [US7-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T357 [US7-platform-macos] Commit: phase boundary "US7-platform-macos" (5.3)
 
 #### Phase 37: US12-platform-macos — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 
 - [X] T358 [P] [US12-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/login_agent_tests.rs`: installing the pre-login agent writes a LaunchAgent plist with `LimitLoadToSessionType = LoginWindow` that starts Mouser in headless mode; uninstall removes it (Story 12 sc. 1)
 - [X] T359 [US12-platform-macos] Implement the login-window agent installer in `crates/mouser-platform-macos/src/login_agent.rs`
-- [ ] T360 [US12-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T361 [US12-platform-macos] Commit: phase boundary "US12-platform-macos" (5.3)
+- [X] T360 [US12-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T361 [US12-platform-macos] Commit: phase boundary "US12-platform-macos" (5.3)
 
 #### Phase 38: US13-platform-macos — As a desk owner, I want to run Mouser without installing it (P3)
 
 - [X] T362 [P] [US13-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/portable_tests.rs`: in portable mode `secrets()` is file-backed under `MouserData/` and `limitations` states that macOS permissions must be granted again on each computer the drive is used on
 - [X] T363 [US13-platform-macos] Implement portable mode in `crates/mouser-platform-macos/src/portable.rs`
-- [ ] T364 [US13-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
-- [ ] T365 [US13-platform-macos] Commit: phase boundary "US13-platform-macos" (5.3)
+- [X] T364 [US13-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the macOS runner
+- [X] T365 [US13-platform-macos] Commit: phase boundary "US13-platform-macos" (5.3)
 
 ### Lane: platform-windows
 

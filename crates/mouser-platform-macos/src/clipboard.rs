@@ -5,7 +5,7 @@
 //! the clipboard-rs / `NSPasteboard` implementation.
 
 use clipboard_rs::{Clipboard as _, ClipboardContent, ClipboardContext};
-use mouser_platform::{ClipRep, Clipboard, Error, Result};
+use mouser_platform::{ClipRep, Clipboard, Result};
 use objc2_app_kit::NSPasteboard;
 use std::path::PathBuf;
 
@@ -127,7 +127,7 @@ pub(crate) struct SystemBoard {
 
 impl SystemBoard {
     pub(crate) fn new() -> Result<Self> {
-        let context = ClipboardContext::new().map_err(|e| Error::Os(e.to_string()))?;
+        let context = ClipboardContext::new().expect("open the general pasteboard");
         Ok(SystemBoard { context })
     }
 }
@@ -149,9 +149,8 @@ impl Board for SystemBoard {
                 Item::Files(files) => ClipboardContent::Files(files),
             })
             .collect();
-        self.context
-            .set(contents)
-            .map_err(|e| Error::Os(e.to_string()))
+        self.context.set(contents).expect("write the pasteboard");
+        Ok(())
     }
 
     fn change_count(&self) -> u64 {

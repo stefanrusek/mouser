@@ -137,3 +137,10 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The tray polls `update.check` every 15 min (`updater::POLL`) and shows "Version X — Update to Y available" (click = `update.apply`); `updates.automatic` is handled by the engine.
 - The gui shell sets `installer` + `check_schedule = Some(CheckSchedule::DEFAULT)`; tests use `Updates::default()`.
 - Installer: core's `Bundle {version, bytes}` has no signature, so the app re-signs the core-verified bundle with a one-time minisign key, serves `latest.json` + bundle on 127.0.0.1, and drives tauri-plugin-updater 2.14.0 (runtime `pubkey()`, `target("lan")`), then restarts. Needs `dangerousInsecureTransportProtocol: true` (loopback only). Open item: carry the original signature in `Bundle` instead.
+
+## platform-macos gate (real hardware, 2026-10-21 evening, owner away)
+
+- Full `gate --packages mouser-platform-macos` passed 3x on the Mac mini: real input (incl. rule 7), pasteboard (saved and restored), full-screen, cursor hiding, and a real Finder drop through the file promise (harness = false test that owns the AppKit main loop).
+- Pasteboard failures in `SystemBoard::new`/`write` now panic (unspecified, unreachable on a real pasteboard).
+- OPEN for incoming drags in the real app: an NSDraggingSession only advances if the mouse-down that started it went to a window of Mouser's own process; the transparent drag window must receive the press. Finder also needed ~50 drag events of hover before accepting a drop. Verify in the real app (J1-style test) before claiming file drag into a Mac works.
+- US12 login-window agent: plist writing is gated; a real login-window run is unverified (needs sudo + a real login screen).

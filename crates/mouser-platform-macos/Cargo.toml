@@ -35,3 +35,9 @@ system-configuration = "=0.7.0"
 
 [dev-dependencies]
 mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
+
+# The file-drag test needs the real main thread running AppKit's event loop,
+# which libtest's harness never does.
+[[test]]
+name = "contract_platform_macos_us7"
+harness = false
