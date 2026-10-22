@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use mouser_proto::ids::ComputerId;
 use mouser_proto::log::LogLevel;
@@ -22,6 +23,21 @@ const MANIFEST: &str = "manifest.json";
 
 /// The scheme of the URLs a fetcher offers: its own endpoint on the desk.
 const LAN_SCHEME: &str = "mouser-lan";
+
+/// How long an offered desk-mate has to start its `ReleaseFetch` before the
+/// fetcher stops counting on it (it may not update by itself).
+pub const FETCH_START_GRACE: Duration = Duration::from_secs(5);
+
+/// The longest the fetcher postpones its own restart for desk-mates that are
+/// still fetching.
+pub const FETCH_SETTLE_LIMIT: Duration = Duration::from_secs(60);
+
+/// What the fetcher knows about a desk-mate it offered the release to.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Serving {
+    pub offered_at: tokio::time::Instant,
+    pub fetching: bool,
+}
 
 /// A verified release stored on this computer: its manifest (only platforms
 /// whose bundle verified) and the bundle files.
@@ -115,6 +131,13 @@ impl Ctx {
         let entry = &core.peers[&peer];
         let older = Version::parse(&entry.hello.mouser_version).is_ok_and(|v| v < held.version());
         if entry.phase == Phase::Authed && older {
+            self.release_serving.lock().unwrap().insert(
+                peer,
+                Serving {
+                    offered_at: tokio::time::Instant::now(),
+                    fetching: false,
+                },
+            );
             entry.send(ControlMessage::ReleaseAvailable {
                 manifest_json: held.lan_manifest(self.me()),
             });
@@ -145,7 +168,11 @@ impl Ctx {
         let wanted = version > Version::parse(&self.mouser_version).expect("own version is valid")
             && manifest.platforms.contains_key(&self.platform_key())
             && core.release.offered.as_ref().is_none_or(|o| {
-                Version::parse(&o.manifest.version).is_ok_and(|current| current < version)
+                Version::parse(&o.manifest.version).is_ok_and(|current| {
+                    // The same release offered again (a fetch that was cut
+                    // short, the fetcher back after a restart) is a retry.
+                    current < version || (current == version && !core.release.applying)
+                })
             });
         if !wanted {
             return Ok(());
@@ -191,11 +218,37 @@ impl Ctx {
             .unwrap_or_default();
         let conn = core.peers[&peer].conn.clone();
         drop(core);
+        if let Some(serving) = self.release_serving.lock().unwrap().get_mut(&peer) {
+            serving.fetching = true;
+        }
+        let ctx = self.clone();
         self.spawn(async move {
             // A connection lost meanwhile is the asker's to notice.
             let _ = stream_bundle(conn, stream_id(&version, &asset), bytes).await;
+            ctx.release_serving.lock().unwrap().remove(&peer);
         });
         Ok(())
+    }
+
+    /// Wait for the desk-mates offered the release to finish fetching it
+    /// (or to go away), so that restarting does not cut their fetch short.
+    pub(crate) async fn settle_fetches(&self) {
+        self.settle_fetches_within(FETCH_START_GRACE, FETCH_SETTLE_LIMIT)
+            .await;
+    }
+
+    pub(crate) async fn settle_fetches_within(&self, grace: Duration, limit: Duration) {
+        let end = tokio::time::Instant::now() + limit;
+        while tokio::time::Instant::now() < end
+            && self
+                .release_serving
+                .lock()
+                .unwrap()
+                .values()
+                .any(|s| s.fetching || s.offered_at.elapsed() < grace)
+        {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 }
 

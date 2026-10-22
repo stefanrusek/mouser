@@ -34,6 +34,8 @@ pub struct UpdateWorld {
     bundles: BTreeMap<String, Vec<u8>>,
     /// The computer that goes to the release location: the lowest id.
     elected: &'static str,
+    /// Computers whose next install fails.
+    failing: Arc<Mutex<Vec<String>>>,
 }
 
 impl fmt::Debug for UpdateWorld {
@@ -51,6 +53,7 @@ impl UpdateWorld {
             installed: Installed::default(),
             bundles: BTreeMap::new(),
             elected: "",
+            failing: Arc::default(),
         }
     }
 
@@ -62,8 +65,14 @@ impl UpdateWorld {
     /// host and an installer that records what it is given.
     fn setup(&self, name: &str, automatic: bool) -> Setup {
         let installed = self.installed.clone();
+        let failing = self.failing.clone();
         let who = name.to_string();
         let installer: Installer = Arc::new(move |bundle| {
+            let mut failing = failing.lock().unwrap();
+            if let Some(at) = failing.iter().position(|f| *f == who) {
+                failing.remove(at);
+                return Err("the disk is full".into());
+            }
             installed.lock().unwrap().push((who.clone(), bundle));
             Ok(())
         });
@@ -327,4 +336,101 @@ async fn shows_versions(world: &mut UpdateWorld) {
             "{name}"
         );
     }
+}
+
+/// The computers other than the elected one, in name order.
+fn others(world: &UpdateWorld) -> Vec<&'static str> {
+    let fetcher = world.fetcher();
+    NAMES.into_iter().filter(|n| *n != fetcher).collect()
+}
+
+#[given("a desk where every computer updates automatically")]
+async fn automatic_desk(world: &mut UpdateWorld) {
+    world.desk(true).await;
+}
+
+#[given("a desk where every computer updates automatically and one other computer's first install fails")]
+async fn failing_desk(world: &mut UpdateWorld) {
+    world.desk(true).await;
+    let failing = others(world)[0].to_string();
+    world.failing.lock().unwrap().push(failing);
+}
+
+#[when("the elected computer finds the release and restarts as the new version")]
+async fn fetcher_restarts(world: &mut UpdateWorld) {
+    let fetcher = world.fetcher();
+    let _: UpdateResult = world
+        .lab
+        .node(fetcher)
+        .call(Method::UpdateCheck, json!({}))
+        .await;
+    // The failing computer's install is not recorded.
+    let expected = if world.failing.lock().unwrap().is_empty() {
+        3
+    } else {
+        2
+    };
+    world.installs(expected).await;
+    world.lab.node(fetcher).set_version("0.2.0");
+    world.lab.restart(fetcher).await;
+}
+
+#[then("the others have installed it before the elected computer restarted")]
+async fn others_first(world: &mut UpdateWorld) {
+    let installed = world.installed.lock().unwrap().clone();
+    assert_eq!(installed.len(), 3, "{installed:?}");
+    assert_eq!(installed[2].0, world.fetcher(), "{installed:?}");
+    for (_, bundle) in &installed {
+        assert_eq!(bundle.version, "0.2.0");
+    }
+}
+
+#[then("the computer whose install failed updates without the owner visiting it")]
+async fn failed_one_updates(world: &mut UpdateWorld) {
+    world.installs(3).await;
+    let installed = world.installed.lock().unwrap().clone();
+    let failed = others(world)[0];
+    assert!(
+        installed
+            .iter()
+            .any(|(who, bundle)| who == failed && bundle.version == "0.2.0"),
+        "{failed} never updated: {installed:?}"
+    );
+    assert!(world.failing.lock().unwrap().is_empty());
+}
+
+#[given("a desk where every computer has updated over the LAN")]
+async fn updated_over_lan(world: &mut UpdateWorld) {
+    world.desk(true).await;
+    let fetcher = world.fetcher();
+    let _: UpdateResult = world
+        .lab
+        .node(fetcher)
+        .call(Method::UpdateCheck, json!({}))
+        .await;
+    world.installs(3).await;
+    world.installed.lock().unwrap().clear();
+}
+
+#[when("one that was not the elected computer restarts as the new version and an older one rejoins")]
+async fn relay_restarts(world: &mut UpdateWorld) {
+    let (fetcher, others) = (world.fetcher(), others(world));
+    let (updated, older) = (others[0], others[1]);
+    // Only the computer that updated over the LAN can offer the release.
+    world.lab.node(fetcher).stop().await;
+    world.lab.node(older).stop().await;
+    world.lab.node(updated).set_version("0.2.0");
+    world.lab.restart(updated).await;
+    world.lab.restart(older).await;
+}
+
+#[then("the older one updates from it")]
+async fn older_updates(world: &mut UpdateWorld) {
+    world.installs(1).await;
+    let installed = world.installed.lock().unwrap().clone();
+    let older = others(world)[1];
+    assert_eq!(installed.len(), 1, "{installed:?}");
+    assert_eq!(installed[0].0, older);
+    assert_eq!(installed[0].1.version, "0.2.0");
+    assert!(installed[0].1.bytes.starts_with(b"Mouser 0.2.0 for "));
 }

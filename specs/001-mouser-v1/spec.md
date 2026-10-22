@@ -206,7 +206,7 @@ When one computer on the desk is updated, the rest follow automatically, and an 
 
 **Acceptance Scenarios**:
 
-1. **Given** one computer on the desk has a newer version than the others, **When** the others notice it, **Then** they update to that version without the owner visiting them, and the desk works afterwards.
+1. **Given** one computer on the desk has a newer version than the others, **When** the others notice it, **Then** they update to that version without the owner visiting them, and the desk works afterwards. This holds when the computer with the release restarts as soon as it has installed, when a first attempt fails or is cut short, and for a computer that itself updated over the local network.
 2. **Given** a computer has been updated, **When** Mouser starts again, **Then** the operating-system permissions granted before the update are still granted.
 3. **Given** a newer release has been published, **When** a computer on the desk next checks for releases, **Then** it downloads the release and the other desk computers update from it over the local network without downloading it themselves.
 4. **Given** an update is available, **When** the owner looks at the tray menu, **Then** it shows the current and available versions.

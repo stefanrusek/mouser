@@ -6,6 +6,7 @@ use mouser_proto::release::ReleaseManifest;
 use serde_json::json;
 
 use super::Bundle;
+use super::serve::{FOLDER, Serving};
 use super::testing::{Server, Signer, computer, installer, publish};
 use crate::testing::*;
 
@@ -93,6 +94,20 @@ async fn only_the_fetcher_downloads_and_the_others_get_the_release_over_the_desk
             );
         }
         let _: UpdateResult = call(node, Method::UpdateApply, json!({})).await;
+        // What verified is kept, so that this computer can offer it onward
+        // (also after a restart).
+        let key = key_of(node);
+        let held = node.engine.ctx.core.lock().unwrap().release.held.clone();
+        let held = held.expect("the release is stored");
+        assert_eq!(held.manifest.version, "0.2.0");
+        assert_eq!(
+            held.manifest.platforms.keys().collect::<Vec<_>>(),
+            [&key],
+            "{i}"
+        );
+        assert_eq!(held.bundle(&key).unwrap(), published.bundles[&key]);
+        let stored = crate::release::Held::load(&node.engine.ctx.config_dir.join(FOLDER));
+        assert_eq!(stored.unwrap().manifest.version, "0.2.0");
     }
     {
         let installed = installed.lock().unwrap();
@@ -250,6 +265,20 @@ async fn offers_that_are_not_an_update_for_this_computer_are_ignored() {
     ctx.on_release_available(from, &offer(&manifest_for(beta, "0.4.0", &mine)))
         .unwrap();
     assert_eq!(ctx.update_result().available.as_deref(), Some("0.4.0"));
+    // The same release again is a retry, unless it is being installed.
+    let signature = |ctx: &std::sync::Arc<crate::engine::Ctx>| {
+        let core = ctx.core.lock().unwrap();
+        let offered = core.release.offered.clone().unwrap();
+        offered.manifest.platforms[&key_of(alpha)].signature.clone()
+    };
+    let mut again = manifest_for(beta, "0.4.0", &mine);
+    again.platforms.get_mut(&key_of(alpha)).unwrap().signature = "again".into();
+    ctx.core.lock().unwrap().release.applying = true;
+    ctx.on_release_available(from, &offer(&again)).unwrap();
+    assert_eq!(signature(&ctx), "sig");
+    ctx.core.lock().unwrap().release.applying = false;
+    ctx.on_release_available(from, &offer(&again)).unwrap();
+    assert_eq!(signature(&ctx), "again");
     // Protocol breaches.
     assert!(
         ctx.on_release_available(from, "{")
@@ -353,4 +382,56 @@ async fn automatic_updates_install_without_being_asked() {
     assert_eq!(server.requests.lock().unwrap().len(), 4);
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(installed.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn the_fetcher_waits_for_offered_desk_mates_to_finish_fetching() {
+    let (lab, server, signer) = (Lab::new(), Server::start().await, Signer::new(1));
+    let (install, _) = installer();
+    let alpha = computer(&lab, "Alpha", "0.1.0", false, (&server, &signer), install).await;
+    let ctx = alpha.engine.ctx.clone();
+    let peer = ComputerId([5; 16]);
+    let (grace, limit) = (Duration::from_millis(200), Duration::from_secs(5));
+    let now = tokio::time::Instant::now;
+    let serve = |fetching| Serving {
+        offered_at: now(),
+        fetching,
+    };
+
+    // Nobody was offered anything.
+    let start = now();
+    ctx.settle_fetches_within(grace, limit).await;
+    assert!(start.elapsed() < grace);
+
+    // Offered but not asking: given the grace to start, no longer.
+    ctx.release_serving.lock().unwrap().insert(peer, serve(false));
+    let start = now();
+    ctx.settle_fetches_within(grace, limit).await;
+    assert!(start.elapsed() >= grace && start.elapsed() < limit);
+
+    // Fetching: waited for until it is done, or gone.
+    for end in [
+        |ctx: std::sync::Arc<crate::engine::Ctx>, peer| {
+            ctx.release_serving.lock().unwrap().remove(&peer);
+        },
+        |ctx: std::sync::Arc<crate::engine::Ctx>, peer| ctx.drop_release_waiters(peer),
+    ] {
+        ctx.release_serving.lock().unwrap().insert(peer, serve(true));
+        let later = ctx.clone();
+        let done = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            end(later, peer);
+        });
+        let start = now();
+        ctx.settle_fetches_within(grace, limit).await;
+        assert!(start.elapsed() >= Duration::from_millis(300) && start.elapsed() < limit);
+        done.await.unwrap();
+    }
+
+    // A fetch that never ends is waited for no longer than the limit.
+    ctx.release_serving.lock().unwrap().insert(peer, serve(true));
+    let start = now();
+    ctx.settle_fetches_within(grace, Duration::from_millis(400))
+        .await;
+    assert!(start.elapsed() >= Duration::from_millis(400) && start.elapsed() < Duration::from_secs(2));
 }

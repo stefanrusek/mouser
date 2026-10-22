@@ -139,4 +139,4 @@ One JSON object per line (FR-010): `ts` (RFC 3339 UTC), `level`, `computer` (Com
 
 ## Release
 
-`version` (semver), `pub_date`, `min_protocol`, `platforms` map "<os>-<arch>" → {url, minisign signature} (contracts/release-manifest.schema.json, the tauri-plugin-updater `latest.json` format). Downloaded by one desk computer, which verifies every platform's signature and then serves the manifest and bundles to members over the desk connection (Story 10, FR-003).
+`version` (semver), `pub_date`, `min_protocol`, `platforms` map "<os>-<arch>" → {url, minisign signature} (contracts/release-manifest.schema.json, the tauri-plugin-updater `latest.json` format). Downloaded by one desk computer, which verifies every platform's signature and then serves the manifest and bundles to members over the desk connection (Story 10, FR-003). A computer that installed a release from a desk-mate keeps its own platform's verified bundle too and offers it to older desk-mates after restarting. The fetcher postpones its own install while offered desk-mates are still fetching: 5 s for each to start (`FETCH_START_GRACE`), 60 s at most overall (`FETCH_SETTLE_LIMIT`).

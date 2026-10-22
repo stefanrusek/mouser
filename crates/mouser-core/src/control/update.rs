@@ -2,6 +2,7 @@
 //! which is available, and installing the verified bundle through the app's
 //! installer. The elected computer also looks for releases by itself.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ use tokio::sync::oneshot;
 
 use crate::engine::Ctx;
 use crate::release::serve::{FOLDER, stream_id};
-use crate::release::{Bundle, CheckSchedule, Offered, Version, fetch, minisign};
+use crate::release::{Bundle, CheckSchedule, Held, Offered, Version, fetch, minisign};
 
 /// The longest a desk-mate may take to start sending a bundle.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(600);
@@ -173,6 +174,18 @@ impl Ctx {
         };
         minisign::verify(&self.release_pubkey, &asset.signature, &bytes)
             .map_err(|e| format!("the bundle was not installed: {e}"))?;
+        if offered.from != self.me() {
+            // Keep what verified, so that after restarting on the new
+            // version this computer offers it to older desk-mates too.
+            let mut manifest = offered.manifest.clone();
+            manifest.platforms.retain(|platform, _| *platform == key);
+            let bundles = BTreeMap::from([(asset.url.clone(), bytes.clone())]);
+            let held = Held::store(&self.config_dir.join(FOLDER), manifest, &bundles);
+            self.core.lock().unwrap().release.held = Some(held);
+        }
+        // Desk-mates still fetching from this computer are not cut short
+        // by the restart the installer ends with.
+        self.settle_fetches().await;
         installer(Bundle { version, bytes })
     }
 
@@ -227,6 +240,7 @@ impl Ctx {
 
     /// Stop waiting for answers from `peer`, whose connection ended.
     pub(crate) fn drop_release_waiters(&self, peer: ComputerId) {
+        self.release_serving.lock().unwrap().remove(&peer);
         self.release_waiters
             .lock()
             .unwrap()

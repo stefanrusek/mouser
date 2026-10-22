@@ -6,6 +6,21 @@ Feature: As a desk owner, I want every computer on my desk to stay up to date wi
     When the others notice it
     Then they update to that version without the owner visiting them, and the desk works afterwards
 
+  Scenario: Story 10 scenario 1: the elected computer restarting does not cut the others off
+    Given a desk where every computer updates automatically
+    When the elected computer finds the release and restarts as the new version
+    Then the others have installed it before the elected computer restarted
+
+  Scenario: Story 10 scenario 1: an update that failed is retried when the elected computer is back
+    Given a desk where every computer updates automatically and one other computer's first install fails
+    When the elected computer finds the release and restarts as the new version
+    Then the computer whose install failed updates without the owner visiting it
+
+  Scenario: Story 10 scenario 1: a computer updated over the LAN offers the release to older ones
+    Given a desk where every computer has updated over the LAN
+    When one that was not the elected computer restarts as the new version and an older one rejoins
+    Then the older one updates from it
+
   Scenario: Story 10 scenario 2: permissions survive an update
     Given a computer has been updated
     When Mouser starts again

@@ -246,6 +246,8 @@ pub(crate) struct Ctx {
             tokio::sync::oneshot::Sender<quinn::RecvStream>,
         )>,
     >,
+    /// Desk-mates offered the release this computer holds.
+    pub(crate) release_serving: Mutex<BTreeMap<ComputerId, crate::release::serve::Serving>>,
     pub next_link: AtomicU64,
     stop: CancellationToken,
     tasks: TaskTracker,
@@ -482,6 +484,7 @@ impl Engine {
             release_pubkey: params.release_pubkey,
             http: params.http,
             release_waiters: Mutex::new(Vec::new()),
+            release_serving: Mutex::new(BTreeMap::new()),
             core: Mutex::new(Core {
                 config,
                 state,
