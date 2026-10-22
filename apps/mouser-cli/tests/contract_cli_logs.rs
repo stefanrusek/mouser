@@ -134,32 +134,58 @@ async fn path_and_tail_work_with_mouser_stopped() {
     lab.shutdown().await;
 }
 
-/// Serve `status` with `result` on `path`, the way an older Mouser would.
-#[cfg(unix)]
-fn old_mouser(path: &std::path::Path, result: Value) {
+/// Answer every request on `stream` with `result`, the way an older Mouser would.
+fn answer_with<S>(stream: S, result: Value)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + 'static,
+{
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    let listener = tokio::net::UnixListener::bind(path).unwrap();
     tokio::spawn(async move {
-        loop {
-            let (stream, _) = listener.accept().await.unwrap();
-            let result = result.clone();
-            tokio::spawn(async move {
-                let (read, mut write) = stream.into_split();
-                let mut lines = BufReader::new(read).lines();
-                while let Some(line) = lines.next_line().await.unwrap() {
-                    let request: Value = serde_json::from_str(&line).unwrap();
-                    let reply = json!({"jsonrpc": "2.0", "id": request["id"], "result": result});
-                    write
-                        .write_all(format!("{reply}\n").as_bytes())
-                        .await
-                        .unwrap();
-                }
-            });
+        let (read, mut write) = tokio::io::split(stream);
+        let mut lines = BufReader::new(read).lines();
+        while let Some(line) = lines.next_line().await.unwrap() {
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let reply = json!({"jsonrpc": "2.0", "id": request["id"], "result": result});
+            write
+                .write_all(format!("{reply}\n").as_bytes())
+                .await
+                .unwrap();
         }
     });
 }
 
+/// Serve `status` with `result` on `path`, the way an older Mouser would.
 #[cfg(unix)]
+fn old_mouser(path: &std::path::Path, result: Value) {
+    let listener = tokio::net::UnixListener::bind(path).unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            answer_with(stream, result.clone());
+        }
+    });
+}
+
+/// Serve `status` with `result` on the named pipe `path`.
+#[cfg(windows)]
+fn old_mouser(path: &std::path::Path, result: Value) {
+    use tokio::net::windows::named_pipe::ServerOptions;
+    let path = path.to_path_buf();
+    // The first instance exists before the CLI looks for the pipe.
+    let mut next = ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(&path)
+        .unwrap();
+    tokio::spawn(async move {
+        loop {
+            next.connect().await.unwrap();
+            let connected =
+                std::mem::replace(&mut next, ServerOptions::new().create(&path).unwrap());
+            answer_with(connected, result.clone());
+        }
+    });
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_mouser_older_than_the_command_is_reported_not_a_panic() {
     let lab = Lab::new();
@@ -184,7 +210,6 @@ async fn a_mouser_older_than_the_command_is_reported_not_a_panic() {
     lab.shutdown().await;
 }
 
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn any_answer_in_an_unknown_shape_means_the_mouser_is_older() {
     let lab = Lab::new();

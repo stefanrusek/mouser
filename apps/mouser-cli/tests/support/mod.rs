@@ -176,7 +176,6 @@ impl Node {
     }
 
     /// Where this computer's Mouser serves (or would serve) its control API.
-    #[cfg(unix)]
     pub fn control_path(&self) -> &std::path::Path {
         &self.control_path
     }
