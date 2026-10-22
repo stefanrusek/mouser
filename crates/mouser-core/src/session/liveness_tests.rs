@@ -8,6 +8,7 @@ use serde_json::json;
 
 use super::liveness::OFFLINE_GRACE;
 use crate::testing::*;
+use crate::transport::{KEEP_ALIVE, MAX_IDLE};
 
 fn offline_problem(
     status: &mouser_proto::control::Status,
@@ -67,11 +68,12 @@ async fn longer_absence_is_offline_with_a_problem_until_it_returns() {
     let (a, b) = (&nodes[0], &nodes[1]);
     let started = Instant::now();
     b.sim.as_ref().unwrap().set_blackhole(true);
+    // The idle timeout counts from the last packet that arrived, which
+    // was sent up to one keep-alive interval before the blackhole began.
     let seen = wait_connection(a, b, ConnectionState::Offline).await;
     let took = started.elapsed();
     assert!(
-        took >= Duration::from_secs(3) + OFFLINE_GRACE - Duration::from_millis(500)
-            && took < Duration::from_secs(10),
+        took >= MAX_IDLE + OFFLINE_GRACE - KEEP_ALIVE && took < Duration::from_secs(10),
         "offline after {took:?}"
     );
     assert!(seen.last_seen.is_some());
