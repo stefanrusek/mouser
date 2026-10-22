@@ -100,3 +100,12 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The config file is re-read on the 250 ms reconcile tick; a valid edit applies through the same `apply_config` path as `config.set` (shared keys get a new epoch and go to the desk); an invalid file is refused whole, previous values kept, one `config.rejected` warn record in the diagnostic log (not a problem).
 - `transfer` notifications: state `failed`, `reason: "peer_offline"`, message "The copy stopped because <name> went offline. N of M files were copied." (drags only; clipboard-file fetches publish no transfer notifications).
 - Open items: a computer rename reaches desk-mates only on reconnect (name travels in Hello/Member; needs a DeskState/wire update); `advanced.port` changes need a restart.
+
+## platform-linux US1/US2 decisions (for core, app, packaging)
+
+- Wayland capture is barrier-driven: no local motion until the pointer pushes through an outer-edge barrier; on activation a unit `Motion` at the edge is synthesized; `set_grabbed(true)` is a no-op (hotkey/QuickJump crossings cannot start from Wayland); `warp()` only sets where the cursor lands on Release.
+- Wayland displays come from InputCapture zones: scale 1.0, no physical size (T458 deviation: no wl_output scale); `watch_displays` Unsupported on Wayland.
+- OPEN (blocks Wayland): `permissions()` reports InputCapturePortal Granted only with a stored restore token, which InputCapture never returns, and core starts capture only when no input permission is Missing, so Wayland capture never starts. Needs an orchestrator fix.
+- The crate does not compile on macOS/Windows (reis/rustix): it must be cfg-gated so the workspace builds everywhere (OPEN).
+- The tray (AppIndicator) limitation is filed under `Capability::Capture`; X11 scale fixed at 1.0; scroll 15 px per wheel click.
+- CI's ubuntu runner needs `Xvfb` and `dbus-daemon` for the Linux contract tests.

@@ -699,42 +699,42 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 
 - [X] T427 [US1-platform-linux] Run hardware probe 4 from FINDINGS-windows-linux on Ubuntu 24.04 (GNOME 46), Ubuntu 26.04 (GNOME 50), Fedora (GNOME 51) and Plasma 6.7/6.8 as `crates/mouser-platform-linux/probes/spike_portals/` (InputCapture + RemoteDesktop start; persistence across logout/reboot with a registered app ID; clipboard per session type) and record observed output in `crates/mouser-platform-linux/probes/FINDINGS.md`
 - [X] T428 [US1-platform-linux] Run hardware probes 5 and 6 as `crates/mouser-platform-linux/probes/spike_lock_drag_x11/` (RemoteDesktop/EIS on the lock screen; InputCapture during a drag; X11 grab failures with menus open; XFixes barriers for corners) and record observed output in `crates/mouser-platform-linux/probes/FINDINGS.md`
-- [ ] T429 [P] [US1-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_us1.rs` running conformance rules 6, 8, 9 against `LinuxPlatform`
-- [ ] T430 [P] [US1-platform-linux] Write unit tests for session detection in `crates/mouser-platform-linux/src/session_tests.rs`: `XDG_SESSION_TYPE`/`WAYLAND_DISPLAY` select X11 or Wayland; on Wayland the InputCapture and RemoteDesktop portal versions and `SupportedCapabilities` are read and each missing capability becomes a `Limitation` with the plain-language text from spec Assumptions (D3 item 2)
-- [ ] T431 [US1-platform-linux] Implement session and capability detection in `crates/mouser-platform-linux/src/session.rs`
-- [ ] T432 [P] [US1-platform-linux] Write unit tests for permissions in `crates/mouser-platform-linux/src/permissions_tests.rs`: on Wayland `input_capture_portal` and `remote_desktop_portal` report granted when a stored restore token is valid, else missing; `open_permission_settings` starts the portal session so the desktop shows its dialog; on X11 all kinds are `not_applicable`
-- [ ] T433 [US1-platform-linux] Implement permissions in `crates/mouser-platform-linux/src/permissions.rs`
-- [ ] T434 [P] [US1-platform-linux] Write unit tests for interface classification in `crates/mouser-platform-linux/src/net_tests.rs`: `/sys/class/net/<if>/device` present and `type` = 1 (Ethernet) or a `wireless/` directory → `PhysicalLan`; tun/tap/wg/tailscale/docker/br-/virbr/veth/vmnet → `Virtual`; `lo` → `Loopback`
-- [ ] T435 [US1-platform-linux] Implement `interfaces()` in `crates/mouser-platform-linux/src/net.rs`
-- [ ] T436 [P] [US1-platform-linux] Write unit tests for the secret store in `crates/mouser-platform-linux/src/secrets_tests.rs`: Secret Service round-trip when available, else a 0600 file in the config dir
-- [ ] T437 [US1-platform-linux] Implement `SecretStore` in `crates/mouser-platform-linux/src/secrets.rs`
-- [ ] T438 [P] [US1-platform-linux] Write unit tests for autostart in `crates/mouser-platform-linux/src/autostart_tests.rs`: `set(true)` writes `~/.config/autostart/com.mouser.app.desktop`; `set(false)` removes it (FR-011)
-- [ ] T439 [US1-platform-linux] Implement `Autostart` in `crates/mouser-platform-linux/src/autostart.rs`
-- [ ] T440 [P] [US1-platform-linux] Write unit tests for tray availability in `crates/mouser-platform-linux/src/tray_tests.rs`: without `org.kde.StatusNotifierWatcher` on the session bus a `Limitation` says the tray icon needs the AppIndicator extension (D3 item 5)
-- [ ] T441 [US1-platform-linux] Implement tray availability detection in `crates/mouser-platform-linux/src/tray.rs`
-- [ ] T442 [US1-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T443 [US1-platform-linux] Commit: phase boundary "US1-platform-linux" (5.3)
+- [X] T429 [P] [US1-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_us1.rs` running conformance rules 6, 8, 9 against `LinuxPlatform`
+- [X] T430 [P] [US1-platform-linux] Write unit tests for session detection in `crates/mouser-platform-linux/src/session_tests.rs`: `XDG_SESSION_TYPE`/`WAYLAND_DISPLAY` select X11 or Wayland; on Wayland the InputCapture and RemoteDesktop portal versions and `SupportedCapabilities` are read and each missing capability becomes a `Limitation` with the plain-language text from spec Assumptions (D3 item 2)
+- [X] T431 [US1-platform-linux] Implement session and capability detection in `crates/mouser-platform-linux/src/session.rs`
+- [X] T432 [P] [US1-platform-linux] Write unit tests for permissions in `crates/mouser-platform-linux/src/permissions_tests.rs`: on Wayland `input_capture_portal` and `remote_desktop_portal` report granted when a stored restore token is valid, else missing; `open_permission_settings` starts the portal session so the desktop shows its dialog; on X11 all kinds are `not_applicable`
+- [X] T433 [US1-platform-linux] Implement permissions in `crates/mouser-platform-linux/src/permissions.rs`
+- [X] T434 [P] [US1-platform-linux] Write unit tests for interface classification in `crates/mouser-platform-linux/src/net_tests.rs`: `/sys/class/net/<if>/device` present and `type` = 1 (Ethernet) or a `wireless/` directory → `PhysicalLan`; tun/tap/wg/tailscale/docker/br-/virbr/veth/vmnet → `Virtual`; `lo` → `Loopback`
+- [X] T435 [US1-platform-linux] Implement `interfaces()` in `crates/mouser-platform-linux/src/net.rs`
+- [X] T436 [P] [US1-platform-linux] Write unit tests for the secret store in `crates/mouser-platform-linux/src/secrets_tests.rs`: Secret Service round-trip when available, else a 0600 file in the config dir
+- [X] T437 [US1-platform-linux] Implement `SecretStore` in `crates/mouser-platform-linux/src/secrets.rs`
+- [X] T438 [P] [US1-platform-linux] Write unit tests for autostart in `crates/mouser-platform-linux/src/autostart_tests.rs`: `set(true)` writes `~/.config/autostart/com.mouser.app.desktop`; `set(false)` removes it (FR-011)
+- [X] T439 [US1-platform-linux] Implement `Autostart` in `crates/mouser-platform-linux/src/autostart.rs`
+- [X] T440 [P] [US1-platform-linux] Write unit tests for tray availability in `crates/mouser-platform-linux/src/tray_tests.rs`: without `org.kde.StatusNotifierWatcher` on the session bus a `Limitation` says the tray icon needs the AppIndicator extension (D3 item 5)
+- [X] T441 [US1-platform-linux] Implement tray availability detection in `crates/mouser-platform-linux/src/tray.rs`
+- [X] T442 [US1-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T443 [US1-platform-linux] Commit: phase boundary "US1-platform-linux" (5.3)
 
 #### Phase 48: US2-platform-linux — As a desk user, I want one mouse and keyboard to drive every computer on my desk (P1)
 
-- [ ] T444 [P] [US2-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_us2.rs` running conformance rules 1, 2, 3, 4, 7 against the X11 backend under Xvfb
-- [ ] T445 [P] [US2-platform-linux] Write unit tests for X11 displays in `crates/mouser-platform-linux/src/x11/displays_tests.rs`: RandR outputs give rectangles, scale and physical mm; RandR screen-change events fire `watch_displays`
-- [ ] T446 [US2-platform-linux] Implement X11 `displays()`/`watch_displays()` in `crates/mouser-platform-linux/src/x11/displays.rs`
-- [ ] T447 [P] [US2-platform-linux] Write unit tests for the HID ↔ evdev keycode table in `crates/mouser-platform-linux/src/keymap_tests.rs`
-- [ ] T448 [US2-platform-linux] Implement the HID ↔ evdev keycode table in `crates/mouser-platform-linux/src/keymap.rs`
-- [ ] T449 [P] [US2-platform-linux] Write unit tests for X11 capture in `crates/mouser-platform-linux/src/x11/capture_tests.rs`: XInput2 `XI_RawMotion` on the root window; grabbing uses `XGrabPointer`/`XGrabKeyboard` on Mouser's window with `XWarpPointer` parking, retried with backoff while another client holds a grab
-- [ ] T450 [US2-platform-linux] Implement X11 `InputCapture` with x11rb 0.14.0 in `crates/mouser-platform-linux/src/x11/capture.rs`
-- [ ] T451 [P] [US2-platform-linux] Write unit tests for X11 injection in `crates/mouser-platform-linux/src/x11/inject_tests.rs`: XTest fake motion/button/key with `XTestGrabControl(True)`; held input released on drop
-- [ ] T452 [US2-platform-linux] Implement X11 `InputInject` in `crates/mouser-platform-linux/src/x11/inject.rs`
-- [ ] T453 [P] [US2-platform-linux] Write unit tests for Wayland capture in `crates/mouser-platform-linux/src/wayland/capture_tests.rs`: ashpd 0.13.13 InputCapture v2 session with zones and edge barriers, `persist_mode = 2` and the stored single-use restore token replaced after every `Start`; app registered via `org.freedesktop.host.portal.Registry.Register` with app ID `com.mouser.app`; libei events via reis 0.7.1 become `LocalInput`; a pending dialog raises "Approve Mouser on <computer>" (L1–L3)
-- [ ] T454 [US2-platform-linux] Implement Wayland `InputCapture` in `crates/mouser-platform-linux/src/wayland/capture.rs`
-- [ ] T455 [P] [US2-platform-linux] Write unit tests for Wayland injection in `crates/mouser-platform-linux/src/wayland/inject_tests.rs`: RemoteDesktop portal session with EIS (persisted), emulated pointer/keyboard/scroll; held input released on drop
-- [ ] T456 [US2-platform-linux] Implement Wayland `InputInject` in `crates/mouser-platform-linux/src/wayland/inject.rs`
-- [ ] T457 [P] [US2-platform-linux] Write unit tests for Wayland displays in `crates/mouser-platform-linux/src/wayland/displays_tests.rs`: InputCapture zones give display rectangles; scale from wl_output where available
-- [ ] T458 [US2-platform-linux] Implement Wayland `displays()` in `crates/mouser-platform-linux/src/wayland/displays.rs`
-- [ ] T459 [US2-platform-linux] Implement the `LinuxPlatform` facade selecting the X11 or Wayland module and `info()` in `crates/mouser-platform-linux/src/lib.rs`
-- [ ] T460 [US2-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T461 [US2-platform-linux] Commit: phase boundary "US2-platform-linux" (5.3)
+- [X] T444 [P] [US2-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_us2.rs` running conformance rules 1, 2, 3, 4, 7 against the X11 backend under Xvfb
+- [X] T445 [P] [US2-platform-linux] Write unit tests for X11 displays in `crates/mouser-platform-linux/src/x11/displays_tests.rs`: RandR outputs give rectangles, scale and physical mm; RandR screen-change events fire `watch_displays`
+- [X] T446 [US2-platform-linux] Implement X11 `displays()`/`watch_displays()` in `crates/mouser-platform-linux/src/x11/displays.rs`
+- [X] T447 [P] [US2-platform-linux] Write unit tests for the HID ↔ evdev keycode table in `crates/mouser-platform-linux/src/keymap_tests.rs`
+- [X] T448 [US2-platform-linux] Implement the HID ↔ evdev keycode table in `crates/mouser-platform-linux/src/keymap.rs`
+- [X] T449 [P] [US2-platform-linux] Write unit tests for X11 capture in `crates/mouser-platform-linux/src/x11/capture_tests.rs`: XInput2 `XI_RawMotion` on the root window; grabbing uses `XGrabPointer`/`XGrabKeyboard` on Mouser's window with `XWarpPointer` parking, retried with backoff while another client holds a grab
+- [X] T450 [US2-platform-linux] Implement X11 `InputCapture` with x11rb 0.14.0 in `crates/mouser-platform-linux/src/x11/capture.rs`
+- [X] T451 [P] [US2-platform-linux] Write unit tests for X11 injection in `crates/mouser-platform-linux/src/x11/inject_tests.rs`: XTest fake motion/button/key with `XTestGrabControl(True)`; held input released on drop
+- [X] T452 [US2-platform-linux] Implement X11 `InputInject` in `crates/mouser-platform-linux/src/x11/inject.rs`
+- [X] T453 [P] [US2-platform-linux] Write unit tests for Wayland capture in `crates/mouser-platform-linux/src/wayland/capture_tests.rs`: ashpd 0.13.13 InputCapture v2 session with zones and edge barriers, `persist_mode = 2` and the stored single-use restore token replaced after every `Start`; app registered via `org.freedesktop.host.portal.Registry.Register` with app ID `com.mouser.app`; libei events via reis 0.7.1 become `LocalInput`; a pending dialog raises "Approve Mouser on <computer>" (L1–L3)
+- [X] T454 [US2-platform-linux] Implement Wayland `InputCapture` in `crates/mouser-platform-linux/src/wayland/capture.rs`
+- [X] T455 [P] [US2-platform-linux] Write unit tests for Wayland injection in `crates/mouser-platform-linux/src/wayland/inject_tests.rs`: RemoteDesktop portal session with EIS (persisted), emulated pointer/keyboard/scroll; held input released on drop
+- [X] T456 [US2-platform-linux] Implement Wayland `InputInject` in `crates/mouser-platform-linux/src/wayland/inject.rs`
+- [X] T457 [P] [US2-platform-linux] Write unit tests for Wayland displays in `crates/mouser-platform-linux/src/wayland/displays_tests.rs`: InputCapture zones give display rectangles; scale from wl_output where available
+- [X] T458 [US2-platform-linux] Implement Wayland `displays()` in `crates/mouser-platform-linux/src/wayland/displays.rs`
+- [X] T459 [US2-platform-linux] Implement the `LinuxPlatform` facade selecting the X11 or Wayland module and `info()` in `crates/mouser-platform-linux/src/lib.rs`
+- [X] T460 [US2-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T461 [US2-platform-linux] Commit: phase boundary "US2-platform-linux" (5.3)
 
 #### Phase 49: US3-platform-linux — As a desk user, I want my desk to keep working through sleep, network changes, and VPNs (P1)
 
