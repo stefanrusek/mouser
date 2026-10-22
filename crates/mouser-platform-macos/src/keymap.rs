@@ -177,3 +177,12 @@ pub(crate) fn modifier_flag(keycode: u16) -> Option<u64> {
         .find(|(k, _, _)| *k == keycode)
         .map(|(_, _, flag)| *flag)
 }
+
+/// Every flag a hardware keyboard sets while this modifier keycode is down:
+/// its left/right bit and its device-independent flag.
+pub(crate) fn modifier_mask(keycode: u16) -> Option<u64> {
+    MODIFIERS
+        .iter()
+        .find(|(k, _, _)| *k == keycode)
+        .map(|(_, bit, flag)| *bit | *flag)
+}

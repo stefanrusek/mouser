@@ -441,3 +441,111 @@ async fn the_remote_pointer_stops_at_the_edge_of_the_last_display() {
     .await;
     assert!(a.platform.is_grabbed(), "the pointer did not leave");
 }
+
+fn mac() -> VirtualPlatform {
+    let platform = VirtualPlatform::new();
+    platform.set_info(mouser_platform::PlatformInfo {
+        os: mouser_platform::Os::MacOs,
+        version: "26".into(),
+        session: mouser_platform::SessionType::Native,
+        limitations: Vec::new(),
+    });
+    platform
+}
+
+/// The owner's report on v0.2.1: Command-C and Command-V typed on one Mac's
+/// keyboard while the pointer is on the other Mac. The copy there is shared
+/// back while Command is still held; neither the clipboard traffic nor the
+/// paste shortcut may hold back, reorder or drop the Command release.
+#[tokio::test]
+async fn command_c_and_v_on_another_mac_release_command_while_the_clipboard_is_shared() {
+    const C: u32 = 0x0007_0006;
+    const V: u32 = 0x0007_0019;
+    const META: u32 = 0x0007_00E3;
+    let lab = Lab::new();
+    let a = lab.start_with("Mini", mac(), |_| {}).await;
+    let b = lab.start_with("Book", mac(), |_| {}).await;
+    let _: mouser_proto::control::Desk =
+        call(&a, Method::DeskCreate, json!({"name": "Home"})).await;
+    admit(&a, &b).await;
+    let nodes = [a, b];
+    ready(&nodes).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    push_right(a);
+    injected_where(&b.platform, "entry", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    b.platform.take_injected();
+    let text = |t: &str| vec![mouser_platform::ClipRep::Text(t.into())];
+
+    a.platform.send_input(key(META, true));
+    a.platform.send_input(key(C, true));
+    injected_where(&b.platform, "C on the Book", |i| {
+        *i == Injected::Key {
+            usage: C,
+            down: true,
+        }
+    })
+    .await;
+    // The application on the Book copies while Command is still down.
+    b.platform.set_local_clipboard(text("copied"));
+    eventually("the copy to reach the Mini", || async {
+        a.platform.clipboard_contents() == text("copied")
+    })
+    .await;
+    a.platform.send_input(key(C, false));
+    a.platform.send_input(key(META, false));
+    // Then a paste, which tells the Book's clipboard task.
+    a.platform.send_input(key(META, true));
+    a.platform.send_input(key(V, true));
+    a.platform.send_input(key(V, false));
+    a.platform.send_input(key(META, false));
+    let releases = |platform: &VirtualPlatform| {
+        platform
+            .injected()
+            .iter()
+            .filter(|i| {
+                **i == Injected::Key {
+                    usage: META,
+                    down: false,
+                }
+            })
+            .count()
+    };
+    eventually("both Command releases on the Book", || async {
+        releases(&b.platform) == 2
+    })
+    .await;
+    let keys: Vec<Injected> = b
+        .platform
+        .injected()
+        .into_iter()
+        .filter(|i| matches!(i, Injected::Key { .. }))
+        .collect();
+    let k = |usage, down| Injected::Key { usage, down };
+    assert_eq!(
+        keys,
+        [
+            k(META, true),
+            k(C, true),
+            k(C, false),
+            k(META, false),
+            k(META, true),
+            k(V, true),
+            k(V, false),
+            k(META, false),
+        ]
+    );
+    // The Book's text was pasted on the Book, not replaced by a stale offer.
+    assert_eq!(b.platform.clipboard_contents(), text("copied"));
+    // And nothing typed reached the Mini's own applications.
+    assert!(
+        a.platform
+            .local_delivered()
+            .iter()
+            .all(|i| !matches!(i, LocalInput::Key { .. })),
+        "{:?}",
+        a.platform.local_delivered()
+    );
+}

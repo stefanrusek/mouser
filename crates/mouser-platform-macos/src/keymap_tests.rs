@@ -53,4 +53,7 @@ fn modifier_bits_and_flags() {
     assert_eq!(modifier_down_bit(0x39), Some(0x0001_0000));
     assert_eq!(modifier_down_bit(0x00), None);
     assert_eq!(modifier_flag(0x00), None);
+    assert_eq!(modifier_mask(0x37), Some(0x0010_0008));
+    assert_eq!(modifier_mask(0x3D), Some(0x0008_0040));
+    assert_eq!(modifier_mask(0x00), None);
 }

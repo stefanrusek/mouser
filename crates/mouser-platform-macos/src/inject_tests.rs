@@ -220,3 +220,59 @@ impl Poster for NullPoster {
         (0.0, 0.0)
     }
 }
+
+const CMD_FLAG: u64 = 0x0010_0000;
+/// `NX_DEVICELCMDKEYMASK`: the left Command key, as the hardware reports it.
+const LEFT_CMD_BIT: u64 = 0x0000_0008;
+/// `kCGEventFlagMaskNonCoalesced`, set on every hardware key event.
+const NON_COALESCED: u64 = 0x0000_0100;
+const LEFT_META: u32 = 0x0007_00E3;
+const C: u32 = 0x0007_0006;
+
+#[test]
+fn command_c_carries_the_flags_a_real_keyboard_reports_and_command_up_clears_them() {
+    let (rec, mut inj) = injector();
+    inj.key(LEFT_META, true).unwrap();
+    inj.key(C, true).unwrap();
+    inj.key(C, false).unwrap();
+    inj.key(LEFT_META, false).unwrap();
+    let posted: Vec<(u32, i64, u64)> = take(&rec)
+        .iter()
+        .map(|p| (p.ty, p.keycode, p.flags))
+        .collect();
+    let held = CMD_FLAG | LEFT_CMD_BIT | NON_COALESCED;
+    assert_eq!(
+        posted,
+        [
+            (CGEventType::FlagsChanged as u32, 0x37, held),
+            (CGEventType::KeyDown as u32, 0x08, held),
+            (CGEventType::KeyUp as u32, 0x08, held),
+            (CGEventType::FlagsChanged as u32, 0x37, NON_COALESCED),
+        ]
+    );
+}
+
+#[test]
+fn pointer_events_carry_exactly_the_injected_modifiers_not_the_system_state() {
+    let (rec, mut inj) = injector();
+    // Command held: a click is a Command-click, a move a Command-drag.
+    inj.key(LEFT_META, true).unwrap();
+    inj.button(1, true).unwrap();
+    inj.motion_abs(5.0, 5.0).unwrap();
+    inj.button(1, false).unwrap();
+    inj.scroll(0.0, 1.0).unwrap();
+    // Command released: nothing is left behind on what follows, whatever
+    // the system's own modifier state says.
+    inj.key(LEFT_META, false).unwrap();
+    inj.button(1, true).unwrap();
+    inj.motion_abs(6.0, 6.0).unwrap();
+    inj.button(1, false).unwrap();
+    inj.scroll(0.0, 1.0).unwrap();
+    let flags: Vec<u64> = take(&rec)
+        .iter()
+        .filter(|p| p.ty != CGEventType::FlagsChanged as u32)
+        .map(|p| p.flags)
+        .collect();
+    let cmd = CMD_FLAG | LEFT_CMD_BIT;
+    assert_eq!(flags, [cmd, cmd, cmd, cmd, 0, 0, 0, 0]);
+}

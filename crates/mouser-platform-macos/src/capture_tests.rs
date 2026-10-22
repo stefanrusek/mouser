@@ -366,3 +366,110 @@ fn the_window_server_lets_mouser_hide_the_cursor_from_the_background() {
     crate::capture::allow_hiding_in_background();
     crate::capture::allow_hiding_in_background();
 }
+
+const LEFT_META: u32 = 0x0007_00E3;
+const RIGHT_META: u32 = 0x0007_00E7;
+const LEFT_SHIFT_USAGE: u32 = 0x0007_00E1;
+const CMD: u64 = 0x0010_0000;
+const LEFT_CMD: u64 = CMD | 0x08;
+const RIGHT_CMD: u64 = CMD | 0x10;
+
+fn with_flags(ev: CGEvent, flags: u64) -> CGEvent {
+    ev.set_flags(CGEventFlags::from_bits_retain(flags));
+    ev
+}
+
+fn moved(flags: u64) -> CGEvent {
+    let ev = mouse(CGEventType::MouseMoved, 10.0, 10.0);
+    ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, 1);
+    with_flags(ev, flags)
+}
+
+fn meta(usage: u32, down: bool) -> LocalInput {
+    LocalInput::Key { usage, down }
+}
+
+fn is_motion(input: &LocalInput) -> bool {
+    matches!(input, LocalInput::Motion { .. })
+}
+
+#[test]
+fn a_missed_command_release_is_reported_from_the_next_events_flags() {
+    let (state, rx) = state_with_receiver();
+    state
+        .grabbed
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    handle(&state, 12, &flags_changed(0x37, LEFT_CMD));
+    handle(&state, 5, &moved(LEFT_CMD));
+    // The release never reached the tap (it was off, or Secure Input held
+    // the keyboard); the next event no longer has Command down.
+    handle(&state, 5, &moved(0));
+    handle(&state, 5, &moved(0));
+    let got: Vec<LocalInput> = rx.try_iter().collect();
+    assert_eq!(got[0], meta(LEFT_META, true));
+    assert!(is_motion(&got[1]));
+    assert_eq!(got[2], meta(LEFT_META, false));
+    assert!(is_motion(&got[3]) && is_motion(&got[4]));
+    assert_eq!(got.len(), 5, "{got:?}");
+}
+
+#[test]
+fn a_missed_release_comes_before_the_key_that_revealed_it() {
+    let (state, rx) = state_with_receiver();
+    handle(&state, 12, &flags_changed(0x37, LEFT_CMD));
+    handle(&state, 10, &with_flags(key(0x00, true), 0));
+    handle(&state, 12, &flags_changed(0x38, 0x0002_0002));
+    let got: Vec<LocalInput> = rx.try_iter().collect();
+    assert_eq!(
+        got,
+        [
+            meta(LEFT_META, true),
+            meta(LEFT_META, false),
+            meta(0x0007_0004, true),
+            meta(LEFT_SHIFT_USAGE, true),
+        ]
+    );
+}
+
+#[test]
+fn held_modifiers_are_not_released_while_the_flags_still_show_them() {
+    let (state, rx) = state_with_receiver();
+    handle(&state, 12, &flags_changed(0x37, LEFT_CMD));
+    handle(&state, 12, &flags_changed(0x36, LEFT_CMD | RIGHT_CMD));
+    handle(
+        &state,
+        10,
+        &with_flags(key(0x08, true), LEFT_CMD | RIGHT_CMD),
+    );
+    // Left Command up while right Command stays down: only the left goes.
+    handle(&state, 12, &flags_changed(0x37, RIGHT_CMD));
+    handle(&state, 5, &moved(RIGHT_CMD));
+    handle(&state, 12, &flags_changed(0x36, 0));
+    handle(&state, 5, &moved(0));
+    let keys: Vec<LocalInput> = rx.try_iter().filter(|i| !is_motion(i)).collect();
+    assert_eq!(
+        keys,
+        [
+            meta(LEFT_META, true),
+            meta(RIGHT_META, true),
+            meta(0x0007_0006, true),
+            meta(LEFT_META, false),
+            meta(RIGHT_META, false),
+        ]
+    );
+}
+
+#[test]
+fn own_injected_events_and_pointer_echoes_do_not_release_held_modifiers() {
+    let (state, rx) = state_with_receiver();
+    handle(&state, 12, &flags_changed(0x37, LEFT_CMD));
+    let injected = moved(0);
+    injected.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, MOUSER_TAG);
+    handle(&state, 5, &injected);
+    state.echo.record(10.0, 10.0);
+    handle(&state, 5, &moved(0));
+    // Nor do events the capture does not report (NX_SYSDEFINED, gestures).
+    handle(&state, 14, &moved(0));
+    let got: Vec<LocalInput> = rx.try_iter().collect();
+    assert_eq!(got, [meta(LEFT_META, true)]);
+}

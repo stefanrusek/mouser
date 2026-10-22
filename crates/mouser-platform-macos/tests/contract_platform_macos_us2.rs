@@ -310,3 +310,65 @@ fn injected_modifier_and_function_keys_do_not_loop_back_but_local_ones_do() {
     assert!(drain(&rx, Duration::from_millis(300)).contains(&f19(true)));
     capture.stop();
 }
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventSourceFlagsState(state: i32) -> u64;
+}
+
+const LEFT_META: u32 = 0x0007_00E3;
+const COMMAND_FLAG: u64 = 0x0010_0000;
+
+/// The Command flag as the OS state tables see it right now: the HID
+/// system's, the login session's, and that of a fresh `HIDSystemState`
+/// mouse event (what a click created from it would carry).
+fn command_state() -> (u64, u64, u64) {
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState).unwrap();
+    let click = raw(&source, CGEventType::LeftMouseDown, pointer());
+    // SAFETY: plain C call; 1 = HIDSystemState, 0 = CombinedSessionState.
+    let (hid, session) = unsafe { (CGEventSourceFlagsState(1), CGEventSourceFlagsState(0)) };
+    (
+        hid & COMMAND_FLAG,
+        session & COMMAND_FLAG,
+        click.get_flags().bits() & COMMAND_FLAG,
+    )
+}
+
+/// The owner's Command+C on a controlled Mac (v0.2.1 report): after an
+/// injected Command chord is released, nothing on this Mac may still think
+/// Command is down, or every later key and click becomes a Command shortcut.
+/// F19 stands in for C so a failure cannot copy anything. Keep your hands
+/// off the Command keys while it runs.
+#[test]
+fn an_injected_command_chord_leaves_command_up_in_every_os_state() {
+    safely(true, || {
+        let platform = MacPlatform::new();
+        let mut inject = platform.inject().unwrap();
+        assert_eq!(command_state(), (0, 0, 0), "Command was already down");
+        inject.key(LEFT_META, true).unwrap();
+        inject.key(F19, true).unwrap();
+        inject.key(F19, false).unwrap();
+        inject.key(LEFT_META, false).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(command_state(), (0, 0, 0), "Command stuck after release");
+        // And clicks made after it are plain clicks.
+        inject.button(1, true).unwrap();
+        inject.button(1, false).unwrap();
+        assert_eq!(command_state(), (0, 0, 0));
+    });
+}
+
+/// Release on drop covers a Command still held when the controller goes
+/// away mid-chord.
+#[test]
+fn a_command_held_when_the_injector_goes_away_is_released_in_every_os_state() {
+    safely(true, || {
+        let platform = MacPlatform::new();
+        let mut inject = platform.inject().unwrap();
+        inject.key(LEFT_META, true).unwrap();
+        inject.key(F19, true).unwrap();
+        drop(inject);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(command_state(), (0, 0, 0), "Command stuck after drop");
+    });
+}

@@ -1,6 +1,12 @@
 //! `InputInject`: `CGEventPost` from an `HIDSystemState` source at
 //! `kCGHIDEventTap`, every event tagged with Mouser's `kCGEventSourceUserData`
 //! so the capture tap ignores it (FINDINGS-macos-input section 3).
+//!
+//! Every event carries the modifier flags of the keys this injector holds,
+//! as a hardware keyboard reports them (device-independent and left/right
+//! bits). Events created from the `HIDSystemState` source otherwise start
+//! with the system's own modifier state, so a click or key after an injected
+//! Command release could still arrive as a Command-click or shortcut.
 
 use crate::capture::MOUSER_TAG;
 use crate::echo::Echo;
@@ -66,13 +72,14 @@ impl MacInject {
         self.poster.post(&event);
     }
 
-    /// Device-independent modifier flags of every modifier key held.
+    /// The modifier flags of every modifier key held: device-independent
+    /// and the hardware's left/right bit.
     fn flags(&self) -> CGEventFlags {
         let bits = self
             .held_keys
             .iter()
             .filter_map(|usage| keymap::keycode_for_usage(*usage))
-            .filter_map(keymap::modifier_flag)
+            .filter_map(keymap::modifier_mask)
             .fold(0, |all, flag| all | flag);
         CGEventFlags::from_bits_retain(bits)
     }
@@ -119,6 +126,7 @@ impl InputInject for MacInject {
         event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, (y - from_y) as i64);
         self.last = Some((x, y));
         self.echo.record(x, y);
+        event.set_flags(self.flags());
         self.post(event);
         Ok(())
     }
@@ -139,6 +147,7 @@ impl InputInject for MacInject {
         } else {
             self.held_buttons.remove(&button);
         }
+        event.set_flags(self.flags());
         self.post(event);
         Ok(())
     }
@@ -147,6 +156,7 @@ impl InputInject for MacInject {
         let event =
             CGEvent::new_scroll_event(source(), ScrollEventUnit::PIXEL, 2, dy as i32, dx as i32, 0)
                 .unwrap();
+        event.set_flags(self.flags());
         self.post(event);
         Ok(())
     }
@@ -167,7 +177,7 @@ impl InputInject for MacInject {
             // Modifiers are reported by the hardware as flag changes.
             event.set_type(CGEventType::FlagsChanged);
         }
-        event.set_flags(self.flags());
+        event.set_flags(self.flags() | CGEventFlags::CGEventFlagNonCoalesced);
         self.post(event);
         Ok(())
     }

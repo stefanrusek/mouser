@@ -6,6 +6,13 @@
 //! from `kCGMouseEventDeltaX/Y`. Events carrying Mouser's own
 //! `kCGEventSourceUserData` tag were injected by this process and are ignored
 //! (conformance rule 7).
+//!
+//! Every hardware event carries the modifier flags held at that moment. A
+//! modifier the tap saw go down whose flag is gone from a later event was
+//! released while the tap did not see it (the OS turned the tap off for a
+//! moment, or Secure Input held the keyboard): its release is reported then,
+//! so the computer being controlled is never left holding it (Story 3, no
+//! stuck keys).
 
 use crate::echo::Echo;
 use crate::keymap;
@@ -14,6 +21,7 @@ use core_graphics::display::{CGDisplay, CGPoint};
 use core_graphics::event::{CGEvent, EventField};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use mouser_platform::{InputCapture, LocalInput, Result};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -150,6 +158,8 @@ pub(crate) struct State {
     pub(crate) grabbed: AtomicBool,
     pub(crate) tx: Mutex<Option<Sender<LocalInput>>>,
     pub(crate) echo: Arc<Echo>,
+    /// Keycodes of the modifiers the tap last saw down.
+    pub(crate) modifiers: Mutex<BTreeSet<u16>>,
 }
 
 impl State {
@@ -158,6 +168,7 @@ impl State {
             echo,
             grabbed: AtomicBool::new(false),
             tx: Mutex::new(None),
+            modifiers: Mutex::new(BTreeSet::new()),
         }
     }
 }
@@ -215,7 +226,6 @@ pub(crate) fn translate(ty: u32, ev: &CGEvent) -> Option<LocalInput> {
     }
 }
 
-/// The tap callback body: deliver the event, then swallow it while grabbed.
 /// A motion event at a position Mouser itself just set.
 fn is_own_echo(state: &State, input: &LocalInput) -> bool {
     match input {
@@ -224,16 +234,59 @@ fn is_own_echo(state: &State, input: &LocalInput) -> bool {
     }
 }
 
+/// Releases of held modifiers whose flag `ev` no longer carries, then the
+/// event's own input, with the held modifiers brought up to date.
+fn with_missed_releases(
+    state: &State,
+    ty: u32,
+    ev: &CGEvent,
+    input: LocalInput,
+) -> Vec<LocalInput> {
+    let keycode = ev.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16;
+    let own = (ty == FLAGS_CHANGED).then_some(keycode);
+    let flags = ev.get_flags().bits();
+    let mut held = state.modifiers.lock().unwrap();
+    let missed: Vec<u16> = held
+        .iter()
+        .copied()
+        .filter(|k| Some(*k) != own && flags & keymap::modifier_flag(*k).unwrap() == 0)
+        .collect();
+    let mut out: Vec<LocalInput> = missed
+        .iter()
+        .map(|k| {
+            held.remove(k);
+            LocalInput::Key {
+                usage: keymap::usage_for_keycode(*k).unwrap(),
+                down: false,
+            }
+        })
+        .collect();
+    if let (Some(k), LocalInput::Key { down, .. }) = (own, input) {
+        if down {
+            held.insert(k);
+        } else {
+            held.remove(&k);
+        }
+    }
+    out.push(input);
+    out
+}
+
+/// The tap callback body: deliver the event, then swallow it while grabbed.
 pub(crate) fn handle(state: &State, ty: u32, ev: &CGEvent) -> Verdict {
     if ev.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA) == MOUSER_TAG {
         return Verdict::Keep;
     }
     if let Some(input) = translate(ty, ev)
         && !is_own_echo(state, &input)
-        && let Some(tx) = state.tx.lock().unwrap().as_ref()
     {
-        // A receiver that has gone away just means nobody is listening.
-        let _ = tx.send(input);
+        let inputs = with_missed_releases(state, ty, ev, input);
+        if let Some(tx) = state.tx.lock().unwrap().as_ref() {
+            for input in inputs {
+                // A receiver that has gone away just means nobody is listening.
+                let _ = tx.send(input);
+            }
+        }
     }
     if state.grabbed.load(Ordering::SeqCst) {
         Verdict::Drop
