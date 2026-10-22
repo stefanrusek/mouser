@@ -638,17 +638,17 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 41: US3-platform-windows — As a desk user, I want my desk to keep working through sleep, network changes, and VPNs (P1)
 
-- [ ] T395 [P] [US3-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/netwatch_tests.rs`: `NotifyIpInterfaceChange` and resume-from-sleep (`PBT_APMRESUMEAUTOMATIC`) fire `watch_network`
-- [ ] T396 [US3-platform-windows] Implement `watch_network()` in `crates/mouser-platform-windows/src/netwatch.rs`
-- [ ] T397 [US3-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T398 [US3-platform-windows] Commit: phase boundary "US3-platform-windows" (5.3)
+- [X] T395 [P] [US3-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/netwatch_tests.rs`: `NotifyIpInterfaceChange` and resume-from-sleep (`PBT_APMRESUMEAUTOMATIC`) fire `watch_network`
+- [X] T396 [US3-platform-windows] Implement `watch_network()` in `crates/mouser-platform-windows/src/netwatch.rs`
+- [X] T397 [US3-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T398 [US3-platform-windows] Commit: phase boundary "US3-platform-windows" (5.3)
 
 #### Phase 42: US5-platform-windows — As a desk user, I want the pointer to stay put when I don't mean to cross (P2)
 
-- [ ] T399 [P] [US5-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/fullscreen_tests.rs`: `SHQueryUserNotificationState` busy/D3D full-screen states, or a foreground window covering its monitor rectangle, mean full-screen
-- [ ] T400 [US5-platform-windows] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-windows/src/fullscreen.rs`
-- [ ] T401 [US5-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T402 [US5-platform-windows] Commit: phase boundary "US5-platform-windows" (5.3)
+- [X] T399 [P] [US5-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/fullscreen_tests.rs`: `SHQueryUserNotificationState` busy/D3D full-screen states, or a foreground window covering its monitor rectangle, mean full-screen
+- [X] T400 [US5-platform-windows] Implement `foreground_is_fullscreen()` in `crates/mouser-platform-windows/src/fullscreen.rs`
+- [X] T401 [US5-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T402 [US5-platform-windows] Commit: phase boundary "US5-platform-windows" (5.3)
 
 #### Phase 43: US6-platform-windows — As a desk user, I want copy and paste to work between computers (P2)
 
