@@ -248,13 +248,24 @@ async fn copied_files(w: &mut ClipboardWorld) {
 #[when("they paste them on another computer")]
 async fn paste_files(w: &mut ClipboardWorld) {
     w.cross().await;
-    w.paste();
+    // The first Ctrl+V is in `copies_appear`, which repeats it (see there).
 }
 
 #[then("copies of those files and folders appear there")]
 async fn copies_appear(w: &mut ClipboardWorld) {
-    let beta = w.platform("Beta");
+    let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
+    // The copy on Alpha is offered by a 100 ms clipboard poll, so on a slow
+    // machine the desk can cross to Beta before Beta has heard about the
+    // files; a paste before the offer arrives does nothing, exactly as for a
+    // user who pastes at once. The user presses Ctrl+V again, so we do too.
+    // Repeating is harmless: a paste while the fetch is under way, or after
+    // it has finished, does nothing.
+    let mut last_press: Option<Instant> = None;
     until("the files on Beta", || {
+        if last_press.is_none_or(|at| at.elapsed() > Duration::from_millis(500)) {
+            press(&alpha, &[CTRL], V);
+            last_press = Some(Instant::now());
+        }
         matches!(&beta.clipboard_contents()[..], [ClipRep::Files(_)])
     })
     .await;

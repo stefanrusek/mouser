@@ -229,12 +229,43 @@ async fn asked(w: &mut DragWorld) {
 
 // ---- scenario 4: not enough space -------------------------------------------------------
 
+/// Unix file systems make the hole in `set_len` free by themselves; NTFS
+/// allocates every byte unless the file is first marked sparse.
+#[cfg(unix)]
+fn make_sparse(_file: &std::fs::File) {}
+
+#[cfg(windows)]
+fn make_sparse(file: &std::fs::File) {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::IO::DeviceIoControl;
+
+    /// `FSCTL_SET_SPARSE`.
+    const SET_SPARSE: u32 = 0x0009_00C4;
+    let mut returned = 0u32;
+    // SAFETY: the handle is open for writing and lives through the call; the
+    // control code takes no input or output buffer.
+    let ok = unsafe {
+        DeviceIoControl(
+            file.as_raw_handle(),
+            SET_SPARSE,
+            std::ptr::null(),
+            0,
+            std::ptr::null_mut(),
+            0,
+            &mut returned,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_ne!(ok, 0, "the test volume supports sparse files");
+}
+
 #[given("the destination does not have room for the transfer")]
 async fn no_room(w: &mut DragWorld) {
     w.two().await;
     // A hole in a file costs no space here but counts in full for the check.
     let room = mouser_core::transfer::space::free_space(&w.drop_dir());
     let big = std::fs::File::create(w.source().join("huge.bin")).unwrap();
+    make_sparse(&big);
     big.set_len(room + (1 << 20)).unwrap();
     w.drag(&["huge.bin"]);
 }
