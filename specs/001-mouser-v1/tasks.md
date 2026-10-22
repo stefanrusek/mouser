@@ -784,9 +784,9 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 
 ### E2E — J1 "two real computers on a LAN"
 
-- [ ] T491 Wire the J1 environment: write `apps/mouser-cli/tests/e2e/README.md` naming the two real machines (one macOS, one Windows or Linux), how each installs the release-workflow build, and how the runner reaches both (SSH with the `mouser` CLI on each; OS-level input on the controller driven by `osascript` on macOS / `xdotool` on Linux / PowerShell `SendInput` on Windows)
-- [ ] T492 Assemble `apps/mouser-cli/tests/e2e/features/e2e_j1_two_computers.feature` from spec.md Story 1 scenarios 2–4 and 9, Story 2 scenarios 2–3 and 8, and Story 3 scenarios 1–2, as one journey: install, form a desk with approval, cross both ways and type, panic, sleep/wake one computer, cross again
-- [ ] T493 Implement the J1 runner `apps/mouser-cli/tests/e2e_j1.rs` (cucumber, `harness = false`, `fail_on_skipped()`, registered with `required-features = ["e2e"]` so it never runs in lane gates) binding the feature to the lane-authored steps in `apps/mouser-cli/tests/e2e/steps/`
+- [X] T491 Wire the J1 environment: write `apps/mouser-cli/tests/e2e/README.md` naming the two real machines (one macOS, one Windows or Linux), how each installs the release-workflow build, and how the runner reaches both (SSH with the `mouser` CLI on each; OS-level input on the controller driven by `osascript` on macOS / `xdotool` on Linux / PowerShell `SendInput` on Windows)
+- [X] T492 Assemble `apps/mouser-cli/tests/e2e/features/e2e_j1_two_computers.feature` from spec.md Story 1 scenarios 2–4 and 9, Story 2 scenarios 2–3 and 8, and Story 3 scenarios 1–2, as one journey: install, form a desk with approval, cross both ways and type, panic, sleep/wake one computer, cross again
+- [X] T493 Implement the J1 runner `apps/mouser-cli/tests/e2e_j1.rs` (cucumber, `harness = false`, `fail_on_skipped()`, registered with `required-features = ["e2e"]` so it never runs in lane gates) binding the feature to the lane-authored steps in `apps/mouser-cli/tests/e2e/steps/`
 - [ ] T494 Run J1 on the two real machines, fix any failure at its source (no timeouts widened, no retries added — 4.3), and record the run with `cargo xtask gate --e2e j1 --lane convergence`
 
 - [ ] T495 Gate: `cargo xtask gate --all --lane convergence` green on all three CI runners and the J1 evidence record passing
