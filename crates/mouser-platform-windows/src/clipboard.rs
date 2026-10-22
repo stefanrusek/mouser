@@ -22,7 +22,9 @@ use mouser_platform::{ClipRep, Clipboard, Result};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{
+    GlobalFree, HANDLE, HGLOBAL, HWND, LPARAM, LRESULT, SetLastError, WIN32_ERROR, WPARAM,
+};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, GetClipboardOwner,
     GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard,
@@ -364,6 +366,10 @@ pub(crate) fn set(format: u32, bytes: &[u8]) -> Result<()> {
 /// Offers `format` without data. A null handle is the success answer here,
 /// which the bindings report as an error whose code is "success".
 pub(crate) fn delayed(format: u32) -> Result<()> {
+    // The bindings build that error from the thread's last error, which a
+    // successful call does not reset: clear whatever an earlier call (or the
+    // runtime) left there, or success reads as that stale failure.
+    unsafe { SetLastError(WIN32_ERROR(0)) };
     match unsafe { SetClipboardData(format, None) } {
         Err(e) if e.code().is_err() => os("SetClipboardData", Err::<(), _>(e)),
         _ => Ok(()),

@@ -20,6 +20,22 @@ fn info_reports_windows_with_its_version_and_declared_limitations() {
 }
 
 #[test]
+fn a_portable_run_declares_no_more_capabilities_than_an_installed_one() {
+    // Core adds the portable login-screen limitation itself; the platform's
+    // own list for a portable run on a drive with permissions is unchanged.
+    let root = tempfile::tempdir().unwrap();
+    let info = WinPlatform::portable(root.path().join("MouserData")).info();
+    let declared: Vec<Capability> = info.limitations.iter().map(|l| l.capability).collect();
+    assert!(declared.starts_with(&[Capability::Inject, Capability::SecureAttention]));
+    assert!(
+        !info
+            .limitations
+            .iter()
+            .any(|l| l.text.starts_with("Portable mode"))
+    );
+}
+
+#[test]
 fn games_and_remote_desktop_apps_are_a_declared_limitation_of_injection() {
     let info = WinPlatform::default().info();
     assert!(info.limitations.iter().any(|l| {

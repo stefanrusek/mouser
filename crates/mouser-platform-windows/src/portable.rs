@@ -19,9 +19,6 @@ use windows::Win32::Storage::FileSystem::{GetVolumeInformationW, GetVolumePathNa
 use windows::Win32::System::SystemServices::FILE_PERSISTENT_ACLS;
 use windows::core::{HSTRING, PCWSTR};
 
-/// The same sentence core adds for a portable run on Windows (D3 item 4).
-pub(crate) const WINDOWS_LIMITATION: &str = "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator.";
-
 pub(crate) const UNPROTECTED: &str = "Secrets on this drive are not protected by file permissions; anyone with the drive can read them.";
 
 /// Whether the secrets folder could be made private.
@@ -47,7 +44,7 @@ impl Portable {
     }
 
     pub(crate) fn limitations(&self) -> Vec<Limitation> {
-        let mut all = vec![limitation(Capability::SecureAttention, WINDOWS_LIMITATION)];
+        let mut all = Vec::new();
         if self.protection == Protection::Unprotected {
             all.push(limitation(Capability::Capture, UNPROTECTED));
         }

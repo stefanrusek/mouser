@@ -131,23 +131,18 @@ fn a_portable_run_writes_nothing_to_the_registry_and_cannot_autostart() {
 }
 
 #[test]
-fn a_portable_run_says_what_it_cannot_control() {
+fn a_portable_run_leaves_the_portable_login_screen_limitation_to_core() {
     let root = tempfile::tempdir().unwrap();
     let portable =
         WinPlatform::portable_with_settings(settings("limits", root.path()), root.path());
+    // Core adds "Portable mode cannot control the login screen..." for every
+    // portable run; the platform declares only what every Windows run has.
     let said = text_of(&portable, Capability::SecureAttention);
-    assert!(said.contains(&WINDOWS_LIMITATION.to_string()), "{said:?}");
-    assert_eq!(
-        WINDOWS_LIMITATION,
-        "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator."
-    );
-    // The limitations every Windows run has stay.
-    assert!(said.contains(&"Ctrl-Alt-Del can't be sent to this PC yet.".to_string()));
+    assert_eq!(said, ["Ctrl-Alt-Del can't be sent to this PC yet."]);
     assert_eq!(text_of(&portable, Capability::Inject).len(), 1);
 
     let installed = WinPlatform::with_settings(settings("limits", root.path()));
-    let installed_said = text_of(&installed, Capability::SecureAttention);
-    assert!(!installed_said.contains(&WINDOWS_LIMITATION.to_string()));
+    assert_eq!(text_of(&installed, Capability::SecureAttention), said);
 }
 
 /// foundational-notes.md: on a volume with file permissions only the current

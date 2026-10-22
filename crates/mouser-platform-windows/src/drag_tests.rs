@@ -660,14 +660,19 @@ fn explorer_window(dir: &std::path::Path) -> HWND {
         "Explorer opened {name}"
     );
     let window = found.unwrap();
+    // Wholly on the screen, whatever its size: a drop point past the edge would
+    // be clamped onto whatever is there instead of this window.
+    let (w, h) = screen();
+    let (left, top) = (w / 4, h / 8);
+    let (width, height) = ((w - left - 20).min(1000), (h - top - 60).min(700));
     let _ = unsafe {
         SetWindowPos(
             window,
             None,
-            600,
-            150,
-            1000,
-            700,
+            left,
+            top,
+            width,
+            height,
             SWP_NOZORDER | SWP_SHOWWINDOW,
         )
     };
