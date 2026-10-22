@@ -97,7 +97,7 @@ pub(crate) fn device_parameters_key(path: &str) -> String {
     )
 }
 
-fn read_edid(path: &str) -> Option<Vec<u8>> {
+pub(crate) fn read_edid(path: &str) -> Option<Vec<u8>> {
     let mut buf = vec![0u8; 512];
     let mut size = buf.len() as u32;
     let r = unsafe {

@@ -102,8 +102,19 @@ fn this_machines_displays_report_scale_and_edid_size() {
         assert!(d.key.starts_with(r"\\?\DISPLAY#"), "{d:?}");
         assert!((d.logical_size.0 * f64::from(d.scale) - f64::from(d.pixel_size.0)).abs() < 1.0);
     }
-    // Every monitor of this machine has an EDID with a size.
-    assert!(all.iter().all(|d| d.physical_size_mm.is_some()), "{all:?}");
+    // The size is known exactly when the monitor's EDID states one (contract
+    // rule 4: "where the OS knows it"); a virtual display may have none.
+    for d in &all {
+        let edid = read_edid(&d.key);
+        assert_eq!(
+            d.physical_size_mm,
+            edid.as_deref().and_then(edid_size_mm),
+            "{d:?}"
+        );
+        if let Some(name) = edid.as_deref().and_then(edid_name) {
+            assert_eq!(d.name, name, "{d:?}");
+        }
+    }
     assert!(
         all.iter().any(|d| d.origin == (0.0, 0.0)),
         "primary at the origin: {all:?}"

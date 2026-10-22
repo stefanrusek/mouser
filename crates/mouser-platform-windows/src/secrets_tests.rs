@@ -21,7 +21,49 @@ fn set_get_overwrite_delete_round_trip_across_reopen() {
     store.delete("desk-key").unwrap();
 }
 
-/// The directory's DACL as SDDL, and the current user's SID.
+/// How SDDL writes `sid` as a trustee: some well-known accounts get an alias
+/// instead of the SID (this machine's built-in Administrator, RID 500, is
+/// `LA`; the CI runner's user is that account).
+fn sddl_trustee(sid: &str) -> String {
+    use windows::Win32::Foundation::{HLOCAL, LocalFree};
+    use windows::Win32::Security::Authorization::{
+        ConvertSecurityDescriptorToStringSecurityDescriptorW,
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows::Win32::Security::{DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR};
+    let mut sd = PSECURITY_DESCRIPTOR::default();
+    unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            &windows::core::HSTRING::from(format!("D:(A;;FA;;;{sid})")),
+            SDDL_REVISION_1,
+            &mut sd,
+            None,
+        )
+    }
+    .unwrap();
+    let mut text = windows::core::PWSTR::null();
+    unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            sd,
+            SDDL_REVISION_1,
+            DACL_SECURITY_INFORMATION,
+            &mut text,
+            None,
+        )
+    }
+    .unwrap();
+    let sddl = unsafe { text.to_string() }.unwrap();
+    unsafe {
+        LocalFree(Some(HLOCAL(text.0.cast())));
+        LocalFree(Some(HLOCAL(sd.0)));
+    }
+    sddl.strip_prefix("D:(A;;FA;;;")
+        .and_then(|t| t.strip_suffix(')'))
+        .expect(&sddl)
+        .to_string()
+}
+
+/// The directory's DACL as SDDL, and the current user as SDDL writes them.
 fn dacl_sddl(dir: &std::path::Path) -> (String, String) {
     use windows::Win32::Foundation::{HLOCAL, LocalFree};
     use windows::Win32::Security::Authorization::{
@@ -59,7 +101,7 @@ fn dacl_sddl(dir: &std::path::Path) -> (String, String) {
         LocalFree(Some(HLOCAL(text.0.cast())));
         LocalFree(Some(HLOCAL(sd.0)));
     }
-    (sddl, crate::secrets::current_user_sid())
+    (sddl, sddl_trustee(&crate::secrets::current_user_sid()))
 }
 
 /// foundational-notes.md, 2026-10-22: only SYSTEM, Administrators and the
@@ -72,7 +114,7 @@ fn a_new_secrets_directory_is_private_to_system_administrators_and_the_user() {
         .set("desk-key", b"k")
         .unwrap();
     let (sddl, user) = dacl_sddl(&secrets);
-    assert!(user.starts_with("S-1-5-21-"), "{user}");
+    assert!(user.starts_with("S-1-5-21-") || user == "LA", "{user}");
     // P: protected (nothing inherited from ProgramData); AI: set by SetNamedSecurityInfoW.
     assert_eq!(
         sddl,
