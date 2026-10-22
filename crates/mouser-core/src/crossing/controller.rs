@@ -30,9 +30,15 @@ impl Crossing {
     /// One event from this computer's own mouse or keyboard.
     pub fn local_input(&mut self, input: LocalInput, now: Instant) {
         self.session.track(input);
+        if let LocalInput::Key { usage, down: true } = input
+            && self.quickjump_key(usage)
+        {
+            return;
+        }
         if self.session.remote().is_some() {
             self.forward(input, now);
         } else if let LocalInput::Motion { dx, dy, abs } = input {
+            self.pointer = abs;
             self.cross_from_local(dx, dy, abs, now);
         } else if let LocalInput::Key { usage, down: true } = input {
             self.clipboard_keys(&self.session.held.keys, usage);
@@ -75,7 +81,7 @@ impl Crossing {
 
     /// Release what the state being left holds: the held keys and buttons
     /// here, or everything sent to the computer being left.
-    fn release_current(&mut self) {
+    pub(crate) fn release_current(&mut self) {
         match self.session.leave() {
             Leave::Local(held) => self.release_locally(&held),
             Leave::Remote(computer) => {
@@ -100,7 +106,7 @@ impl Crossing {
     }
 
     /// Hand control to display `to`, entering at desk point `at`.
-    fn begin(&mut self, to: usize, at: (f64, f64), speed: (f64, f64), back: (f64, f64)) {
+    pub(crate) fn begin(&mut self, to: usize, at: (f64, f64), speed: (f64, f64), back: (f64, f64)) {
         let target = &self.map.placed[to];
         let display = target.display.display_id.clone();
         let (x, y) = edges::to_local(target, at);
@@ -263,7 +269,7 @@ impl Crossing {
     }
 
     /// The remote pointer is at desk point `at` of display `index`.
-    fn point_at(&mut self, index: usize, at: (f64, f64)) {
+    pub(crate) fn point_at(&mut self, index: usize, at: (f64, f64)) {
         let target = &self.map.placed[index];
         let (x, y) = edges::to_local(target, at);
         let display = target.display.display_id.clone();

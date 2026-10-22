@@ -108,6 +108,12 @@ pub enum EngineEvent {
     /// A computer's displays were placed or replaced in the layout: offer
     /// the desk owner a review of the placement.
     ReviewOffered { computer: ComputerId, name: String },
+    /// QuickJump was started anywhere on the desk: show each letter on the
+    /// display it names (the ones that are this computer's).
+    QuickJumpShow { letters: Vec<(DisplayId, char)> },
+    /// QuickJump ended (a letter was chosen, or it was cancelled): remove the
+    /// letters.
+    QuickJumpHide,
 }
 
 /// Where a connection to a peer is in its life.
@@ -408,6 +414,8 @@ impl Engine {
         let panic = PanicSpec::parse(&config.hotkeys.panic).expect("hotkeys.panic is valid");
         let targeted_paste =
             Chord::parse(&config.hotkeys.targeted_paste).expect("hotkeys.targeted_paste is valid");
+        let quickjump =
+            Chord::parse(&config.hotkeys.quickjump).expect("hotkeys.quickjump is valid");
         let (clip, clip_commands) = mpsc::unbounded_channel();
         let (xfer, xfer_commands) = mpsc::unbounded_channel();
         let crossing = Arc::new(Mutex::new(Crossing::new(
@@ -416,6 +424,7 @@ impl Engine {
             Buttons45::from_config(&config.mouse.buttons_4_5),
             panic,
             targeted_paste,
+            quickjump,
             Host {
                 events: events.clone(),
                 dirty: dirty.clone(),

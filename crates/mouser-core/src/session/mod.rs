@@ -394,6 +394,10 @@ impl Ctx {
             ControlMessage::Scroll { seq, dx, dy } => {
                 self.input(peer, |c| c.on_scroll(peer, seq, dx, dy))
             }
+            ControlMessage::QuickJumpShow { letters } => {
+                self.input(peer, |c| c.on_quickjump_show(letters))
+            }
+            ControlMessage::QuickJumpHide => self.input(peer, |c| c.on_quickjump_hide()),
             ControlMessage::ReleaseAll { .. } | ControlMessage::Panic => {
                 self.input(peer, |c| c.on_release_all(peer))
             }

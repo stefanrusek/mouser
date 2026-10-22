@@ -266,7 +266,7 @@ fn what_nobody_offered_is_a_protocol_violation_or_ignored_when_it_is_late() {
     // Bytes still on the way when the transfer ended are of no interest.
     assert!(run(&mut t, Command::Chunk { id: id(), bytes: 1 }).is_empty());
     assert!(run(&mut t, Command::ItemDone { id: id() }).is_empty());
-    assert!(fail(&mut t, message(peer(), ControlMessage::QuickJumpHide)).contains("unexpected"));
+    assert!(fail(&mut t, message(peer(), ControlMessage::SecureAttention)).contains("unexpected"));
 }
 
 #[test]

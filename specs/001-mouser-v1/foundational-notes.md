@@ -125,3 +125,9 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - Linux `watch_network` polls interface addresses every 2 s; Wayland `watch_displays` is a no-op handle; file-store secret names are percent-encoded.
 - The landing overlay sets click-through only after it is first shown (GTK has no native window while hidden).
 - Two-VM X11 e2e (Lima user-v2): desk create/join by address, crossing, keys and clicks observed. mDNS discovery between the VMs did NOT work (likely no multicast on user-v2; unverified): open item.
+
+## core US11 decisions (for app US11)
+
+- Core detects `hotkeys.quickjump` from captured input; letters A-Z then 0-9, left to right; `QuickJumpShow`/`QuickJumpHide` go to all desk-mates and every computer emits in-process `EngineEvent::QuickJumpShow { letters }` / `QuickJumpHide` for the app overlay.
+- A letter on a local display warps without a grab; Esc or any unshown key cancels; the hotkey is ignored while paused; keys pressed while letters show are consumed only when the pointer is remote (local keys still reach the focused app). The Esc that cancels letters does not count toward the panic double-Esc.
+- Orchestrator decisions (fix in core US12 phase): (a) a letter whose display has left the layout since the letters were shown cancels the jump (hides letters) instead of panicking; (b) when the computer that showed the letters goes offline, desk-mates hide their letters; (c) Wayland: the Linux backend lists the limitation "QuickJump and hotkey crossings can't start from this computer on Wayland; push the pointer off the screen edge instead." under Capability::Capture, and core does not send `Enter` for a QuickJump when the local platform cannot grab (`set_grabbed` unsupported).

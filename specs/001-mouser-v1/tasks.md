@@ -329,11 +329,11 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us11` passes: the hotkey shows a distinct letter per display, a letter jumps there, other keys cancel.
 
-- [ ] T213 [US11-core] Write the acceptance runner `crates/mouser-core/tests/acc_us11.rs` and steps `crates/mouser-core/tests/steps/us11.rs` for every scenario in `tests/features/us11.feature`
-- [ ] T214 [P] [US11-core] Write unit tests for QuickJump in `crates/mouser-core/src/quickjump/tests.rs`: the hotkey assigns a distinct letter to every included display and sends `QuickJumpShow`; pressing a shown letter sends `QuickJumpHide` and moves control to that display's centre; Esc or any other key hides the letters and leaves the pointer where it was (Story 11 sc. 1–3)
-- [ ] T215 [US11-core] Implement QuickJump in `crates/mouser-core/src/quickjump/mod.rs`
-- [ ] T216 [US11-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T217 [US11-core] Commit: phase boundary "US11-core" (5.3)
+- [X] T213 [US11-core] Write the acceptance runner `crates/mouser-core/tests/acc_us11.rs` and steps `crates/mouser-core/tests/steps/us11.rs` for every scenario in `tests/features/us11.feature`
+- [X] T214 [P] [US11-core] Write unit tests for QuickJump in `crates/mouser-core/src/quickjump/tests.rs`: the hotkey assigns a distinct letter to every included display and sends `QuickJumpShow`; pressing a shown letter sends `QuickJumpHide` and moves control to that display's centre; Esc or any other key hides the letters and leaves the pointer where it was (Story 11 sc. 1–3)
+- [X] T215 [US11-core] Implement QuickJump in `crates/mouser-core/src/quickjump/mod.rs`
+- [X] T216 [US11-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T217 [US11-core] Commit: phase boundary "US11-core" (5.3)
 
 #### Phase 14: US12-core — As a desk user, I want to control a computer that is at its login or system security screen (P3)
 

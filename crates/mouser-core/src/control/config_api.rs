@@ -34,8 +34,8 @@ fn lookup<'a>(tree: &'a Value, key: &str) -> Result<&'a Value, RpcError> {
 
 /// Everything a config must satisfy beyond its shape: `Config::validate`,
 /// and the hotkeys the engine parses (the panic gesture and the
-/// targeted-paste chord, which are returned parsed).
-pub(crate) fn check(next: &Config) -> Result<(PanicSpec, Chord), ConfigError> {
+/// targeted-paste and QuickJump chords, which are returned parsed).
+pub(crate) fn check(next: &Config) -> Result<(PanicSpec, Chord, Chord), ConfigError> {
     next.validate()?;
     let panic = PanicSpec::parse(&next.hotkeys.panic).map_err(|reason| ConfigError {
         key: "hotkeys.panic".into(),
@@ -46,7 +46,11 @@ pub(crate) fn check(next: &Config) -> Result<(PanicSpec, Chord), ConfigError> {
             key: "hotkeys.targeted_paste".into(),
             reason,
         })?;
-    Ok((panic, targeted_paste))
+    let quickjump = Chord::parse(&next.hotkeys.quickjump).map_err(|reason| ConfigError {
+        key: "hotkeys.quickjump".into(),
+        reason,
+    })?;
+    Ok((panic, targeted_paste, quickjump))
 }
 
 impl Ctx {
@@ -88,7 +92,7 @@ impl Ctx {
         self: &Arc<Self>,
         mut core: MutexGuard<'_, Core>,
         next: Config,
-        (panic, targeted_paste): (PanicSpec, Chord),
+        (panic, targeted_paste, quickjump): (PanicSpec, Chord, Chord),
         shared: bool,
         save: bool,
     ) {
@@ -106,6 +110,7 @@ impl Ctx {
             let mut crossing = self.crossing.lock().unwrap();
             crossing.buttons = Buttons45::from_config(&core.config.mouse.buttons_4_5);
             crossing.targeted_paste = targeted_paste;
+            crossing.quickjump = quickjump;
             if crossing.panic.spec() != panic {
                 crossing.panic = PanicDetector::new(panic);
             }

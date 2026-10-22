@@ -56,7 +56,7 @@ use mouser_platform::{
     Platform,
 };
 use mouser_proto::ids::ComputerId;
-use mouser_proto::model::{Display, EdgeOptions, Os};
+use mouser_proto::model::{Display, DisplayId, EdgeOptions, Os};
 use mouser_proto::wire::{ControlMessage, MotionDatagram};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{Notify, broadcast};
@@ -138,6 +138,12 @@ pub(crate) struct Crossing {
     pub bumps: Bumps,
     /// The targeted-paste hotkey.
     pub targeted_paste: Chord,
+    /// The QuickJump hotkey.
+    pub quickjump: Chord,
+    /// The letters QuickJump is showing, while it is.
+    pub jump: Option<Vec<(DisplayId, char)>>,
+    /// Where the pointer was when this computer's own mouse last moved it.
+    pub pointer: (f64, f64),
     /// The clipboard task, told of the paste shortcut and the hotkey.
     pub clipboard: UnboundedSender<Command>,
     /// Files being dragged out of this computer; `None` where the platform
@@ -166,6 +172,7 @@ impl Crossing {
         buttons: Buttons45,
         panic: PanicSpec,
         targeted_paste: Chord,
+        quickjump: Chord,
         host: Host,
     ) -> Self {
         Self {
@@ -184,6 +191,9 @@ impl Crossing {
             problems: host.problems,
             bumps: Bumps::default(),
             targeted_paste,
+            quickjump,
+            jump: None,
+            pointer: (0.0, 0.0),
             clipboard: host.clipboard,
             drag: host.drag,
             transfers: host.transfers,
