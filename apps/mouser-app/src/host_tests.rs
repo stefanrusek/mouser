@@ -24,6 +24,33 @@ async fn the_host_runs_an_engine_on_the_given_platform_and_exposes_the_control_a
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_latest_notification_of_each_transfer_is_kept_in_first_seen_order() {
+    let f = fixture().await;
+    assert!(f.host.transfers().is_empty());
+    let note = |id: &str, state: &str| serde_json::json!({"transfer_id": id, "state": state});
+    f.host.remember_transfer(note("a", "copying"));
+    f.host.remember_transfer(note("b", "rejected"));
+    f.host.remember_transfer(note("a", "completed"));
+    assert_eq!(
+        f.host.transfers(),
+        vec![note("a", "completed"), note("b", "rejected")]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_edge_asked_for_is_handed_over_once() {
+    let f = fixture().await;
+    assert_eq!(f.host.take_edge(), None);
+    f.host.ask_for_edge("crossing_blocked:aa/1/right".into());
+    f.host.ask_for_edge("crossing_blocked:aa/1/left".into());
+    assert_eq!(
+        f.host.take_edge(),
+        Some("crossing_blocked:aa/1/left".to_string())
+    );
+    assert_eq!(f.host.take_edge(), None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_second_launch_brings_up_the_first_ones_window() {
     let f = fixture().await;
     let app = app_with(f.host);

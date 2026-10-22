@@ -429,10 +429,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: health panel UI tests pass.
 
-- [ ] T269 [P] [US8-app] Write UI tests `apps/mouser-app/ui/health.test.js`: the panel lists each computer with connected/reconnecting/offline, responsiveness from `rtt_ms`, missing permissions with an "Open settings" button, limitations, and the most recent problem in plain language; a "Diagnostic logging" checkbox calls `logging.set` and shows "Open log folder" for the returned path (Story 8 sc. 1, 2, 4)
-- [ ] T270 [US8-app] Implement the health panel `apps/mouser-app/ui/health.html` and `apps/mouser-app/ui/health.js`, opened from the tray
-- [ ] T271 [US8-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T272 [US8-app] Commit: phase boundary "US8-app" (5.3)
+- [X] T269 [P] [US8-app] Write UI tests `apps/mouser-app/ui/health.test.js`: the panel lists each computer with connected/reconnecting/offline, responsiveness from `rtt_ms`, missing permissions with an "Open settings" button, limitations, and the most recent problem in plain language; a "Diagnostic logging" checkbox calls `logging.set` and shows "Open log folder" for the returned path (Story 8 sc. 1, 2, 4)
+- [X] T270 [US8-app] Implement the health panel `apps/mouser-app/ui/health.html` and `apps/mouser-app/ui/health.js`, opened from the tray
+- [X] T271 [US8-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T272 [US8-app] Commit: phase boundary "US8-app" (5.3)
 
 #### Phase 22: US10-app — As a desk owner, I want every computer on my desk to stay up to date without visiting each one (P3)
 

@@ -1,10 +1,11 @@
 //! The commands the UI windows call. Everything else the UI needs goes
 //! through `control`, which is the control API, method for method.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mouser_core::ControlHandle;
-use mouser_platform::PermissionKind as PlatformKind;
+use mouser_platform::{Os, PermissionKind as PlatformKind};
 use mouser_proto::control::{FixAction, Method, RpcError};
 use mouser_proto::model::PermissionKind;
 use serde::Deserialize;
@@ -63,17 +64,25 @@ pub fn open_settings(host: &Host, kind: PermissionKind) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Do what a problem's one-click fix says.
-pub fn run_fix<R: Runtime>(app: &AppHandle<R>, host: &Host, fix: FixAction) -> Result<(), String> {
+/// Do what the open problem `problem_id`'s one-click fix says; the engine
+/// acknowledges it (opening the settings screen, clearing the notice).
+pub fn run_fix<R: Runtime>(
+    app: &AppHandle<R>,
+    host: &Host,
+    problem_id: &str,
+    fix: FixAction,
+) -> Result<(), String> {
     match fix {
-        FixAction::OpenSystemSettings(kind) => open_settings(host, kind),
+        FixAction::OpenSystemSettings(_) => host.control().fix(problem_id),
         FixAction::ApproveJoin => {
             windows::show(app, Which::Join);
             Ok(())
         }
         FixAction::OpenArrangerEdge => {
+            // The id names the blocked edge; the arranger opens that one.
+            host.ask_for_edge(problem_id.to_string());
             windows::show(app, Which::Arranger);
-            Ok(())
+            host.control().fix(problem_id)
         }
         other => Err(format!("The fix \"{other}\" is not available yet.")),
     }
@@ -104,9 +113,37 @@ pub fn open_permission_settings(host: State<'_, Host>, kind: PermissionKind) -> 
 pub fn fix<R: Runtime>(
     app: AppHandle<R>,
     host: State<'_, Host>,
+    problem_id: String,
     fix: FixAction,
 ) -> Result<(), String> {
-    run_fix(&app, &host, fix)
+    run_fix(&app, &host, &problem_id, fix)
+}
+
+/// The latest `transfer` notification of every transfer so far, for a window
+/// that opened after them.
+#[tauri::command]
+pub fn transfers(host: State<'_, Host>) -> Vec<Value> {
+    host.transfers()
+}
+
+/// The blocked-edge problem id the arranger was asked to open, once.
+#[tauri::command]
+pub fn take_arranger_edge(host: State<'_, Host>) -> Option<String> {
+    host.take_edge()
+}
+
+/// The program that shows a folder in the system file manager, and the folder
+/// that holds `file` (the log file's folder).
+pub fn folder_opener(os: Os, file: &str) -> (&'static str, PathBuf) {
+    let program = match os {
+        Os::MacOs => "open",
+        Os::Windows => "explorer",
+        Os::Linux => "xdg-open",
+    };
+    let folder = Path::new(file)
+        .parent()
+        .expect("a log file is inside a folder");
+    (program, folder.to_path_buf())
 }
 
 /// Answer an `awaiting_overwrite_decision` question of a dragged-file transfer.

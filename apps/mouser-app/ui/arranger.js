@@ -2,7 +2,7 @@
 // the shape of the physical desk. Desk space is in millimetres.
 
 import { button, el, guarded, show } from './dom.js';
-import { mountEdges } from './arranger_edges.js';
+import { mountEdges, parseBlockedEdge } from './arranger_edges.js';
 
 const CANVAS_WIDTH = 560;
 const MAX_SCALE = 0.5;
@@ -314,15 +314,24 @@ export async function init({ doc, api, every, onFocus }) {
   });
 
   const tick = guarded(errorLine, () => (state.drag ? undefined : load()), { clear: false });
+  // The fix of a "crossing blocked" notice asks for one edge; the layout is current before it is opened.
+  const openAskedEdge = async () => {
+    const problemId = await api.takeArrangerEdge();
+    if (!problemId) return;
+    await load();
+    edges.open(parseBlockedEdge(problemId));
+  };
   await api.onNotification((note) => {
     if (note.method === 'status') tick();
   });
   every(3000, tick);
-  onFocus(tick);
+  onFocus(async () => {
+    await tick();
+    await guarded(errorLine, openAskedEdge, { clear: false })();
+  });
   await guarded(errorLine, async () => {
     await load();
-    const { problems } = await api.call('status');
-    if (problems.some((p) => p.kind === 'crossing_blocked' && !p.cleared_at)) edges.openFirst();
+    await openAskedEdge();
   })();
   return { tick };
 }

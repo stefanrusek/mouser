@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { blocksCorners, findEdges, setCorners } from './arranger_edges.js';
+import { blocksCorners, findEdges, parseBlockedEdge, setCorners } from './arranger_edges.js';
 import { init } from './arranger.js';
 import { click, fakeApi, flush, loadPage } from './test_helpers.js';
 import { makeStatus } from './status_fixture.js';
@@ -33,11 +33,12 @@ const layoutOf = (displays, placements, extra = {}) => ({
 });
 const TWO = (extra) => layoutOf([A, B], [place(A.display_id, 0, 0), place(B.display_id, 600, 0)], extra);
 
-async function start(layout = TWO(), status = makeStatus()) {
+async function start(layout = TWO(), status = makeStatus(), arrangerEdge = null) {
   const win = loadPage('arranger.html');
-  const api = fakeApi({ status, 'layout.get': layout, 'layout.set': (params) => ({ ...layout, ...params }) });
-  await init({ doc: win.document, api, every: () => {}, onFocus: () => {} });
-  return { win, doc: win.document, api };
+  const api = fakeApi({ status, 'layout.get': layout, 'layout.set': (params) => ({ ...layout, ...params }), arrangerEdge });
+  const focus = [];
+  await init({ doc: win.document, api, every: () => {}, onFocus: (handler) => focus.push(handler) });
+  return { win, doc: win.document, api, focus: focus[0] };
 }
 const edges = (doc) => [...doc.querySelectorAll('.edge')];
 const sent = (api) => api.calls.filter(([m]) => m === 'layout.set').map(([, p]) => p);
@@ -143,28 +144,41 @@ test('a refused edge change shows the engine sentence', async () => {
   assert.equal(win.document.getElementById('error').textContent, 'Not allowed.');
 });
 
-test('an open crossing_blocked notification opens the first edge when the arranger opens', async () => {
-  const blocked = {
-    problem_id: 'p1',
-    kind: 'crossing_blocked',
-    computer: 'aa',
-    message: 'Blocked.',
-    fix: 'open_arranger_edge',
-    raised_at: '2026-10-21T00:00:00Z',
-    cleared_at: null,
-  };
-  const { doc } = await start(TWO(), makeStatus({ problems: [blocked] }));
-  assert.equal(doc.getElementById('edge-options').hidden, false);
-  const quiet = await start(TWO(), makeStatus({ problems: [{ ...blocked, cleared_at: '2026-10-21T01:00:00Z' }] }));
-  assert.equal(quiet.doc.getElementById('edge-options').hidden, true);
+test('a blocked edge id names the display and side to open', () => {
+  assert.deepEqual(parseBlockedEdge('crossing_blocked:aa/1/right'), { display_id: id('aa', '1'), side: 'right' });
+  assert.deepEqual(parseBlockedEdge('crossing_blocked:bb/DP-1/2/bottom'), { display_id: id('bb', 'DP-1/2'), side: 'bottom' });
 });
 
-test('with no edge, a blocked notification opens nothing and a removed display drops its edge', async () => {
-  const blocked = { problem_id: 'p1', kind: 'crossing_blocked', cleared_at: null };
-  const one = layoutOf([A], [place(A.display_id, 0, 0)]);
-  const { doc } = await start(one, makeStatus({ problems: [blocked] }));
-  assert.equal(edges(doc).length, 0);
-  assert.equal(doc.getElementById('edge-options').hidden, true);
+const THREE = layoutOf(
+  [A, B, C],
+  [place(A.display_id, 0, 0), place(B.display_id, 600, 0), place(C.display_id, 0, 340)],
+);
+const openTitle = (doc) => (doc.getElementById('edge-options').hidden ? null : doc.getElementById('edge-title').textContent);
+
+test('the fix of a blocked edge opens that edge, not the first one', async () => {
+  // A|B share the first edge; A over C is the second one.
+  const { doc } = await start(THREE, makeStatus(), 'crossing_blocked:aa/1/bottom');
+  assert.equal(edges(doc).length, 2);
+  assert.equal(openTitle(doc), 'Edge between Built-in and Above');
+  const other = await start(THREE, makeStatus(), 'crossing_blocked:bb/1/left');
+  assert.equal(openTitle(other.doc), 'Edge between Built-in and Studio Display');
+});
+
+test('with no edge asked for, or an edge that is gone, no options open', async () => {
+  const { doc } = await start(THREE);
+  assert.equal(openTitle(doc), null);
+  const gone = await start(THREE, makeStatus(), 'crossing_blocked:cc/1/right');
+  assert.equal(openTitle(gone.doc), null);
+  const one = await start(layoutOf([A], [place(A.display_id, 0, 0)]), makeStatus(), 'crossing_blocked:aa/1/right');
+  assert.equal(edges(one.doc).length, 0);
+  assert.equal(openTitle(one.doc), null);
+});
+
+test('focusing an open arranger opens the edge the owner just asked for', async () => {
+  const { doc, api, focus } = await start(THREE);
+  api.takeArrangerEdge = async () => 'crossing_blocked:aa/1/bottom';
+  await focus();
+  assert.equal(openTitle(doc), 'Edge between Built-in and Above');
 });
 
 test('the open edge closes when its displays move apart', async () => {

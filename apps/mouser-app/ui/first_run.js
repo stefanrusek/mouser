@@ -145,7 +145,7 @@ export async function init({ doc, api, every, onFocus }) {
 
   const refresh = async () => {
     const status = await api.call('status');
-    problems.set(status.problems);
+    problems.set(status.problems, status.computer.id);
     renderPermissions(doc, doc.getElementById('permission-list'), permissionRows(status), (kind) =>
       api.openPermissionSettings(kind),
     );

@@ -91,6 +91,18 @@ impl<R: Runtime> Shortcuts for LiveShortcuts<R> {
     }
 }
 
+/// Show the folder that holds `path` in the system file manager.
+#[tauri::command]
+fn open_folder(path: String) {
+    let (program, folder) = commands::folder_opener(platform_select::current_os(), &path);
+    let mut opener = std::process::Command::new(program)
+        .arg(folder)
+        .spawn()
+        .unwrap_or_else(|e| panic!("{program} can open the folder: {e}"));
+    // Reap the opener when it is done (explorer exits with 1 even on success).
+    std::thread::spawn(move || opener.wait());
+}
+
 /// Run Mouser until the owner quits it.
 pub fn run() {
     tauri::Builder::default()
@@ -105,6 +117,9 @@ pub fn run() {
             commands::control,
             commands::open_permission_settings,
             commands::fix,
+            commands::transfers,
+            commands::take_arranger_edge,
+            open_folder,
             commands::transfer_resolve,
             commands::hide_window
         ])
@@ -153,6 +168,9 @@ pub fn run() {
                     }
                     tray::Action::Arrange => {
                         crate::windows::show(app, crate::windows::Which::Arranger)
+                    }
+                    tray::Action::Health => {
+                        crate::windows::show(app, crate::windows::Which::Health)
                     }
                     tray::Action::Quit => app.exit(0),
                 })

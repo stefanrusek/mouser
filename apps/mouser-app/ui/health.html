@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mouser health</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Mouser health</h1>
+  <p class="hint">How each computer on your desk is doing, and what to do when something is wrong.</p>
+  <ul id="computers"></ul>
+
+  <section id="logging-section">
+    <h2>Diagnostic logging</h2>
+    <label><input id="logging" type="checkbox"> Write a diagnostic log</label>
+    <p class="hint">Turn this on when asked to help find a problem. It records what Mouser does, never what you type.</p>
+    <button id="open-log" type="button" hidden>Open log folder</button>
+  </section>
+
+  <p id="error" class="error" role="alert"></p>
+</main>
+<script type="module">
+  import { boot } from './boot.js';
+  import { init } from './health.js';
+  boot(init);
+</script>
+</body>
+</html>

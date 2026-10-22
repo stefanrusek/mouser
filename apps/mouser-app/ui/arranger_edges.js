@@ -43,6 +43,14 @@ export function setCorners(options, edge, block) {
   return [...rest, { ...edge.first, block_corners: false }, { ...edge.second, block_corners: false }];
 }
 
+// The display side a `crossing_blocked:<computer id>/<display key>/<side>` problem id names.
+export function parseBlockedEdge(problemId) {
+  const [, rest] = problemId.split(':');
+  const first = rest.indexOf('/');
+  const last = rest.lastIndexOf('/');
+  return { display_id: { computer: rest.slice(0, first), key: rest.slice(first + 1, last) }, side: rest.slice(last + 1) };
+}
+
 // Wire the edge handles on `canvas` and the options panel. `change(edits)`
 // sends a layout change; `named(display_id)` is the display's label.
 export function mountEdges({ doc, canvas, change, named }) {
@@ -92,10 +100,11 @@ export function mountEdges({ doc, canvas, change, named }) {
       }
       showPanel();
     },
-    // Open the first edge (the fix of a "crossing blocked" notification).
-    openFirst() {
-      if (state.edges.length === 0) return;
-      state.selected = identity(state.edges[0]);
+    // Open the options of the edge that `target` ({display_id, side}) is one side of; nothing if it is not drawn.
+    open(target) {
+      const edge = state.edges.find((e) => sameSide(e.first, target) || sameSide(e.second, target));
+      if (!edge) return;
+      state.selected = identity(edge);
       showPanel();
     },
   };

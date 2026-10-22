@@ -29,9 +29,9 @@ test('a problem shows its message and no button when there is no fix', () => {
 test('a problem with a fix shows exactly one fix button that runs the fix', async () => {
   const { win, box } = page();
   const fixes = [];
-  renderProblems(box, [problem('a', 'Mouser needs Accessibility access.', 'open_system_settings:accessibility')], async (fix) => {
-    fixes.push(fix);
-  });
+  renderProblems(box, [problem('a', 'Mouser needs Accessibility access.', 'open_system_settings:accessibility')], async (p) => {
+    fixes.push(p.fix);
+  }, 'aa');
   const buttons = box.querySelectorAll('button');
   assert.equal(buttons.length, 1);
   assert.equal(buttons[0].textContent, 'Open settings');
@@ -44,7 +44,7 @@ test('a fix that fails says why next to its button', async () => {
   const { win, box } = page();
   renderProblems(box, [problem('a', 'Update needed.', 'open_update')], async () => {
     throw new Error('The fix "open_update" is not available yet.');
-  });
+  }, 'aa');
   click(win, box.querySelector('button'));
   await flush();
   assert.equal(box.querySelector('.error').textContent, 'The fix "open_update" is not available yet.');
@@ -76,8 +76,29 @@ test('the tracker draws the initial problems and follows problem notifications',
 test('the tracker sends a fix through the api', async () => {
   const { win, box } = page();
   const api = fakeApi();
-  trackProblems(box, api, [problem('a', 'Needs access', 'approve_join')]);
+  trackProblems(box, api, [problem('a', 'Needs access', 'approve_join')], 'aa');
   click(win, box.querySelector('button'));
   await flush();
-  assert.deepEqual(api.calls, [['fix', 'approve_join']]);
+  assert.deepEqual(api.calls, [['fix', 'a', 'approve_join']]);
+});
+
+test('only problems of this computer get a fix button', () => {
+  const { box } = page();
+  const mine = problem('a', 'Mine.', 'approve_join');
+  const theirs = { ...problem('b', 'Theirs.', 'open_system_settings:accessibility'), computer: 'bb' };
+  renderProblems(box, [mine, theirs], async () => {}, 'aa');
+  assert.equal(box.querySelectorAll('button').length, 1);
+  assert.match(box.textContent, /Theirs\./);
+});
+
+test('the tracker learns which computer is this one from set', () => {
+  const { box } = page();
+  const tracker = trackProblems(box, fakeApi(), [], undefined);
+  const fixable = problem('a', 'Mine.', 'approve_join');
+  tracker.set([fixable]);
+  assert.equal(box.querySelectorAll('button').length, 0);
+  tracker.set([fixable], 'aa');
+  assert.equal(box.querySelectorAll('button').length, 1);
+  tracker.update({ method: 'problem', params: problem('b', 'More.', 'approve_join') });
+  assert.equal(box.querySelectorAll('button').length, 2);
 });

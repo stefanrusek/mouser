@@ -15,15 +15,16 @@ export function fixLabel(fix) {
   return FIX_LABELS[fix.split(':')[0]];
 }
 
+// `onFix(problem)` runs the problem's fix; without it the problem has no button.
 export function renderProblem(doc, problem, onFix) {
   const node = el(doc, 'div', { class: 'problem', role: 'alert' }, el(doc, 'p', {}, problem.message));
-  if (problem.fix) {
+  if (problem.fix && onFix) {
     const failure = el(doc, 'p', { class: 'error' });
     node.append(
       button(doc, fixLabel(problem.fix), async () => {
         failure.textContent = '';
         try {
-          await onFix(problem.fix);
+          await onFix(problem);
         } catch (error) {
           failure.textContent = errorText(error);
         }
@@ -34,9 +35,12 @@ export function renderProblem(doc, problem, onFix) {
   return node;
 }
 
-export function renderProblems(container, problems, onFix) {
+// Only a problem of this computer (`selfId`) can be fixed from here.
+export function renderProblems(container, problems, onFix, selfId) {
   const doc = container.ownerDocument;
-  container.replaceChildren(...problems.map((problem) => renderProblem(doc, problem, onFix)));
+  container.replaceChildren(
+    ...problems.map((problem) => renderProblem(doc, problem, problem.computer === selfId ? onFix : null)),
+  );
 }
 
 // The open problems after `problem` was raised or cleared.
@@ -46,13 +50,16 @@ export function applyProblem(problems, problem) {
 }
 
 // Keep `container` showing the open problems: start from `initial`, then feed notifications to `update`.
-export function trackProblems(container, api, initial) {
+export function trackProblems(container, api, initial, selfId) {
   let problems = initial;
-  const draw = () => renderProblems(container, problems, (fix) => api.fix(fix));
+  let self = selfId;
+  const draw = () => renderProblems(container, problems, (p) => api.fix(p.problem_id, p.fix), self);
   draw();
   return {
-    set(next) {
+    // `computerId` is this computer, as `status.computer.id` says.
+    set(next, computerId = self) {
       problems = next;
+      self = computerId;
       draw();
     },
     update(note) {

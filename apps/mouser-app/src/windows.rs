@@ -1,5 +1,5 @@
 //! The app's windows: first run (`main`), settings, the join prompt, the
-//! arranger and the file-transfer window.
+//! arranger, the file-transfer window and the health panel.
 
 use mouser_proto::control::{ConnectionState, Method, Status};
 use mouser_proto::model::PermissionState;
@@ -15,6 +15,7 @@ pub enum Which {
     Join,
     Arranger,
     Transfer,
+    Health,
 }
 
 impl Which {
@@ -25,6 +26,7 @@ impl Which {
             Self::Join => "join",
             Self::Arranger => "arranger",
             Self::Transfer => "transfer",
+            Self::Health => "health",
         }
     }
 
@@ -35,6 +37,7 @@ impl Which {
             Self::Join => "join_prompt.html",
             Self::Arranger => "arranger.html",
             Self::Transfer => "transfer.html",
+            Self::Health => "health.html",
         }
     }
 
@@ -45,6 +48,7 @@ impl Which {
             Self::Join => "A computer wants to join",
             Self::Arranger => "Arrange displays",
             Self::Transfer => "File transfer",
+            Self::Health => "Mouser health",
         }
     }
 
@@ -55,6 +59,7 @@ impl Which {
             Self::Join => (460.0, 320.0),
             Self::Arranger => (700.0, 760.0),
             Self::Transfer => (460.0, 360.0),
+            Self::Health => (560.0, 640.0),
         }
     }
 }

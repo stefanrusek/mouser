@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use mouser_core::{ControlHandle, Engine, EngineParams};
 use mouser_platform::Platform;
+use serde_json::Value;
 
 /// The running engine and the platform it runs on.
 pub struct Host {
@@ -14,6 +15,10 @@ pub struct Host {
     // and Tauri state must be both.
     _engine: Mutex<Engine>,
     platform: Arc<dyn Platform>,
+    /// The latest `transfer` notification of each transfer, first seen first.
+    transfers: Mutex<Vec<Value>>,
+    /// The problem id of the edge the arranger should open next.
+    arranger_edge: Mutex<Option<String>>,
 }
 
 impl Host {
@@ -37,7 +42,37 @@ impl Host {
             control: engine.control(),
             _engine: Mutex::new(engine),
             platform,
+            transfers: Mutex::new(Vec::new()),
+            arranger_edge: Mutex::new(None),
         }
+    }
+
+    /// Keep `transfer` (a `transfer` notification's params) as the latest word
+    /// on its transfer, for a window that opens after the notification.
+    pub fn remember_transfer(&self, transfer: Value) {
+        let mut transfers = self.transfers.lock().unwrap();
+        match transfers
+            .iter_mut()
+            .find(|t| t["transfer_id"] == transfer["transfer_id"])
+        {
+            Some(known) => *known = transfer,
+            None => transfers.push(transfer),
+        }
+    }
+
+    /// The latest notification of every transfer so far.
+    pub fn transfers(&self) -> Vec<Value> {
+        self.transfers.lock().unwrap().clone()
+    }
+
+    /// The arranger should open the edge named by this `crossing_blocked` problem id.
+    pub fn ask_for_edge(&self, problem_id: String) {
+        *self.arranger_edge.lock().unwrap() = Some(problem_id);
+    }
+
+    /// The edge asked for, once.
+    pub fn take_edge(&self) -> Option<String> {
+        self.arranger_edge.lock().unwrap().take()
     }
 
     /// In-process access to the control API.

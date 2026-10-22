@@ -9,7 +9,14 @@ export function makeApi(tauri) {
     // Call a control-API method by name (contracts/control-api.md).
     call: (method, params = null) => invoke('control', { request: { method, params } }),
     openPermissionSettings: (kind) => invoke('open_permission_settings', { kind }),
-    fix: (fix) => invoke('fix', { fix }),
+    // Run the fix of an open problem (the engine acknowledges it; the app opens whatever screen it needs).
+    fix: (problemId, fix) => invoke('fix', { problemId, fix }),
+    // The latest `transfer` notification of every transfer so far, for a window that opened late.
+    transfers: () => invoke('transfers'),
+    // The problem id of the edge the arranger should open, once (null when none was asked for).
+    takeArrangerEdge: () => invoke('take_arranger_edge'),
+    // Show the folder that holds `path` in the system file manager.
+    openFolder: (path) => invoke('open_folder', { path }),
     // Answer an "Overwrite <name>?" question from a transfer notification.
     transferResolve: (transferId, overwrite) => invoke('transfer_resolve', { transferId, overwrite }),
     hideWindow: () => invoke('hide_window'),

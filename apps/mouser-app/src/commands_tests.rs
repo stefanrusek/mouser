@@ -9,9 +9,11 @@ use tauri::test::{
 };
 use tauri::webview::InvokeRequest;
 
-use crate::commands::{call, call_and_sync, open_settings, run_fix};
+use crate::commands::{call, call_and_sync, folder_opener, open_settings, run_fix};
 use crate::hotkeys_tests::hotkeys_for;
-use crate::support_tests::{NoSettingsScreen, app_with, fixture, fixture_on, has_window};
+use crate::support_tests::{
+    NoSettingsScreen, app_with, fixture, fixture_on, has_window, status_of,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn control_calls_the_method_with_that_name() {
@@ -54,9 +56,30 @@ async fn every_permission_opens_its_own_system_screen() {
     );
 }
 
+/// The id of the open problem about `kind`, once the engine has noticed it is missing.
+async fn missing_permission_problem(f: &crate::support_tests::Fixture) -> String {
+    f.platform.set_permission(
+        mouser_platform::PermissionKind::Accessibility,
+        mouser_platform::PermissionState::Missing,
+    );
+    for _ in 0..200 {
+        let problems = status_of(&f.host).await.problems;
+        if let Some(p) = problems
+            .iter()
+            .find(|p| p.fix == Some(FixAction::OpenSystemSettings(PermissionKind::Accessibility)))
+        {
+            return p.problem_id.clone();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("the engine never raised the missing permission");
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn fixes_open_settings_the_join_prompt_or_the_arranger_and_the_rest_are_not_available() {
+async fn fixes_run_through_the_engine_open_the_join_prompt_or_the_arranger_and_the_rest_are_not_available()
+ {
     let f = fixture().await;
+    let id = missing_permission_problem(&f).await;
     let platform = f.platform.clone();
     let app = app_with(f.host);
     let handle = app.handle().clone();
@@ -64,6 +87,7 @@ async fn fixes_open_settings_the_join_prompt_or_the_arranger_and_the_rest_are_no
     run_fix(
         &handle,
         &host,
+        &id,
         FixAction::OpenSystemSettings(PermissionKind::Accessibility),
     )
     .unwrap();
@@ -71,16 +95,55 @@ async fn fixes_open_settings_the_join_prompt_or_the_arranger_and_the_rest_are_no
         platform.opened_permission_settings(),
         vec![P::Accessibility]
     );
+    assert!(
+        run_fix(
+            &handle,
+            &host,
+            "nope",
+            FixAction::OpenSystemSettings(PermissionKind::Accessibility)
+        )
+        .unwrap_err()
+        .contains("nope is not an open problem")
+    );
     assert!(!has_window(&handle, "join"));
-    run_fix(&handle, &host, FixAction::ApproveJoin).unwrap();
+    run_fix(&handle, &host, "x", FixAction::ApproveJoin).unwrap();
     assert!(has_window(&handle, "join"));
     assert!(!has_window(&handle, "arranger"));
-    run_fix(&handle, &host, FixAction::OpenArrangerEdge).unwrap();
-    assert!(has_window(&handle, "arranger"));
     assert_eq!(
-        run_fix(&handle, &host, FixAction::OpenUpdate),
+        run_fix(&handle, &host, "x", FixAction::OpenUpdate),
         Err("The fix \"open_update\" is not available yet.".to_string())
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_edge_fix_opens_the_arranger_on_the_edge_the_problem_names_and_asks_the_engine_to_clear_it()
+ {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let handle = app.handle().clone();
+    let host = handle.state::<crate::host::Host>();
+    let id = "crossing_blocked:aa/DP-1/right";
+    // No such notice is open here, so the engine says so; the arranger still goes to the edge.
+    assert_eq!(
+        run_fix(&handle, &host, id, FixAction::OpenArrangerEdge),
+        Err(format!("{id} is not an open problem"))
+    );
+    assert!(has_window(&handle, "arranger"));
+    assert_eq!(host.take_edge(), Some(id.to_string()));
+}
+
+#[test]
+fn the_log_folder_opens_with_each_systems_file_manager() {
+    for (os, program) in [
+        (mouser_platform::Os::MacOs, "open"),
+        (mouser_platform::Os::Windows, "explorer"),
+        (mouser_platform::Os::Linux, "xdg-open"),
+    ] {
+        assert_eq!(
+            folder_opener(os, "/home/me/logs/mouser.log"),
+            (program, std::path::PathBuf::from("/home/me/logs"))
+        );
+    }
 }
 
 fn request(cmd: &str, body: serde_json::Value) -> InvokeRequest {
@@ -102,14 +165,17 @@ fn request(cmd: &str, body: serde_json::Value) -> InvokeRequest {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_ui_reaches_all_five_commands_over_ipc() {
+async fn the_ui_reaches_all_the_commands_over_ipc() {
     let f = fixture().await;
+    let id = missing_permission_problem(&f).await;
     let platform = f.platform.clone();
     let app = mock_builder()
         .invoke_handler(tauri::generate_handler![
             crate::commands::control,
             crate::commands::open_permission_settings,
             crate::commands::fix,
+            crate::commands::transfers,
+            crate::commands::take_arranger_edge,
             crate::commands::transfer_resolve,
             crate::commands::hide_window
         ])
@@ -137,16 +203,23 @@ async fn the_ui_reaches_all_five_commands_over_ipc() {
         json!({"kind": "input_monitoring"}),
     )
     .unwrap();
-    ipc("fix", json!({"fix": "open_system_settings:accessibility"})).unwrap();
+    ipc(
+        "fix",
+        json!({"problemId": id, "fix": "open_system_settings:accessibility"}),
+    )
+    .unwrap();
     assert_eq!(
         platform.opened_permission_settings(),
         vec![P::InputMonitoring, P::Accessibility]
     );
-    let refused = ipc("fix", json!({"fix": "open_update"})).unwrap_err();
+    let refused = ipc("fix", json!({"problemId": "x", "fix": "open_update"})).unwrap_err();
     assert_eq!(
         refused,
         json!("The fix \"open_update\" is not available yet.")
     );
+
+    assert_eq!(ipc("transfers", json!({})).unwrap(), json!([]));
+    assert_eq!(ipc("take_arranger_edge", json!({})).unwrap(), json!(null));
 
     // No transfer is waiting, so an answer is quietly dropped.
     ipc(

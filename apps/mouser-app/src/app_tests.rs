@@ -92,6 +92,40 @@ async fn transfer_progress_opens_the_window_once_and_a_question_brings_it_forwar
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_rejected_or_failed_transfer_opens_the_window_and_is_kept_for_a_window_that_opens_late() {
+    for state in ["rejected", "failed"] {
+        let f = fixture().await;
+        let app = app_with(f.host);
+        let handle_ = app.handle().clone();
+        let (tray, _port, notifier, _dynamic) = pump_parts();
+        let stopped = note(
+            Topic::Transfer,
+            json!({"transfer_id": "ab12", "state": state, "message": "It stopped."}),
+        );
+        handle(&handle_, &tray, &notifier, transfer_note("copying"));
+        handle(&handle_, &tray, &notifier, stopped.clone());
+        assert!(has_window(&handle_, "transfer"));
+        // The window was created after the first notification; it still gets the last word.
+        assert_eq!(
+            handle_.state::<crate::host::Host>().transfers(),
+            vec![stopped.params]
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_one_shot_rejection_is_kept_even_though_no_window_was_open() {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let handle_ = app.handle().clone();
+    let (tray, _port, notifier, _dynamic) = pump_parts();
+    assert!(!has_window(&handle_, "transfer"));
+    handle(&handle_, &tray, &notifier, transfer_note("rejected"));
+    assert!(has_window(&handle_, "transfer"));
+    assert_eq!(handle_.state::<crate::host::Host>().transfers().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn the_app_shows_setup_and_the_tray_then_follows_the_engine() {
     let f = fixture().await;
     let app = app_with(f.host);

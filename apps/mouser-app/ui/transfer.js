@@ -32,6 +32,10 @@ export function renderTransfer(doc, transfer, onResolve) {
     card.append(el(doc, 'p', { class: 'rejected' }, text));
     return card;
   }
+  if (transfer.state === 'failed') {
+    card.append(el(doc, 'p', { class: 'failed' }, transfer.message));
+    return card;
+  }
   card.append(el(doc, 'h2', { class: 'item' }, transfer.current_item || 'Getting ready'));
   if (transfer.state === 'awaiting_overwrite_decision') {
     card.append(
@@ -68,13 +72,21 @@ export async function init({ doc, api }) {
     api.transferResolve(transfer.transfer_id, overwrite),
   );
 
+  const upsert = (next) => {
+    const known = transfers.some((t) => t.transfer_id === next.transfer_id);
+    transfers = known ? transfers.map((t) => (t.transfer_id === next.transfer_id ? next : t)) : [...transfers, next];
+  };
+  const live = new Set();
   await api.onNotification((note) => {
     if (note.method !== 'transfer') return;
-    const known = transfers.some((t) => t.transfer_id === note.params.transfer_id);
-    transfers = known
-      ? transfers.map((t) => (t.transfer_id === note.params.transfer_id ? note.params : t))
-      : [...transfers, note.params];
+    live.add(note.params.transfer_id);
+    upsert(note.params);
     draw();
   });
+  // The window opens after the notification that opened it: take what the app kept, unless a newer one came.
+  for (const saved of await api.transfers()) {
+    if (!live.has(saved.transfer_id)) upsert(saved);
+  }
+  draw();
   return { transfers: () => transfers };
 }

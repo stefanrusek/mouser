@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use mouser_core::{ControlHandle, EngineEvent};
 use mouser_proto::control::{Notification, Topic};
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::host::Host;
 use crate::notify::{self, Notifier};
 use crate::overlay;
 use crate::tray::{TrayController, current_status};
@@ -24,6 +25,10 @@ pub fn handle<R: Runtime>(
     notifier: &dyn Notifier,
     note: Notification,
 ) {
+    if note.method == Topic::Transfer {
+        // Kept before it is announced, so a window that opens now still sees it.
+        app.state::<Host>().remember_transfer(note.params.clone());
+    }
     app.emit(EVENT, &note).expect("UI windows can be notified");
     match note.method {
         Topic::Status => tray.update_status(
@@ -32,11 +37,11 @@ pub fn handle<R: Runtime>(
         Topic::JoinRequest => windows::show(app, Which::Join),
         Topic::Problem => notify::bridge(&note, notifier),
         Topic::Transfer => {
-            // Progress opens the window once; a question always brings it forward.
+            // Progress opens the window once; a question or a stop always brings it forward.
             let state = note.params["state"]
                 .as_str()
                 .expect("a transfer notification has a state");
-            let asks = state == "awaiting_overwrite_decision";
+            let asks = matches!(state, "awaiting_overwrite_decision" | "rejected" | "failed");
             if asks || (state != "completed" && !windows::is_open(app, Which::Transfer)) {
                 windows::show(app, Which::Transfer);
             }

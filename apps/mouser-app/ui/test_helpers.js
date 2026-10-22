@@ -32,14 +32,17 @@ export function fakeApi(answers = {}) {
       return value;
     },
     openPermissionSettings: async (kind) => record('open_permission_settings', [kind]),
-    fix: async (fix) => {
-      record('fix', [fix]);
+    fix: async (problemId, fix) => {
+      record('fix', [problemId, fix]);
       if (answers.fixError) throw answers.fixError;
     },
     transferResolve: async (transferId, overwrite) => {
       record('transfer_resolve', [transferId, overwrite]);
       if (answers.transfer_resolve instanceof Error) throw answers.transfer_resolve;
     },
+    transfers: async () => answers.transfers ?? [],
+    takeArrangerEdge: async () => answers.arrangerEdge ?? null,
+    openFolder: async (path) => record('open_folder', [path]),
     hideWindow: async () => record('hide_window', []),
     onLanding: async (handler) => {
       landings.push(handler);

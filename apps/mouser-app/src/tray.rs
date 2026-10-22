@@ -66,6 +66,7 @@ pub const OPEN_ID: &str = "open";
 pub const PAUSE_ID: &str = "pause";
 pub const RESUME_ID: &str = "resume";
 pub const ARRANGE_ID: &str = "arrange";
+pub const HEALTH_ID: &str = "health";
 pub const QUIT_ID: &str = "quit";
 
 /// One tray menu line; a line without an id is a heading that does nothing.
@@ -126,6 +127,10 @@ pub fn view(status: &Status, os: Os, appearance: Appearance) -> TrayView {
             Entry {
                 id: Some(ARRANGE_ID),
                 label: "Arrange displays".into(),
+            },
+            Entry {
+                id: Some(HEALTH_ID),
+                label: "Mouser health".into(),
             },
             Entry {
                 id: Some(QUIT_ID),
@@ -194,6 +199,7 @@ pub enum Action {
     Pause,
     Resume,
     Arrange,
+    Health,
     Quit,
 }
 
@@ -203,6 +209,7 @@ pub fn action(id: &str) -> Action {
         PAUSE_ID => Action::Pause,
         RESUME_ID => Action::Resume,
         ARRANGE_ID => Action::Arrange,
+        HEALTH_ID => Action::Health,
         QUIT_ID => Action::Quit,
         other => panic!("the tray has no menu line \"{other}\""),
     }

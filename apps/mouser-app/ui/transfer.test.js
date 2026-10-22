@@ -14,9 +14,9 @@ const note = (extra = {}) => ({
   ...extra,
 });
 
-async function start() {
+async function start(transfers = []) {
   const win = loadPage('transfer.html');
-  const api = fakeApi({ transfer_resolve: {} });
+  const api = fakeApi({ transfer_resolve: {}, transfers });
   const page = await init({ doc: win.document, api });
   return { win, doc: win.document, api, page };
 }
@@ -123,4 +123,36 @@ test('renderTransfer builds a card for one notification', () => {
   const win = loadPage('transfer.html');
   const card = renderTransfer(win.document, note(), () => {});
   assert.equal(card.className, 'card');
+});
+
+test('a transfer that failed shows the engine message and no progress', async () => {
+  const { api, doc } = await start();
+  const message = 'The copy stopped because Beta went offline. 2 of 5 files were copied.';
+  api.emit('transfer', note({ state: 'failed', reason: 'peer_offline', message }));
+  assert.equal(text(doc, '.failed'), message);
+  assert.equal(doc.querySelector('progress'), null);
+  assert.equal(doc.querySelector('.item'), null);
+});
+
+test('transfers the app saw before the window opened are shown on load', async () => {
+  const rejected = note({ transfer_id: 'ee55', state: 'rejected', reason: 'no_space', message: 'x' });
+  const { doc, page } = await start([rejected, note()]);
+  assert.equal(doc.querySelectorAll('.card').length, 2);
+  assert.equal(text(doc, '.rejected'), 'There is not enough space on the other computer. Nothing was copied.');
+  assert.equal(page.transfers().length, 2);
+});
+
+test('a newer notification wins over the saved one for the same transfer', async () => {
+  const win = loadPage('transfer.html');
+  let release;
+  const api = fakeApi({ transfers: [] });
+  const saved = [note({ bytes_done: 1 }), note({ transfer_id: 'cd34', current_item: 'b.txt' })];
+  api.transfers = () => new Promise((resolve) => { release = () => resolve(saved); });
+  const starting = init({ doc: win.document, api });
+  await flush();
+  api.emit('transfer', note({ bytes_done: 3 * 1048576 }));
+  release();
+  const page = await starting;
+  assert.equal(page.transfers().length, 2);
+  assert.equal(page.transfers().find((t) => t.transfer_id === 'ab12').bytes_done, 3 * 1048576);
 });

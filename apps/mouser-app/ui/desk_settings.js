@@ -88,7 +88,7 @@ export async function init({ doc, api, every, onFocus }) {
   async function refresh() {
     const status = await api.call('status');
     current.desk = status.desk;
-    problems.set(status.problems);
+    problems.set(status.problems, status.computer.id);
     renderStatus(doc, status);
     renderMembers(doc, doc.getElementById('member-list'), status, remove);
     const desks = (await api.call('desks.discovered')).filter((d) => d.desk_id !== status.desk?.id);
