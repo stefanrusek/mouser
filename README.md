@@ -1,6 +1,6 @@
 # Mouser
 
-Mouser shares one mouse and keyboard across the Macs, Windows PCs and Linux computers on your local network. Push the pointer off the edge of one screen and it appears on the next computer, and your keyboard follows it. Clipboard and file drags cross the edge too (built, not yet in a release). It is a from-scratch replacement for ShareMouse.
+Mouser shares one mouse and keyboard across the Macs, Windows PCs and Linux computers on your local network. Push the pointer off the edge of one screen and it appears on the next computer, and your keyboard follows it. Clipboard and file drags cross the edge too (file drag is not available on Linux). It is a from-scratch replacement for ShareMouse.
 
 The reason it exists is reliability. ShareMouse either fails to connect or drops the connection the moment you start typing, and it breaks when a VPN or VM network adapter is active. Mouser uses QUIC so a connection survives Wi-Fi/Ethernet switches, IP changes, sleep and VPNs, and heals itself without restarting the app. Traffic is encrypted automatically.
 
@@ -8,36 +8,36 @@ Computers are grouped into **desks**, not joined with passwords or pairing codes
 
 ## Status
 
-Mouser is an **early pre-release**. Expect rough edges. Published versions are on the [Releases page](https://github.com/stefanrusek/mouser/releases) (currently v0.1.0 and v0.1.1, both marked pre-release).
+Mouser is an **early pre-release**. Expect rough edges. Published versions are on the [Releases page](https://github.com/stefanrusek/mouser/releases). v0.2.0 is the first release worth trying on Linux; v0.1.0 and v0.1.1 had no working Linux backend.
 
 | Platform | State |
 |---|---|
-| macOS | Works between two Macs as of v0.1.1. |
-| Linux | In progress. The released AppImage and .deb do not yet give you a working Linux backend. |
-| Windows | In progress. The released installer does not yet give you a working Windows backend. |
+| macOS | Built and tested on real hardware (the owner's Macs). Not yet exercised on a real login screen (see below). |
+| Linux (X11 and Wayland) | Built and tested in aarch64 virtual machines and against simulated desktop portals only. A two-VM X11 test passed (joining by address, crossing, keys and clicks). No real Linux hardware yet. |
+| Windows | Not functional. It waits for hardware access. The installer exists, but the app stops on start with "the Windows platform backend is not implemented yet". |
 
-What is built (in source, not necessarily in a release):
+What is built (in source, and in v0.2.0 unless noted):
 
 - The core engine: desks and join approval, discovery, QUIC transport with self-healing, crossing between displays, corner blocking, clipboard sharing, file drag between computers with a progress window, and problem reporting (missing permissions, blocked crossings and so on).
-- The app: tray/menu bar, first-run screen, join prompt, the display arranger (with per-edge options), settings, and the file transfer window.
-- The `mouser` CLI: `status`, `pause`/`resume`, `desks`, `desk`, `requests`, `approve`, `decline`.
-- The macOS backend (capture, injection, clipboard, secrets, permissions, displays).
-- Linux backend pieces: session detection, portal permissions, network interface classification, secret store, autostart and tray detection, plus an HID-to-evdev key table and X11 groundwork. Input capture/injection, displays and clipboard for X11 and Wayland are not finished.
+- The app: tray/menu bar, first-run screen, join prompt, the display arranger (with per-edge options), settings, the file transfer window, the health panel, QuickJump, auto-update across the LAN and portable mode.
+- The `mouser` CLI: every command in [docs/cli.md](docs/cli.md).
+- The macOS backend (capture, injection, clipboard, secrets, permissions, displays). Everything above, including clipboard sharing, file drag, the arranger, the health panel, QuickJump, LAN updates and portable mode, has been tried on real Macs. The login-screen agent is built but has not been run on a real login screen.
+- The Linux backend for X11 and Wayland: input capture and injection, displays, clipboard, network-change watching and portable mode. Tested in VMs and against simulated portals, not on real hardware.
 
 What is not done yet (tracked in `specs/001-mouser-v1/tasks.md`):
 
-- Linux input capture and injection (X11 and Wayland), Linux displays, clipboard and a network-change watcher.
-- The Windows backend beyond a skeleton; `mouser-service-win` (the service for the login screen and UAC) is a skeleton too.
-- Health panel, QuickJump, Send Ctrl-Alt-Del, auto-update across the LAN, portable mode, the macOS login-window agent.
-- CLI commands `config`, `logs`, `update` and `send-cad`.
+- The Windows backend. The crate is empty, so Mouser does not run on Windows. `mouser-service-win` (the service for the login screen and UAC) is a stub.
+- Portable zip packaging.
+- Running the macOS login-screen agent on a real login screen.
 
 Known limitations:
 
-- Most testing has been against simulated platforms (`VirtualPlatform`) and a simulated network (`SimNet`), not real multi-computer setups. Only the macOS backend has been exercised between real machines, and only two Macs.
-- Pause currently applies to the computer where you press the hotkey, not to every computer on the desk.
+- Outside macOS, testing has been against VMs, simulated platforms (`VirtualPlatform`), a simulated network (`SimNet`) and simulated portals, not real multi-computer setups.
+- Pause applies to the computer where you press the hotkey, not to every computer on the desk. Run `mouser pause` on each one.
 - Large clipboard items (over 1 MiB) are fetched when you paste, so the first paste can be stale.
-- Windows builds are unsigned (SmartScreen will warn). Windows Authenticode signing is deferred.
-- The Linux notes below come from VM experiments, not real hardware.
+- Files received through the clipboard are never cleaned up.
+- Windows is not implemented, and Windows installers are unsigned (SmartScreen will warn). Authenticode signing is deferred.
+- Linux limits are listed under [Install > Linux](#linux).
 
 ## Install
 
@@ -57,31 +57,33 @@ Download from [GitHub Releases](https://github.com/stefanrusek/mouser/releases).
 
 ### Linux
 
-Download `Mouser_<version>_amd64.AppImage` or `Mouser_<version>_amd64.deb`. The .deb installs the CLI as `/usr/bin/mouser`.
+Download `Mouser_<version>_amd64.AppImage` or `Mouser_<version>_amd64.deb`. The .deb installs the CLI as `/usr/bin/mouser`. v0.1.1 and earlier have no working Linux backend; v0.2.0 is the first release worth trying. The Linux code was tested from source in aarch64 VMs and against simulated portals; the x86_64 AppImage and .deb bundles themselves have not been installed on any machine yet, so expect problems.
 
-As of v0.1.1 the Linux backend is not functional: you can start the app, but input capture and injection are not implemented yet. Treat the next release as the first one worth trying, and expect problems. The AppImage and .deb bundles had not been verified on a real machine when this was written.
-
-What the design assumes, based on experiments in virtual machines (Ubuntu 24.04 with GNOME 46, Ubuntu 26.04 with GNOME 50, Fedora 44 with Plasma 6.7; X11 only on Ubuntu 24.04):
+Based on experiments in virtual machines (Ubuntu 24.04 with GNOME 46, Ubuntu 26.04 with GNOME 50, Fedora 44 with Plasma 6.7; X11 only on Ubuntu 24.04), details in `crates/mouser-platform-linux/probes/FINDINGS.md`:
 
 - **Wayland (GNOME, KDE):** Mouser uses the RemoteDesktop and InputCapture portals plus libei. Expect an approval dialog ("Approve Mouser on <computer>") after **each login**: InputCapture permission cannot be remembered on GNOME 46/50, and no remembering was observed on Plasma 6.7.5. The dialog can take several seconds to appear.
+- **Wayland has no hotkey or QuickJump crossings.** Push the pointer off the screen edge instead.
+- **Clipboard sharing on GNOME Wayland needs GNOME 51 or newer.** Not tested, because no GNOME 51 image was available.
 - **X11:** XInput2/XTest and XFixes barriers. A grab can fail while another program holds one, for example while a GTK menu is open.
-- Pressing into the edge while dragging a file cancels the drag on GNOME 46, so dragging files out of a Wayland computer that way does not work.
+- **No file drag on Linux.** Use copy and paste to move files. (Pressing into the edge while dragging a file cancels the drag on GNOME 46.)
+- **Desk discovery may not work.** In the two-VM test, discovery between the VMs did not work (possibly no multicast on that VM network; unverified). Join by address instead: `mouser desk join <host>:47801`.
+- GNOME without the AppIndicator extension shows no tray icon.
 - Not tested: GNOME 51, Plasma 6.8, Plasma lock screen, display-manager greeters, real GPUs and physical input hardware.
 
 ### Windows
 
-Download `Mouser_<version>_x64-setup.exe`, a per-user NSIS installer. It is unsigned, so Windows SmartScreen will warn you ("More info" then "Run anyway"). The Windows backend is not functional yet, so there is little point installing it today. To use the CLI, add `%LOCALAPPDATA%\Mouser` to your PATH.
+Download `Mouser_<version>_x64-setup.exe`, a per-user NSIS installer. It is unsigned, so Windows SmartScreen will warn you ("More info" then "Run anyway"). There is no Windows backend yet: the app stops on start with "the Windows platform backend is not implemented yet". It waits for hardware access, so there is little point installing it today. To use the CLI, add `%LOCALAPPDATA%\Mouser` to your PATH.
 
 ## Using it
 
 1. **Create a desk.** On the first computer, launch Mouser and choose **Create a new desk**, then give it a name. From a terminal: `mouser desk create "Home office"`.
-2. **Join it.** On the second computer, Mouser lists the desks it finds. Choose yours. From a terminal: `mouser desks`, then `mouser desk join "Home office"`.
+2. **Join it.** On the second computer, Mouser lists the desks it finds. Choose yours. From a terminal: `mouser desks`, then `mouser desk join "Home office"`, or by address with `mouser desk join <host>:47801` if discovery does not find it.
 3. **Approve.** On a computer already on the desk, click **Allow** on the join prompt. From a terminal: `mouser requests`, then `mouser approve <request>`.
 4. **Cross.** Move the pointer off a shared screen edge. It appears on the other computer, with a brief highlight where it lands, and your keyboard goes with it. New computers are placed automatically; open the **arranger** from the tray to drag displays into the real layout. Clicking an edge in the arranger sets that edge's options, such as blocking corners or full-screen windows.
 5. **Corners.** Crossing is blocked in display corners (to stop accidental switches). Bump the edge twice quickly to override.
 6. **Bring the pointer home.** Press **Escape twice** within half a second and control returns to the local computer.
 7. **Pause.** The default hotkey is Ctrl+Alt+Shift+M (configurable) and `mouser pause` / `mouser resume` do the same. Today this applies to the computer where it is issued.
-8. **Clipboard and files.** Copy on one computer and paste on another. Drag files across the edge; a transfer window shows progress and asks about overwrites. The targeted-paste hotkey defaults to Ctrl+Alt+Shift+V.
+8. **Clipboard and files.** Copy on one computer and paste on another. Drag files across the edge (not on Linux; copy and paste instead); a transfer window shows progress and asks about overwrites. The targeted-paste hotkey defaults to Ctrl+Alt+Shift+V.
 
 When something is wrong, the app says why and offers a fix (missing permission, blocked crossing, incompatible version). To check from a terminal:
 
@@ -90,7 +92,7 @@ mouser status          # desk, computers, connection state, permissions, problem
 mouser status --json   # the same, machine-readable
 ```
 
-`mouser` talks to a running Mouser; it exits with code 2 if Mouser is not running. All commands accept `--json`. The full CLI design is in `specs/001-mouser-v1/contracts/cli.md`; only the commands listed under Status are implemented so far.
+`mouser` talks to a running Mouser; it exits with code 2 if Mouser is not running. All commands accept `--json`. Every command is implemented and documented in [docs/cli.md](docs/cli.md). See also [docs/configuration.md](docs/configuration.md) (config files, portable mode, every key) and [docs/troubleshooting.md](docs/troubleshooting.md) (problem kinds, platform limitations, the diagnostic log).
 
 ## Building from source
 
@@ -130,7 +132,7 @@ Apps:
 
 - `apps/mouser-app` - the Tauri tray/menu bar app and its web UI (`ui/`): arranger, first run, join prompt, settings, transfer window.
 - `apps/mouser-cli` - the `mouser` command-line client.
-- `apps/mouser-service-win` - Windows service for the login screen and UAC (skeleton).
+- `apps/mouser-service-win` - Windows service for the login screen and UAC (stub).
 
 Crates:
 
@@ -141,7 +143,7 @@ Crates:
 - `crates/mouser-testkit` - `VirtualPlatform` and `SimNet` test doubles.
 - `xtask` - `bootstrap` and `gate`.
 
-Other: `docs/` (requirements, technical decisions, releasing), `specs/001-mouser-v1/` (the spec, plan and tasks).
+Other: `docs/` ([requirements](docs/product-requirements.md), [technical decisions](docs/technical-decisions.md), [releasing](docs/releasing.md), [CLI](docs/cli.md), [configuration](docs/configuration.md), [troubleshooting](docs/troubleshooting.md)), `specs/001-mouser-v1/` (the spec, plan and tasks).
 
 ## How it's developed
 
