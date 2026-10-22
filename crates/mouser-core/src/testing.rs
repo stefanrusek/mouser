@@ -204,6 +204,19 @@ impl Lab {
         protocol: u16,
         version: &str,
     ) -> TestNode {
+        self.launch_with(name, platform, dir, protocol, version, |_| {})
+            .await
+    }
+
+    async fn launch_with(
+        &self,
+        name: &str,
+        platform: VirtualPlatform,
+        dir: tempfile::TempDir,
+        protocol: u16,
+        version: &str,
+        tweak: impl FnOnce(&mut EngineParams),
+    ) -> TestNode {
         let control_path = control_path(&dir);
         let sim = self.sim_node(name, &platform, &dir);
         let discovery = self.browser_for(sim.clone());
@@ -216,6 +229,7 @@ impl Lab {
         );
         params.protocol_version = protocol;
         params.discovery = Some(discovery.clone());
+        tweak(&mut params);
         TestNode {
             engine: Engine::start(params).await,
             platform,
@@ -239,6 +253,31 @@ impl Lab {
         tweak(&mut config);
         crate::config::save(dir.path(), &config);
         self.boot(name, platform, dir).await
+    }
+
+    /// Start a node, letting `tweak_config` edit its config and
+    /// `tweak_params` its engine parameters (version, installer, release
+    /// server...).
+    pub async fn start_released(
+        &self,
+        name: &str,
+        tweak_config: impl FnOnce(&mut mouser_proto::config::Config),
+        tweak_params: impl FnOnce(&mut EngineParams),
+    ) -> TestNode {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = mouser_proto::config::Config::default();
+        config.advanced.port = u32::from(free_port());
+        tweak_config(&mut config);
+        crate::config::save(dir.path(), &config);
+        self.launch_with(
+            name,
+            VirtualPlatform::new(),
+            dir,
+            mouser_proto::wire::PROTOCOL_VERSION,
+            "0.1.0",
+            tweak_params,
+        )
+        .await
     }
 
     /// (Re)start an engine over an existing config directory.
@@ -448,6 +487,11 @@ pub(crate) async fn desk_of(lab: &Lab, names: &[&str]) -> Vec<TestNode> {
     for name in names {
         nodes.push(lab.start(name).await);
     }
+    desk_from(nodes).await
+}
+
+/// [`desk_of`] for nodes that are already started.
+pub(crate) async fn desk_from(nodes: Vec<TestNode>) -> Vec<TestNode> {
     let _: mouser_proto::control::Desk = call(
         &nodes[0],
         Method::DeskCreate,

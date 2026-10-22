@@ -427,6 +427,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake2"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b5d4d889834ee8ecfc0f8426ad30faf7cdcb10f741a8e6d7224d95325479f6f"
+dependencies = [
+ "digest 0.11.3",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3209,6 +3218,8 @@ dependencies = [
 name = "mouser-core"
 version = "0.1.1"
 dependencies = [
+ "base64 0.22.1",
+ "blake2",
  "bytes",
  "chrono",
  "cucumber",
@@ -3226,12 +3237,14 @@ dependencies = [
  "postcard",
  "quinn",
  "rcgen",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2 0.11.1",
  "socket2",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "toml 1.1.8+spec-1.1.0",
  "windows-sys 0.61.2",

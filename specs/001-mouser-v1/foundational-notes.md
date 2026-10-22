@@ -109,3 +109,11 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The crate does not compile on macOS/Windows (reis/rustix): it must be cfg-gated so the workspace builds everywhere (OPEN).
 - The tray (AppIndicator) limitation is filed under `Capability::Capture`; X11 scale fixed at 1.0; scroll 15 px per wheel click.
 - CI's ubuntu runner needs `Xvfb` and `dbus-daemon` for the Linux contract tests.
+
+## core US10 decisions (for app US10, cli US10)
+
+- `release_url` may return `latest.json`, a GitHub release object, or a releases array (newest first; drafts and releases without `latest.json` skipped; pre-releases included).
+- The app must opt in: set `EngineParams.installer` and `check_schedule = Some(CheckSchedule::DEFAULT)` (30 s, then every 6 h); defaults are `None` so tests never reach the network. Automatic checks/installs only when `updates.automatic`.
+- The offered manifest rewrites platform URLs to `mouser-lan://<fetcher id>/<platform key>`, offering only verified bundles; each peer re-verifies before installing. The fetcher keeps all platforms under `<config_dir>/releases/` and offers them to older desk-mates on auth.
+- `status` shows a connected peer's version from its Hello.
+- Not done: `min_protocol` is parsed but ignored; no update-available notification topic (the tray polls `update.check`).

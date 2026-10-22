@@ -86,7 +86,12 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
                 id: member.computer_id,
                 name: member.display_name.clone(),
                 os: member.os,
-                version: member.mouser_version.clone(),
+                // A connected computer knows what it runs now; the member list
+                // remembers what it ran when it joined.
+                version: peer.map_or_else(
+                    || member.mouser_version.clone(),
+                    |p| p.hello.mouser_version.clone(),
+                ),
                 connection,
                 rtt_ms: peer
                     .filter(|_| connection == ConnectionState::Connected)

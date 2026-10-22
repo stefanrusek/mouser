@@ -14,7 +14,7 @@ use mouser_proto::config::Config;
 use mouser_proto::control::Notification;
 use mouser_proto::ids::{ComputerId, DeskId};
 use mouser_proto::model::{DeskState, DisplayId, Layout, Member};
-use mouser_proto::wire::{ControlMessage, PROTOCOL_VERSION, PeerStatus};
+use mouser_proto::wire::{ControlMessage, PROTOCOL_VERSION, PeerStatus, TransferId};
 use tokio::sync::{Notify, broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -32,6 +32,10 @@ use crate::discovery::{Advert, Discovery, MdnsDiscovery};
 use crate::identity::Identity;
 use crate::logging::Log;
 use crate::problems::Problems;
+use crate::release::http::Http;
+use crate::release::pubkey::UPDATER_PUBKEY;
+use crate::release::serve::FOLDER;
+use crate::release::{CheckSchedule, Installer, ReleaseState, Version};
 use crate::session::handshake::PeerHello;
 use crate::state::{self, LocalState, desk_key_name};
 use crate::transport::Transport;
@@ -53,6 +57,16 @@ pub struct EngineParams {
     pub protocol_version: u16,
     /// Discovery backend; `None` selects real mDNS on the physical LAN.
     pub discovery: Option<Arc<dyn Discovery>>,
+    /// The app's installer for verified update bundles; `None` for a host
+    /// that cannot install them.
+    pub installer: Option<Installer>,
+    /// The minisign public key releases must be signed with.
+    pub release_pubkey: String,
+    /// How the release location is reached.
+    pub http: Http,
+    /// When to look for releases by itself; `None` only on request
+    /// (`update.check`).
+    pub check_schedule: Option<CheckSchedule>,
 }
 
 impl EngineParams {
@@ -71,6 +85,10 @@ impl EngineParams {
             mouser_version,
             protocol_version: PROTOCOL_VERSION,
             discovery: None,
+            installer: None,
+            release_pubkey: UPDATER_PUBKEY.to_string(),
+            http: Http::system(),
+            check_schedule: None,
         }
     }
 }
@@ -164,6 +182,8 @@ pub(crate) struct Core {
     pub secure_holder: Option<mouser_platform::SecureInputHolder>,
     /// The status last sent to the desk-mates.
     pub status_sent: Option<PeerStatus>,
+    /// Releases held and on offer.
+    pub release: ReleaseState,
 }
 
 /// State shared by every task of one engine.
@@ -193,6 +213,18 @@ pub(crate) struct Ctx {
     /// Dragged-file streams waiting to hear what to do.
     pub xfer_waiters: crate::transfer::Waiters,
     pub core: Mutex<Core>,
+    pub installer: Option<Installer>,
+    pub release_pubkey: String,
+    pub http: Http,
+    /// Streams awaited as answers to `ReleaseFetch`: the stream's id, the
+    /// computer asked, and where to hand the stream.
+    pub release_waiters: Mutex<
+        Vec<(
+            TransferId,
+            ComputerId,
+            tokio::sync::oneshot::Sender<quinn::RecvStream>,
+        )>,
+    >,
     pub next_link: AtomicU64,
     stop: CancellationToken,
     tasks: TaskTracker,
@@ -395,6 +427,11 @@ impl Engine {
             },
         )));
         let interfaces = params.platform.interfaces();
+        let release = ReleaseState::load(
+            &params.config_dir.join(FOLDER),
+            identity.computer_id(),
+            &Version::parse(&params.mouser_version).expect("mouser_version is a version"),
+        );
         let ctx = Arc::new(Ctx {
             identity,
             platform: params.platform,
@@ -415,6 +452,10 @@ impl Engine {
             xfer,
             transfer_ids: Default::default(),
             xfer_waiters: Default::default(),
+            installer: params.installer,
+            release_pubkey: params.release_pubkey,
+            http: params.http,
+            release_waiters: Mutex::new(Vec::new()),
             core: Mutex::new(Core {
                 config,
                 state,
@@ -430,6 +471,7 @@ impl Engine {
                 needs_review: BTreeSet::new(),
                 secure_holder: None,
                 status_sent: None,
+                release,
             }),
             next_link: AtomicU64::new(0),
             stop: CancellationToken::new(),
@@ -475,6 +517,9 @@ impl Engine {
         ctx.spawn(accept_loop(ctx.clone()));
         ctx.spawn(reconcile_loop(ctx.clone()));
         ctx.spawn(status_loop(ctx.clone(), dirty));
+        if let Some(schedule) = params.check_schedule {
+            ctx.spawn(control::update::check_loop(ctx.clone(), schedule));
+        }
         control::server::serve(&ctx, &params.control_path);
         Engine {
             ctx,

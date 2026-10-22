@@ -12,6 +12,7 @@ pub mod identity;
 pub mod layout;
 pub mod logging;
 pub mod problems;
+pub mod release;
 pub mod session;
 pub mod state;
 pub mod transfer;

@@ -125,6 +125,10 @@ pub struct Setup {
     pub blind: bool,
     /// The kinds of clipboard content this computer can hold (default: all).
     pub clipboard_holds: Option<fn(&mouser_platform::ClipRep) -> bool>,
+    /// The app's installer for update bundles.
+    pub installer: Option<mouser_core::release::Installer>,
+    /// The updater public key releases must be signed with (default: Mouser's).
+    pub release_pubkey: Option<String>,
 }
 
 impl Default for Setup {
@@ -136,6 +140,8 @@ impl Default for Setup {
             mouser_version: "0.1.0".into(),
             blind: false,
             clipboard_holds: None,
+            installer: None,
+            release_pubkey: None,
         }
     }
 }
@@ -172,6 +178,11 @@ fn free_port() -> u16 {
 impl Node {
     pub fn id(&self) -> ComputerId {
         self.engine.as_ref().expect("node is running").computer_id()
+    }
+
+    /// The version this computer reports the next time it starts.
+    pub fn set_version(&mut self, version: &str) {
+        self.setup.mouser_version = version.into();
     }
 
     /// The control-API client of this node.
@@ -296,6 +307,10 @@ impl Node {
         );
         params.protocol_version = self.setup.protocol_version;
         params.discovery = Some(Arc::new(discovery));
+        params.installer = self.setup.installer.clone();
+        if let Some(key) = &self.setup.release_pubkey {
+            params.release_pubkey = key.clone();
+        }
         let engine = Engine::start(params).await;
         self.engine = Some(engine);
         self.client = Some(

@@ -6,6 +6,7 @@ pub mod config_api;
 pub mod layout;
 pub mod server;
 pub mod status;
+pub mod update;
 
 #[cfg(test)]
 mod config_api_tests;
@@ -15,6 +16,8 @@ mod layout_tests;
 mod server_tests;
 #[cfg(test)]
 mod status_tests;
+#[cfg(test)]
+mod update_tests;
 
 use std::sync::Arc;
 

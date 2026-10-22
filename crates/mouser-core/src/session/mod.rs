@@ -103,6 +103,9 @@ async fn file_loop(ctx: Arc<Ctx>, conn: quinn::Connection) {
         let Ok((id, index)) = crate::transfer::streams::read_header(&mut stream).await else {
             continue;
         };
+        let Some(stream) = ctx.deliver_release(&id, stream) else {
+            continue;
+        };
         if ctx.transfer_ids.contains(&id) {
             ctx.spawn(ctx.clone().receive_dragged(id, index, stream));
         } else if let Ok(Some(paths)) = ctx.clip_inbox.receive(id, index, stream).await {
@@ -301,6 +304,7 @@ impl Ctx {
         };
         self.problems
             .clear(ProblemKind::SecureInput, &peer.to_string());
+        self.drop_release_waiters(peer);
         // No clipboard task means this platform shares no clipboard.
         let _ = self.clip.send(crate::clipboard::Command::PeerGone(peer));
         // Likewise for dragged files.
@@ -364,6 +368,12 @@ impl Ctx {
             | ControlMessage::TransferConflict { .. }
             | ControlMessage::TransferResolve { .. }
             | ControlMessage::TransferDone { .. }) => self.transfer_message(peer, message),
+            ControlMessage::ReleaseAvailable { manifest_json } => {
+                self.on_release_available(peer, &manifest_json)
+            }
+            ControlMessage::ReleaseFetch { version, asset } => {
+                self.on_release_fetch(peer, version, asset)
+            }
             ControlMessage::Enter {
                 display_id,
                 x,

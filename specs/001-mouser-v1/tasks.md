@@ -313,17 +313,17 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_us10` passes with a local HTTP fixture serving `latest.json`: one computer downloads and verifies, the others fetch over the desk connection.
 
-- [ ] T202 [US10-core] Write the acceptance runner `crates/mouser-core/tests/acc_us10.rs` and steps `crates/mouser-core/tests/steps/us10.rs` for every scenario in `tests/features/us10.feature`, serving release fixtures from a local HTTP server configured through `updates.release_url`
-- [ ] T203 [P] [US10-core] Write unit tests for fetcher election in `crates/mouser-core/src/release/elect_tests.rs`: the online member with the lowest `ComputerId` checks `updates.release_url`; no other member contacts the internet (FR-003)
-- [ ] T204 [US10-core] Implement fetcher election in `crates/mouser-core/src/release/elect.rs`
-- [ ] T205 [P] [US10-core] Write unit tests for release download in `crates/mouser-core/src/release/fetch_tests.rs`: a newer `latest.json` triggers download of every platform bundle; each is verified with minisign against the compiled-in Mouser updater public key; an unverified bundle is not offered (Story 10 sc. 3)
-- [ ] T206 [US10-core] Implement release check, download and minisign verification in `crates/mouser-core/src/release/fetch.rs`
-- [ ] T207 [P] [US10-core] Write unit tests for LAN distribution in `crates/mouser-core/src/release/serve_tests.rs`: the fetcher sends `ReleaseAvailable` with URLs rewritten to its own LAN endpoint and serves `ReleaseFetch` streams; peers never download from the internet (Story 10 sc. 1, 3)
-- [ ] T208 [US10-core] Implement LAN release distribution in `crates/mouser-core/src/release/serve.rs`
-- [ ] T209 [P] [US10-core] Write unit tests for `update.check`/`update.apply` in `crates/mouser-core/src/control/update_tests.rs`: `update.check` returns current and available versions (Story 10 sc. 4); `update.apply` hands the verified bundle bytes to the app's installer callback
-- [ ] T210 [US10-core] Implement `update.check`/`update.apply` in `crates/mouser-core/src/control/update.rs`
-- [ ] T211 [US10-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T212 [US10-core] Commit: phase boundary "US10-core" (5.3)
+- [X] T202 [US10-core] Write the acceptance runner `crates/mouser-core/tests/acc_us10.rs` and steps `crates/mouser-core/tests/steps/us10.rs` for every scenario in `tests/features/us10.feature`, serving release fixtures from a local HTTP server configured through `updates.release_url`
+- [X] T203 [P] [US10-core] Write unit tests for fetcher election in `crates/mouser-core/src/release/elect_tests.rs`: the online member with the lowest `ComputerId` checks `updates.release_url`; no other member contacts the internet (FR-003)
+- [X] T204 [US10-core] Implement fetcher election in `crates/mouser-core/src/release/elect.rs`
+- [X] T205 [P] [US10-core] Write unit tests for release download in `crates/mouser-core/src/release/fetch_tests.rs`: a newer `latest.json` triggers download of every platform bundle; each is verified with minisign against the compiled-in Mouser updater public key; an unverified bundle is not offered (Story 10 sc. 3)
+- [X] T206 [US10-core] Implement release check, download and minisign verification in `crates/mouser-core/src/release/fetch.rs`
+- [X] T207 [P] [US10-core] Write unit tests for LAN distribution in `crates/mouser-core/src/release/serve_tests.rs`: the fetcher sends `ReleaseAvailable` with URLs rewritten to its own LAN endpoint and serves `ReleaseFetch` streams; peers never download from the internet (Story 10 sc. 1, 3)
+- [X] T208 [US10-core] Implement LAN release distribution in `crates/mouser-core/src/release/serve.rs`
+- [X] T209 [P] [US10-core] Write unit tests for `update.check`/`update.apply` in `crates/mouser-core/src/control/update_tests.rs`: `update.check` returns current and available versions (Story 10 sc. 4); `update.apply` hands the verified bundle bytes to the app's installer callback
+- [X] T210 [US10-core] Implement `update.check`/`update.apply` in `crates/mouser-core/src/control/update.rs`
+- [X] T211 [US10-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T212 [US10-core] Commit: phase boundary "US10-core" (5.3)
 
 #### Phase 13: US11-core — As a desk user, I want to jump the pointer straight to any display (P3)
 

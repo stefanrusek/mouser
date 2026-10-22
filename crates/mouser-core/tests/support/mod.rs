@@ -2,3 +2,4 @@
 
 pub mod desk;
 pub mod picky;
+pub mod release;

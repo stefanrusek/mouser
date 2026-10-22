@@ -106,6 +106,8 @@ pub(crate) async fn call(
             let p: LoggingSetParams = parse(params)?;
             json(ctx.set_logging(p.enabled)?)
         }
+        Method::UpdateCheck => json(ctx.update_check().await?),
+        Method::UpdateApply => json(ctx.update_apply().await?),
         _ => Err(unknown(format!("{name} is not available yet"))),
     }
 }
