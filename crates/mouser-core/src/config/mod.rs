@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 
 pub use mouser_proto::config::Config;
 
+/// The release URL 0.1.x wrote as its default: a literal `<owner>` that
+/// never resolves. A file still holding it gets the current default.
+const PLACEHOLDER_RELEASE_URL: &str = "https://api.github.com/repos/<owner>/mouser/releases/latest";
+
 /// File name inside the config directory.
 pub const FILE: &str = "config.toml";
 
@@ -12,10 +16,14 @@ pub fn load_or_create(dir: &Path) -> Config {
     let path = dir.join(FILE);
     match std::fs::read_to_string(&path) {
         Ok(text) => {
-            let config: Config = toml::from_str(&text).expect("config.toml is valid TOML");
+            let mut config: Config = toml::from_str(&text).expect("config.toml is valid TOML");
             config
                 .validate()
                 .unwrap_or_else(|e| panic!("config.toml: {e}"));
+            if config.updates.release_url == PLACEHOLDER_RELEASE_URL {
+                config.updates.release_url = Config::default().updates.release_url;
+                save(dir, &config);
+            }
             config
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

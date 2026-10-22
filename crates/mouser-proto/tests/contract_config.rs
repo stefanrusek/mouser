@@ -31,7 +31,7 @@ fn default_values_match_contract() {
     assert!(c.updates.automatic);
     assert_eq!(
         c.updates.release_url,
-        "https://api.github.com/repos/<owner>/mouser/releases/latest"
+        "https://api.github.com/repos/stefanrusek/mouser/releases?per_page=10"
     );
     assert_eq!(c.advanced.port, 47801);
     assert!(c.advanced.allowlist.is_empty());

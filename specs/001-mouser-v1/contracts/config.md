@@ -30,7 +30,7 @@ max_log_mb = 50
 
 [updates]
 automatic = true                 # Story 10
-release_url = "https://api.github.com/repos/<owner>/mouser/releases/latest"
+release_url = "https://api.github.com/repos/stefanrusek/mouser/releases?per_page=10"
 
 [advanced]
 port = 47801                     # FR-008; UDP (QUIC)

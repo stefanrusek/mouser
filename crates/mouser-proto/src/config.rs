@@ -118,7 +118,8 @@ impl Default for Config {
             },
             updates: Updates {
                 automatic: true,
-                release_url: "https://api.github.com/repos/<owner>/mouser/releases/latest".into(),
+                release_url: "https://api.github.com/repos/stefanrusek/mouser/releases?per_page=10"
+                    .into(),
             },
             advanced: Advanced {
                 port: 47801,

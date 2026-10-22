@@ -84,3 +84,30 @@ fn unreadable_file_is_fatal() {
     std::fs::create_dir(dir.path().join(FILE)).unwrap();
     load_or_create(dir.path());
 }
+
+#[test]
+fn the_placeholder_release_url_written_by_0_1_is_replaced_with_the_default() {
+    // 0.1.x wrote a default with a literal `<owner>` that can never resolve.
+    let dir = tempfile::tempdir().unwrap();
+    let mut old = Config::default();
+    old.updates.release_url = "https://api.github.com/repos/<owner>/mouser/releases/latest".into();
+    old.advanced.port = 51000;
+    save(dir.path(), &old);
+    let loaded = load_or_create(dir.path());
+    assert_eq!(
+        loaded.updates.release_url,
+        Config::default().updates.release_url
+    );
+    assert_eq!(loaded.advanced.port, 51000, "nothing else changes");
+    let written = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+    assert_eq!(toml::from_str::<Config>(&written).unwrap(), loaded);
+}
+
+#[test]
+fn a_release_url_the_user_chose_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut custom = Config::default();
+    custom.updates.release_url = "https://example.test/latest.json".into();
+    save(dir.path(), &custom);
+    assert_eq!(load_or_create(dir.path()), custom);
+}
