@@ -109,6 +109,13 @@ On Ubuntu, install the system packages CI uses first:
 sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libssl-dev libdbus-1-dev
 ```
 
+On Windows on ARM64 (`aarch64-pc-windows-msvc`), `aws-lc-sys` needs Visual Studio's Clang and CMake on `PATH` (MSVC cannot assemble its ARM64 `.S` files). For coverage, put this in your `~/.cargo/config.toml`, because MSVC `link.exe` on aarch64 produces malformed coverage profiles:
+
+```
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld"
+```
+
 Run the app with a real window and tray (without `gui` the app has no window or tray, which is what the gate builds):
 
 ```

@@ -190,3 +190,8 @@ Interpretations made while implementing `mouser-proto`, `mouser-platform` and `m
 - The CLI tolerates a status without `logging` (older running Mouser) with the message "The running Mouser is older than this command; update it." and exit 1, never a panic.
 - `general.notifications = false` suppresses Mouser's system notifications (problems, join requests stay visible in their windows).
 - `desk move`: implement only if contracts/cli.md lists it.
+
+## Open items found during the v0.2.0 release (2026-10-22)
+
+- Open: a crossing started within moments of a local address change is handed straight back (`Ctx::adopt` → refresh_map → set_map → drop_lost → `return_local(Return::Lost)`) while the peer redials, although status already says connected; the user has to push again. The core test now re-pushes (6afb385); the product fix is open.
+- Open: layout `details_tests` once saw only Beta's display listed at startup. The test now waits for both computers' displays by name; the root cause (startup ordering) is unconfirmed.

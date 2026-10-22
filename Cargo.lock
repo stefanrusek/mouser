@@ -3243,7 +3243,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-app"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -3269,7 +3269,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "blake2",
@@ -3289,7 +3289,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "blake2",
@@ -3325,11 +3325,11 @@ dependencies = [
 
 [[package]]
 name = "mouser-platform"
-version = "0.1.1"
+version = "0.2.0"
 
 [[package]]
 name = "mouser-platform-linux"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ashpd",
  "calloop",
@@ -3350,7 +3350,7 @@ dependencies = [
 
 [[package]]
 name = "mouser-platform-macos"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "block2",
  "clipboard-rs",
@@ -3372,11 +3372,11 @@ dependencies = [
 
 [[package]]
 name = "mouser-platform-windows"
-version = "0.1.1"
+version = "0.2.0"
 
 [[package]]
 name = "mouser-proto"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ed25519-dalek",
  "ipnet",
@@ -3390,11 +3390,11 @@ dependencies = [
 
 [[package]]
 name = "mouser-service-win"
-version = "0.1.1"
+version = "0.2.0"
 
 [[package]]
 name = "mouser-testkit"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "mouser-platform",
  "tokio",
@@ -7388,7 +7388,7 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xtask"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "clap",
