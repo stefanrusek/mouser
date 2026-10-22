@@ -18,8 +18,8 @@ use x11rb::rust_connection::RustConnection;
 
 /// A connection to the display named by `DISPLAY` in `env`, with its root window.
 pub(crate) fn connect(env: &HashMap<String, String>) -> (RustConnection, Window) {
-    let (conn, screen) =
-        x11rb::connect(env.get("DISPLAY").map(String::as_str)).expect("connect to the X server");
+    let (conn, screen) = x11rb::connect(env.get("DISPLAY").map(String::as_str))
+        .expect("connect to the X server: set DISPLAY to a running X display");
     let root = conn.setup().roots[screen].root;
     (conn, root)
 }

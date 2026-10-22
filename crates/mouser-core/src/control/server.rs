@@ -262,7 +262,10 @@ pub(crate) fn default_path_from(env: impl Fn(&str) -> Option<String>) -> PathBuf
 
 #[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) fn default_path_from(env: impl Fn(&str) -> Option<String>) -> PathBuf {
-    PathBuf::from(env("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR is set")).join("mouser.sock")
+    PathBuf::from(
+        env("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR must be set (plain sudo strips it)"),
+    )
+    .join("mouser.sock")
 }
 
 /// The pipe is named after the user; the contract names the user's SID, which

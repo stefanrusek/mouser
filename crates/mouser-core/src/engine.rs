@@ -392,7 +392,7 @@ impl Engine {
     /// endpoint, announce on the network, serve the control API, and resume
     /// the desk from persisted state with no action.
     pub async fn start(params: EngineParams) -> Engine {
-        std::fs::create_dir_all(&params.config_dir).expect("config directory");
+        std::fs::create_dir_all(&params.config_dir).expect("create the config directory (--headless uses the machine directory, normally /var/lib/mouser, which needs root)");
         let config::Loaded { config, rejection } = config::load(&params.config_dir);
         let mut secrets = params.secrets.unwrap_or_else(|| params.platform.secrets());
         let identity = Identity::load_or_create(secrets.as_mut());
