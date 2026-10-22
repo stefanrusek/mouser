@@ -105,6 +105,7 @@ pub fn run() {
             commands::control,
             commands::open_permission_settings,
             commands::fix,
+            commands::transfer_resolve,
             commands::hide_window
         ])
         .setup(|app| {

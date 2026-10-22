@@ -31,7 +31,16 @@ pub fn handle<R: Runtime>(
         ),
         Topic::JoinRequest => windows::show(app, Which::Join),
         Topic::Problem => notify::bridge(&note, notifier),
-        Topic::Transfer => {}
+        Topic::Transfer => {
+            // Progress opens the window once; a question always brings it forward.
+            let state = note.params["state"]
+                .as_str()
+                .expect("a transfer notification has a state");
+            let asks = state == "awaiting_overwrite_decision";
+            if asks || (state != "completed" && !windows::is_open(app, Which::Transfer)) {
+                windows::show(app, Which::Transfer);
+            }
+        }
     }
 }
 

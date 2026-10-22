@@ -102,7 +102,7 @@ fn request(cmd: &str, body: serde_json::Value) -> InvokeRequest {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_ui_reaches_all_four_commands_over_ipc() {
+async fn the_ui_reaches_all_five_commands_over_ipc() {
     let f = fixture().await;
     let platform = f.platform.clone();
     let app = mock_builder()
@@ -110,6 +110,7 @@ async fn the_ui_reaches_all_four_commands_over_ipc() {
             crate::commands::control,
             crate::commands::open_permission_settings,
             crate::commands::fix,
+            crate::commands::transfer_resolve,
             crate::commands::hide_window
         ])
         .build(mock_context(noop_assets()))
@@ -146,6 +147,13 @@ async fn the_ui_reaches_all_four_commands_over_ipc() {
         refused,
         json!("The fix \"open_update\" is not available yet.")
     );
+
+    // No transfer is waiting, so an answer is quietly dropped.
+    ipc(
+        "transfer_resolve",
+        json!({"transferId": "ab12", "overwrite": true}),
+    )
+    .unwrap();
 
     ipc("hide_window", json!({})).unwrap();
 }

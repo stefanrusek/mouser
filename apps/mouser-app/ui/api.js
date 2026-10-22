@@ -10,6 +10,8 @@ export function makeApi(tauri) {
     call: (method, params = null) => invoke('control', { request: { method, params } }),
     openPermissionSettings: (kind) => invoke('open_permission_settings', { kind }),
     fix: (fix) => invoke('fix', { fix }),
+    // Answer an "Overwrite <name>?" question from a transfer notification.
+    transferResolve: (transferId, overwrite) => invoke('transfer_resolve', { transferId, overwrite }),
     hideWindow: () => invoke('hide_window'),
     // handler receives {method: topic, params}; resolves to an unlisten function.
     onNotification: (handler) => tauri.event.listen(EVENT, (event) => handler(event.payload)),

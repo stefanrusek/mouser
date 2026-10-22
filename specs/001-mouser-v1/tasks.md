@@ -420,10 +420,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: transfer window UI tests pass for progress, overwrite and no-space.
 
-- [ ] T265 [P] [US7-app] Write UI tests `apps/mouser-app/ui/transfer.test.js`: `transfer` notifications show file name, done/total, speed and time remaining; a conflict asks "Overwrite <name>?" with Overwrite/Skip calling `TransferResolve`; a `no_space` rejection says there is not enough space and nothing was copied (Story 7 sc. 2–4)
-- [ ] T266 [US7-app] Implement the transfer window `apps/mouser-app/ui/transfer.html` and `apps/mouser-app/ui/transfer.js`
-- [ ] T267 [US7-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T268 [US7-app] Commit: phase boundary "US7-app" (5.3)
+- [X] T265 [P] [US7-app] Write UI tests `apps/mouser-app/ui/transfer.test.js`: `transfer` notifications show file name, done/total, speed and time remaining; a conflict asks "Overwrite <name>?" with Overwrite/Skip calling `TransferResolve`; a `no_space` rejection says there is not enough space and nothing was copied (Story 7 sc. 2–4)
+- [X] T266 [US7-app] Implement the transfer window `apps/mouser-app/ui/transfer.html` and `apps/mouser-app/ui/transfer.js`
+- [X] T267 [US7-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T268 [US7-app] Commit: phase boundary "US7-app" (5.3)
 
 #### Phase 21: US8-app — As a desk owner, I want Mouser to tell me what is wrong and how to fix it (P2)
 

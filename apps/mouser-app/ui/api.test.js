@@ -23,12 +23,14 @@ test('calls go through the control command, other commands by name', async () =>
   await api.call('desk.create', { name: 'Home' });
   await api.openPermissionSettings('accessibility');
   await api.fix('approve_join');
+  await api.transferResolve('ab12', true);
   await api.hideWindow();
   assert.deepEqual(tauri.invoked, [
     ['control', { request: { method: 'status', params: null } }],
     ['control', { request: { method: 'desk.create', params: { name: 'Home' } } }],
     ['open_permission_settings', { kind: 'accessibility' }],
     ['fix', { fix: 'approve_join' }],
+    ['transfer_resolve', { transferId: 'ab12', overwrite: true }],
     ['hide_window', undefined],
   ]);
 });

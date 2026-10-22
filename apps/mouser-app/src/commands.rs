@@ -109,6 +109,12 @@ pub fn fix<R: Runtime>(
     run_fix(&app, &host, fix)
 }
 
+/// Answer an `awaiting_overwrite_decision` question of a dragged-file transfer.
+#[tauri::command]
+pub fn transfer_resolve(host: State<'_, Host>, transfer_id: String, overwrite: bool) {
+    host.control().resolve_transfer(&transfer_id, overwrite);
+}
+
 /// Hide the calling window (it is created again when needed).
 #[tauri::command]
 pub fn hide_window<R: Runtime>(window: WebviewWindow<R>) {

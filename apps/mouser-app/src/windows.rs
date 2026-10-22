@@ -1,4 +1,5 @@
-//! The app's windows: first run (`main`), settings, and the join prompt.
+//! The app's windows: first run (`main`), settings, the join prompt, the
+//! arranger and the file-transfer window.
 
 use mouser_proto::control::{ConnectionState, Method, Status};
 use mouser_proto::model::PermissionState;
@@ -13,6 +14,7 @@ pub enum Which {
     Settings,
     Join,
     Arranger,
+    Transfer,
 }
 
 impl Which {
@@ -22,6 +24,7 @@ impl Which {
             Self::Settings => "settings",
             Self::Join => "join",
             Self::Arranger => "arranger",
+            Self::Transfer => "transfer",
         }
     }
 
@@ -31,6 +34,7 @@ impl Which {
             Self::Settings => "desk_settings.html",
             Self::Join => "join_prompt.html",
             Self::Arranger => "arranger.html",
+            Self::Transfer => "transfer.html",
         }
     }
 
@@ -40,6 +44,7 @@ impl Which {
             Self::Settings => "Mouser",
             Self::Join => "A computer wants to join",
             Self::Arranger => "Arrange displays",
+            Self::Transfer => "File transfer",
         }
     }
 
@@ -49,6 +54,7 @@ impl Which {
             Self::Settings => (620.0, 720.0),
             Self::Join => (460.0, 320.0),
             Self::Arranger => (700.0, 760.0),
+            Self::Transfer => (460.0, 360.0),
         }
     }
 }
@@ -69,6 +75,11 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, which: Which) {
     };
     window.show().expect("window can be shown");
     window.set_focus().expect("window can be focused");
+}
+
+/// Whether the window exists (it is created when needed and may be closed).
+pub fn is_open<R: Runtime>(app: &AppHandle<R>, which: Which) -> bool {
+    app.get_webview_window(which.label()).is_some()
 }
 
 /// First-run is not finished while this computer is off a desk or is missing

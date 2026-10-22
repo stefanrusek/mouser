@@ -49,11 +49,46 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
     handle(&handle_, &tray, &notifier, problem_note(false));
     assert_eq!(notifier.shown.lock().unwrap().len(), 1);
 
-    handle(&handle_, &tray, &notifier, note(Topic::Transfer, json!({})));
+    handle(&handle_, &tray, &notifier, transfer_note("copying"));
     assert_eq!(notifier.shown.lock().unwrap().len(), 1);
     assert_eq!(port.views.lock().unwrap().len(), 1);
+    assert!(has_window(&handle_, "transfer"));
 
     eventually(|| *events.lock().unwrap() == 4).await;
+}
+
+fn transfer_note(state: &str) -> Notification {
+    note(
+        Topic::Transfer,
+        json!({"transfer_id": "ab12", "state": state}),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn transfer_progress_opens_the_window_once_and_a_question_brings_it_forward() {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let handle_ = app.handle().clone();
+    let (tray, _port, notifier, _dynamic) = pump_parts();
+
+    handle(&handle_, &tray, &notifier, transfer_note("completed"));
+    assert!(
+        !has_window(&handle_, "transfer"),
+        "a finished copy needs no window"
+    );
+
+    handle(&handle_, &tray, &notifier, transfer_note("pending"));
+    assert!(has_window(&handle_, "transfer"));
+    handle(&handle_, &tray, &notifier, transfer_note("copying"));
+    assert_eq!(handle_.webview_windows().len(), 1);
+
+    handle(
+        &handle_,
+        &tray,
+        &notifier,
+        transfer_note("awaiting_overwrite_decision"),
+    );
+    assert!(has_window(&handle_, "transfer"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

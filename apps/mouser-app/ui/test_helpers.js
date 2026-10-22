@@ -36,6 +36,10 @@ export function fakeApi(answers = {}) {
       record('fix', [fix]);
       if (answers.fixError) throw answers.fixError;
     },
+    transferResolve: async (transferId, overwrite) => {
+      record('transfer_resolve', [transferId, overwrite]);
+      if (answers.transfer_resolve instanceof Error) throw answers.transfer_resolve;
+    },
     hideWindow: async () => record('hide_window', []),
     onLanding: async (handler) => {
       landings.push(handler);
