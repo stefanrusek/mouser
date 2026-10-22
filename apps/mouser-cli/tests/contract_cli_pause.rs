@@ -45,3 +45,27 @@ async fn pause_and_resume_exit_2_when_mouser_is_not_running() {
     assert!(help.stdout.contains("pause") && help.stdout.contains("resume"));
     lab.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn help_says_pause_and_resume_act_on_this_computer_only() {
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    for command in ["pause", "resume"] {
+        let help = nobody.mouser(&[command, "--help"]).await;
+        assert_eq!(help.code, 0);
+        assert!(help.stdout.contains("this computer"), "{}", help.stdout);
+        assert!(!help.stdout.contains("every computer"), "{}", help.stdout);
+    }
+    let overview = nobody.mouser(&["--help"]).await;
+    assert!(
+        overview.stdout.contains("this computer"),
+        "{}",
+        overview.stdout
+    );
+    assert!(
+        !overview.stdout.contains("every computer"),
+        "{}",
+        overview.stdout
+    );
+    lab.shutdown().await;
+}

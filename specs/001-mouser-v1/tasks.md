@@ -499,12 +499,12 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 - [X] T300 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_status.rs`: `mouser status --json` output validates against `status.schema.json`; plain `mouser status` prints the desk, each computer's connection, missing permissions and problems; with the app stopped it exits 2 with "Mouser is not running" (Story 9 sc. 1)
 - [X] T301 [US9-cli] Implement `status` in `apps/mouser-cli/src/status.rs`
-- [ ] T302 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_config.rs`: `mouser config get [key]`, `config set key value` (invalid value prints `key: reason`, exit 3), `config path`; with the app stopped `get/set/path` operate directly on `config.toml` (Story 9 sc. 2)
-- [ ] T303 [US9-cli] Implement `config` in `apps/mouser-cli/src/config.rs`
-- [ ] T304 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_logs.rs`: `mouser logs enable|disable|path|tail [-n N]`; `tail` prints raw JSON Lines each validating against `log-record.schema.json`; `path`/`tail` work with the app stopped (Story 9 sc. 3, FR-010)
-- [ ] T305 [US9-cli] Implement `logs` in `apps/mouser-cli/src/logs.rs`
-- [ ] T306 [US9-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T307 [US9-cli] Commit: phase boundary "US9-cli" (5.3)
+- [X] T302 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_config.rs`: `mouser config get [key]`, `config set key value` (invalid value prints `key: reason`, exit 3), `config path`; with the app stopped `get/set/path` operate directly on `config.toml` (Story 9 sc. 2)
+- [X] T303 [US9-cli] Implement `config` in `apps/mouser-cli/src/config.rs`
+- [X] T304 [P] [US9-cli] Write tests `apps/mouser-cli/tests/contract_cli_logs.rs`: `mouser logs enable|disable|path|tail [-n N]`; `tail` prints raw JSON Lines each validating against `log-record.schema.json`; `path`/`tail` work with the app stopped (Story 9 sc. 3, FR-010)
+- [X] T305 [US9-cli] Implement `logs` in `apps/mouser-cli/src/logs.rs`
+- [X] T306 [US9-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T307 [US9-cli] Commit: phase boundary "US9-cli" (5.3)
 
 #### Phase 29: US10-cli — As a desk owner, I want every computer on my desk to stay up to date without visiting each one (P3)
 

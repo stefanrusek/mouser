@@ -88,6 +88,8 @@ pub struct Node {
     pub sim: SimNode,
     env: Vec<(&'static str, String)>,
     control_path: PathBuf,
+    /// Where this user's `mouser` looks for `config.toml` and `logs/`.
+    pub user_config_dir: PathBuf,
     id: Option<ComputerId>,
     _home: tempfile::TempDir,
     _config: tempfile::TempDir,
@@ -106,25 +108,33 @@ fn free_port() -> u16 {
 /// A user's home with the environment that makes the default control path
 /// point inside it.
 #[cfg(target_os = "macos")]
-fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
+fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf, PathBuf) {
     let dir = home.join("Library/Application Support/Mouser");
     std::fs::create_dir_all(&dir).unwrap();
     (
         vec![("HOME", home.to_str().unwrap().to_string())],
         dir.join("mouser.sock"),
+        dir,
     )
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
+fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf, PathBuf) {
     (
-        vec![("XDG_RUNTIME_DIR", home.to_str().unwrap().to_string())],
+        vec![
+            ("XDG_RUNTIME_DIR", home.to_str().unwrap().to_string()),
+            (
+                "XDG_CONFIG_HOME",
+                home.join("config").to_str().unwrap().to_string(),
+            ),
+        ],
         home.join("mouser.sock"),
+        home.join("config/mouser"),
     )
 }
 
 #[cfg(windows)]
-fn login(_home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
+fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf, PathBuf) {
     use std::sync::atomic::{AtomicU64, Ordering};
     static PIPES: AtomicU64 = AtomicU64::new(0);
     let user = format!(
@@ -133,7 +143,14 @@ fn login(_home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf) {
         PIPES.fetch_add(1, Ordering::Relaxed)
     );
     let pipe = PathBuf::from(format!(r"\\.\pipe\mouser-{user}"));
-    (vec![("USERNAME", user)], pipe)
+    (
+        vec![
+            ("USERNAME", user),
+            ("APPDATA", home.to_str().unwrap().to_string()),
+        ],
+        pipe,
+        home.join("Mouser"),
+    )
 }
 
 /// A temp dir short enough for a Unix socket path.
@@ -281,7 +298,7 @@ impl Lab {
     /// A user whose Mouser is not running.
     pub fn offline(&self, name: &str) -> Node {
         let home = short_tempdir();
-        let (env, control_path) = login(home.path());
+        let (env, control_path, user_config_dir) = login(home.path());
         Node {
             name: name.to_string(),
             sim: self.net.add_node(
@@ -290,6 +307,7 @@ impl Lab {
             ),
             env,
             control_path,
+            user_config_dir,
             id: None,
             _home: home,
             _config: tempfile::tempdir().unwrap(),

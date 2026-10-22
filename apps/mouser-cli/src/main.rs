@@ -1,6 +1,8 @@
 //! The `mouser` command-line client of a running Mouser (contracts/cli.md).
 
+mod config;
 mod desk;
+mod logs;
 mod pause;
 mod status;
 
@@ -80,11 +82,16 @@ impl Mouser {
 
     /// Print `value` as JSON, or `text` when not in `--json` mode.
     pub fn print(&self, value: &Value, text: impl FnOnce() -> String) {
-        if self.json {
-            println!("{value}");
-        } else {
-            println!("{}", text());
-        }
+        emit(self.json, value, text);
+    }
+}
+
+/// Print `value` as JSON when `json`, otherwise `text`.
+pub fn emit(json: bool, value: &Value, text: impl FnOnce() -> String) {
+    if json {
+        println!("{value}");
+    } else {
+        println!("{}", text());
     }
 }
 
@@ -102,9 +109,9 @@ struct Cli {
 enum Command {
     /// Desk, computers, connections, missing permissions and problems.
     Status,
-    /// Stop crossing on every computer.
+    /// Stop crossing on this computer only (run it on each computer to pause the desk).
     Pause,
-    /// Resume crossing on every computer.
+    /// Resume crossing on this computer only.
     Resume,
     /// Desks discovered on the network.
     Desks,
@@ -125,19 +132,33 @@ enum Command {
         /// The request number from `mouser requests`.
         request: u64,
     },
+    /// Read or change settings (works on the file when Mouser is not running).
+    Config {
+        #[command(subcommand)]
+        action: config::ConfigCommand,
+    },
+    /// Diagnostic logging (path and tail work when Mouser is not running).
+    Logs {
+        #[command(subcommand)]
+        action: logs::LogsCommand,
+    },
 }
 
 async fn run(cli: Cli) -> Result<(), Failure> {
-    let mut mouser = Mouser::connect(cli.json).await?;
+    let json = cli.json;
+    // Only config and logs can do without a running Mouser.
+    let connection = Mouser::connect(json).await;
     match cli.command {
-        Command::Status => status::run(&mut mouser).await,
-        Command::Pause => pause::run(&mut mouser, true).await,
-        Command::Resume => pause::run(&mut mouser, false).await,
-        Command::Desks => desk::desks(&mut mouser).await,
-        Command::Desk { action } => desk::run(&mut mouser, action).await,
-        Command::Requests => desk::requests(&mut mouser).await,
-        Command::Approve { request } => desk::decide(&mut mouser, request, true).await,
-        Command::Decline { request } => desk::decide(&mut mouser, request, false).await,
+        Command::Config { action } => config::run(connection.ok(), json, action).await,
+        Command::Logs { action } => logs::run(connection.ok(), json, action).await,
+        Command::Status => status::run(&mut connection?).await,
+        Command::Pause => pause::run(&mut connection?, true).await,
+        Command::Resume => pause::run(&mut connection?, false).await,
+        Command::Desks => desk::desks(&mut connection?).await,
+        Command::Desk { action } => desk::run(&mut connection?, action).await,
+        Command::Requests => desk::requests(&mut connection?).await,
+        Command::Approve { request } => desk::decide(&mut connection?, request, true).await,
+        Command::Decline { request } => desk::decide(&mut connection?, request, false).await,
     }
 }
 
