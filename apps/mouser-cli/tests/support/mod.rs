@@ -166,12 +166,17 @@ fn short_tempdir() -> tempfile::TempDir {
     }
 }
 
+/// Spawns hold the read side; a test that writes an executable (a copy of
+/// `mouser`) holds the write side, so no child is forked while it is open.
+pub static SPAWNS: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
 impl Node {
     pub fn id(&self) -> ComputerId {
         self.id.expect("node is running")
     }
 
     /// Where this computer's Mouser serves (or would serve) its control API.
+    #[cfg(unix)]
     pub fn control_path(&self) -> &std::path::Path {
         &self.control_path
     }
@@ -207,6 +212,10 @@ impl Node {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // Forking while another thread has an executable open for writing lets
+        // the child inherit that descriptor, and exec then fails with
+        // "Text file busy"; see `SPAWNS`.
+        let _forking = SPAWNS.read().unwrap();
         command.spawn().unwrap()
     }
 

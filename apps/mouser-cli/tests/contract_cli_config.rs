@@ -306,6 +306,7 @@ fn portable_copy(home: &std::path::Path) -> std::path::PathBuf {
             .file_name()
             .unwrap(),
     );
+    let _no_forks = crate::support::SPAWNS.write().unwrap();
     std::fs::copy(env!("CARGO_BIN_EXE_mouser"), &exe).unwrap();
     exe
 }
