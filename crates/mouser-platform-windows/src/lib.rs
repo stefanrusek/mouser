@@ -36,6 +36,7 @@ use mouser_platform::{
     Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
 };
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use windows::Win32::System::Com::CoTaskMemFree;
@@ -122,7 +123,15 @@ fn windows_version() -> String {
 /// The Windows implementation of [`Platform`].
 pub struct WinPlatform {
     settings: Settings,
-    problems: Arc<Mutex<Option<Sender<String>>>>,
+    problems: Arc<Mutex<Option<Listener>>>,
+    listeners: AtomicU64,
+}
+
+/// Who hears the problems; `id` tells a listener from the one that replaced
+/// it, so a stale handle does not unregister its successor.
+struct Listener {
+    id: u64,
+    tx: Sender<String>,
 }
 
 impl WinPlatform {
@@ -130,19 +139,12 @@ impl WinPlatform {
         Self::with_settings(Settings::system())
     }
 
-    /// Where Mouser reports problems it noticed on this PC (a keyboard or
-    /// mouse hook the system took away); the app shows them. Replaces any
-    /// earlier listener.
-    pub fn watch_problems(&self, tx: Sender<String>) {
-        *self.problems.lock().unwrap() = Some(tx);
-    }
-
     fn problem_sink(&self) -> capture::Problems {
         let sink = self.problems.clone();
         Arc::new(move |text| {
-            if let Some(tx) = sink.lock().unwrap().as_ref() {
+            if let Some(listener) = sink.lock().unwrap().as_ref() {
                 // A listener that has gone away just means nobody is listening.
-                let _ = tx.send(text);
+                let _ = listener.tx.send(text);
             }
         })
     }
@@ -153,6 +155,7 @@ impl WinPlatform {
         WinPlatform {
             settings,
             problems: Arc::new(Mutex::new(None)),
+            listeners: AtomicU64::new(0),
         }
     }
 }
@@ -231,6 +234,21 @@ impl Platform for WinPlatform {
 
     fn watch_network(&self, tx: Sender<()>) -> Result<WatchHandle> {
         netwatch::watch(tx)
+    }
+
+    /// Where Mouser reports problems it noticed on this PC (a keyboard or
+    /// mouse hook the system took away); the app shows them. Replaces any
+    /// earlier listener; dropping the handle stops this one.
+    fn watch_problems(&self, tx: Sender<String>) -> Result<WatchHandle> {
+        let id = self.listeners.fetch_add(1, Ordering::SeqCst) + 1;
+        *self.problems.lock().unwrap() = Some(Listener { id, tx });
+        let slot = self.problems.clone();
+        Ok(WatchHandle::new(move || {
+            let mut current = slot.lock().unwrap();
+            if current.as_ref().is_some_and(|l| l.id == id) {
+                *current = None;
+            }
+        }))
     }
 
     fn foreground_elevated(&self) -> bool {
