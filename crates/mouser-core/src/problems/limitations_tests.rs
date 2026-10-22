@@ -66,21 +66,36 @@ async fn a_problem_the_platform_notices_is_raised_once_with_its_text() {
     let node = lab.start_with("Alpha", platform.clone(), |_| {}).await;
     let mut notes = node.engine.control().notifications();
     let text = "Mouser lost its hold on the keyboard and mouse and took it back.";
+    let other = "Mouser could not change the pointer.";
     platform.report_problem(text);
     platform.report_problem(text);
-    let problem = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
-    assert_eq!(problem["kind"], "platform_limitation");
+    platform.report_problem(other);
+    let first = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
+    assert_eq!(first["kind"], "platform_limitation");
+    assert_eq!(first["message"], text);
     assert_eq!(
-        problem["problem_id"],
-        "platform_limitation:platform_problem"
+        first["problem_id"],
+        "platform_limitation:platform_problem:dea7eb0649abe104"
     );
-    assert_eq!(problem["message"], text);
+    let second = recv_topic(&mut notes, mouser_proto::control::Topic::Problem).await;
+    assert_eq!(second["message"], other);
+    assert_eq!(
+        second["problem_id"],
+        "platform_limitation:platform_problem:018a5d9e2709bc76"
+    );
     let s = status(&node).await;
     let raised: Vec<_> = s
         .problems
         .iter()
-        .filter(|p| p.problem_id == "platform_limitation:platform_problem")
+        .filter(|p| {
+            p.problem_id
+                .starts_with("platform_limitation:platform_problem:")
+        })
         .collect();
-    assert_eq!(raised.len(), 1);
-    assert_eq!(raised[0].computer, node.engine.computer_id());
+    assert_eq!(raised.len(), 2);
+    assert!(
+        raised
+            .iter()
+            .all(|p| p.computer == node.engine.computer_id())
+    );
 }
