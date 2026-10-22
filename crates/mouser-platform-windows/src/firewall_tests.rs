@@ -223,7 +223,7 @@ fn a_change_of_the_answer_is_said_once_each_way() {
             &rx,
             Duration::from_millis(5),
             || answers.next().unwrap_or(None),
-            |p| said_tx.send(p).unwrap(),
+            &|p| said_tx.send(p).unwrap(),
         );
     });
     // Events and the period each trigger a check; here the period does.
@@ -259,7 +259,7 @@ fn network_events_trigger_a_check_and_a_burst_is_one_check() {
                 checks_tx.send(()).unwrap();
                 Some(true)
             },
-            |p| said_tx.send(p).unwrap(),
+            &|p| said_tx.send(p).unwrap(),
         );
     });
     // The check at the start, then one for the whole burst.
@@ -276,10 +276,10 @@ fn network_events_trigger_a_check_and_a_burst_is_one_check() {
 #[test]
 fn a_watch_starts_and_stops() {
     let (tx, rx) = channel();
-    let watch = watch(std::env::current_exe().unwrap(), move |p| {
+    let sink: crate::capture::Problems = std::sync::Arc::new(move |p| {
         let _ = tx.send(p);
-    })
-    .unwrap();
+    });
+    let watch = watch(std::env::current_exe().unwrap(), sink).unwrap();
     // Whatever the firewall says about this PC, it is only ever this problem.
     if let Ok(p) = rx.recv_timeout(Duration::from_secs(10)) {
         assert_eq!(p, PlatformProblem::Raised(BLOCKED.into()));

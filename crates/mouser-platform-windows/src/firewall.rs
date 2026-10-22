@@ -15,6 +15,7 @@
 //! without an interface or address change, and Windows names a new network a
 //! few seconds after the interface came up.
 
+use crate::capture::Problems;
 use crate::dropdir::Com;
 use crate::inject::os;
 use crate::netwatch;
@@ -198,9 +199,8 @@ pub(crate) fn read_policy() -> Result<Policy> {
     let _com = Com::init();
     let made = unsafe { CoCreateInstance(&NetFwPolicy2, None, CLSCTX_ALL) };
     let policy: INetFwPolicy2 = os("NetFwPolicy2", made)?;
-    let current = os("CurrentProfileTypes", unsafe {
-        policy.CurrentProfileTypes()
-    })?;
+    let types = unsafe { policy.CurrentProfileTypes() };
+    let current = os("CurrentProfileTypes", types)?;
     let (mut enabled, mut default_allow) = (0, 0);
     for profile in [
         NET_FW_PROFILE2_DOMAIN,
@@ -251,7 +251,7 @@ pub(crate) fn run(
     events: &Receiver<()>,
     period: Duration,
     mut blocked: impl FnMut() -> Option<bool>,
-    emit: impl Fn(PlatformProblem),
+    emit: &dyn Fn(PlatformProblem),
 ) {
     let mut raised = false;
     loop {
@@ -275,13 +275,10 @@ pub(crate) fn run(
 }
 
 /// Starts watching for `exe`; dropping the handle stops it.
-pub(crate) fn watch(
-    exe: std::path::PathBuf,
-    emit: impl Fn(PlatformProblem) + Send + 'static,
-) -> Result<WatchHandle> {
+pub(crate) fn watch(exe: std::path::PathBuf, emit: Problems) -> Result<WatchHandle> {
     let (tx, rx) = channel();
     let network = netwatch::watch(tx)?;
-    let thread = std::thread::spawn(move || run(&rx, RECHECK, || check_now(&exe, PORT), emit));
+    let thread = std::thread::spawn(move || run(&rx, RECHECK, || check_now(&exe, PORT), &*emit));
     Ok(WatchHandle::new(move || {
         // Dropping the network watch ends the events, which ends the thread.
         drop(network);

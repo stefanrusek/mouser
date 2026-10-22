@@ -278,7 +278,7 @@ impl Platform for WinPlatform {
         let firewall = if self.firewall {
             let sink = self.problem_sink_for(id);
             let exe = std::env::current_exe().expect("current exe");
-            Some(firewall::watch(exe, move |p| sink(p))?)
+            Some(firewall::watch(exe, sink)?)
         } else {
             None
         };
