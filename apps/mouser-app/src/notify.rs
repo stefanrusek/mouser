@@ -30,12 +30,21 @@ pub const QUIET_FOR: Duration = Duration::from_secs(10 * 60);
 pub const LOST_HOLD: &str = "Mouser lost its hold on the keyboard and mouse and took it back; \
                          input may have briefly leaked to this PC.";
 
+/// The id prefix of problems the platform noticed while running (a firewall
+/// block, a lost hold), as opposed to the limitations it states at start.
+const NOTICED_BY_PLATFORM: &str = "platform_limitation:platform_problem:";
+
 /// Whether `problem` needs the owner to act, which is what a system
 /// notification is for. A blocked crossing already shows where it happened,
-/// and a hold the watchdog took back has fixed itself; both stay in the
-/// health panel and the log.
+/// a hold the watchdog took back has fixed itself, and the limitations the
+/// platform states at start are facts about this computer that nobody can
+/// act on; all stay in the health panel and the log.
 fn needs_owner(problem: &Problem) -> bool {
-    problem.kind != ProblemKind::CrossingBlocked && problem.message != LOST_HOLD
+    let start_up_limitation = problem.kind == ProblemKind::PlatformLimitation
+        && !problem.problem_id.starts_with(NOTICED_BY_PLATFORM);
+    problem.kind != ProblemKind::CrossingBlocked
+        && !start_up_limitation
+        && problem.message != LOST_HOLD
 }
 
 /// Which problems were shown, so none is shown twice while it stays open

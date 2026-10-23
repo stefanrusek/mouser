@@ -113,6 +113,54 @@ fn a_hold_the_watchdog_took_back_never_becomes_a_system_notification() {
 }
 
 #[test]
+fn start_up_platform_limitations_never_become_system_notifications() {
+    let mut toasts = Toasts::default();
+    let now = Instant::now();
+    for (subject, text) in [
+        (
+            "inject",
+            "Some games and remote-desktop apps ignore Mouser's input on this PC.",
+        ),
+        (
+            "secure_attention",
+            "Ctrl-Alt-Del can't be sent to this PC yet.",
+        ),
+        (
+            "clipboard",
+            "Clipboard sharing is not available on this computer.",
+        ),
+    ] {
+        let limitation = note_of(
+            &format!("platform_limitation:{subject}"),
+            ProblemKind::PlatformLimitation,
+            text,
+            false,
+        );
+        assert_eq!(toasts.notice(&limitation, now), None, "{subject}");
+    }
+}
+
+#[test]
+fn a_peer_going_offline_still_becomes_a_system_notification_once() {
+    let mut toasts = Toasts::default();
+    let now = Instant::now();
+    let offline = |cleared| {
+        note_of(
+            "peer_offline:kitchen",
+            ProblemKind::PeerOffline,
+            "Kitchen is offline.",
+            cleared,
+        )
+    };
+    assert_eq!(
+        toasts.notice(&offline(false), now),
+        attention("Kitchen is offline.")
+    );
+    assert_eq!(toasts.notice(&offline(true), now), None);
+    assert_eq!(toasts.notice(&offline(false), now), None, "quiet spell");
+}
+
+#[test]
 fn the_hold_text_is_the_one_the_windows_watchdog_raises() {
     assert!(LOST_HOLD.starts_with("Mouser lost its hold on the keyboard and mouse"));
     #[cfg(target_os = "windows")]

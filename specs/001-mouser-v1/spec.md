@@ -25,7 +25,7 @@ Inputs (read for intent, not copied):
 
 ### Session 2026-10-23
 
-- Q: Which problems become operating-system notifications? → A: Only problems the owner has to act on (for example a missing permission, a firewall block, an incompatible version, a refused join, a broken settings file). A problem that is informational or fixed itself is shown in the health panel, the status and the log, never as a system notification: a blocked crossing (Story 5 scenario 4's explanation is the in-place feedback and the health-panel entry) and the Windows watchdog taking back its hold on the keyboard and mouse. A problem is shown as a system notification at most once while it stays raised, and not again within 10 minutes of the last time, even if it clears and comes back (Story 8 scenario 3).
+- Q: Which problems become operating-system notifications? → A: Only problems the owner has to act on (for example a missing permission, a firewall block, an incompatible version, a refused join, a broken settings file). A problem that is informational or fixed itself is shown in the health panel, the status and the log, never as a system notification: a blocked crossing (Story 5 scenario 4's explanation is the in-place feedback and the health-panel entry), the Windows watchdog taking back its hold on the keyboard and mouse, and the limitations a platform states at start (for example that Ctrl-Alt-Del can't be sent to this PC yet). A peer going offline still notifies. A problem is shown as a system notification at most once while it stays raised, and not again within 10 minutes of the last time, even if it clears and comes back (Story 8 scenario 3).
 
 ## User Scenarios & Testing *(mandatory)*
 
