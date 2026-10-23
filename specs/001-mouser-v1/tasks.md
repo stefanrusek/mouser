@@ -789,8 +789,8 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 - [X] T493 Implement the J1 runner `apps/mouser-cli/tests/e2e_j1.rs` (cucumber, `harness = false`, `fail_on_skipped()`, registered with `required-features = ["e2e"]` so it never runs in lane gates) binding the feature to the lane-authored steps in `apps/mouser-cli/tests/e2e/steps/`
 - [X] T494 Run J1 on the two real machines, fix any failure at its source (no timeouts widened, no retries added — 4.3), and record the run with `cargo xtask gate --e2e j1 --lane convergence`
 
-- [ ] T495 Gate: `cargo xtask gate --all --lane convergence` green on all three CI runners and the J1 evidence record passing
-- [ ] T496 Commit: phase boundary "Convergence" (5.3)
+- [X] T495 Gate: `cargo xtask gate --all --lane convergence` green on all three CI runners and the J1 evidence record passing (CI run 40006167873 on ba4ef00 green on macos-14, windows-2025, ubuntu-24.04; J1 pass in convergence.jsonl from 3ca6338; local --all not rerun because the macOS suite drives real input)
+- [X] T496 Commit: phase boundary "Convergence" (5.3) (commit "Convergence: phase boundary")
 
 ---
 
