@@ -590,6 +590,12 @@ impl Engine {
         self.ctx.transport.local_addr()
     }
 
+    /// The diagnostic log, for front ends that add lines of their own
+    /// (a platform backend's debug diagnostics).
+    pub fn log(&self) -> Arc<Log> {
+        self.ctx.log.clone()
+    }
+
     /// In-process access to the control API (what the app's UI uses).
     pub fn control(&self) -> ControlHandle {
         ControlHandle::new(self.ctx.clone())

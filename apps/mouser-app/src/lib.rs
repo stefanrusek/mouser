@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod commands;
+pub mod diagnostics;
 pub mod headless;
 pub mod host;
 pub mod hotkeys;
@@ -24,6 +25,8 @@ pub mod shell;
 mod app_tests;
 #[cfg(test)]
 pub(crate) mod commands_tests;
+#[cfg(test)]
+mod diagnostics_tests;
 #[cfg(test)]
 mod headless_tests;
 #[cfg(test)]

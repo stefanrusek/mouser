@@ -58,6 +58,10 @@ async fn without_a_discovery_backend_the_engine_uses_real_mdns() {
         engine.local_addr().port(),
         u16::try_from(config.advanced.port).unwrap()
     );
+    assert_eq!(
+        engine.log().path(),
+        dir.path().join("logs").join(crate::logging::FILE)
+    );
     engine.shutdown().await;
 }
 

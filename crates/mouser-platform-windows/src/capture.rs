@@ -14,14 +14,15 @@
 //! Events carrying Mouser's tag are Mouser's own and are ignored.
 //!
 //! A watchdog sends a tagged probe event through both hooks every few
-//! seconds. A hook that has not seen it by the next cycle has stopped
-//! delivering: it is installed again and a Problem is reported (and withdrawn
-//! once a probe gets through). One cycle of grace, because a stalled guest
-//! delivers late, not never.
+//! seconds while the PC is in use; a hook that stopped delivering is
+//! installed again, and a Problem is reported if that does not cure it
+//! (`watchdog`). The hook thread runs time-critical and the process opts out
+//! of power throttling, so a busy PC does not make the hooks time out.
 
 use crate::displays::{self, DisplayCache};
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
-use crate::{dpi, keymap};
+use crate::watchdog::{self, Counts, Cycle, Desk, Hook, Judge, Outcome, Surroundings};
+use crate::{diag, dpi, keymap};
 use mouser_platform::{Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result};
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -32,10 +33,13 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Input::KeyboardAndMouse::MOUSEEVENTF_MOVE;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_MOVE_NOCOALESCE, MOUSEEVENTF_VIRTUALDESK,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetCursorPos, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_EXTENDED,
-    LLKHF_UP, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW, PostThreadMessageW, SetCursorPos,
+    CallNextHookEx, GetCursorPos, GetMessageW, GetSystemMetrics, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT,
+    LLKHF_EXTENDED, LLKHF_UP, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
+    SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos,
     SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_LBUTTONDOWN,
     WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
@@ -46,11 +50,12 @@ const PROBE_TAG: usize = 0x4D4F_5550;
 /// F24, which nothing binds: the key the watchdog's probe releases.
 const PROBE_SCAN: u16 = 0x76;
 
-/// Thread messages for the hook thread.
+/// Thread messages for the hook thread. `wParam` of the first and the last is
+/// the set of hooks (`watchdog::bits`).
 const WM_REINSTALL: u32 = WM_APP + 1;
 const WM_STOP: u32 = WM_APP + 2;
-/// Removes the hooks without installing them again: what the OS does to a
-/// hook that timed out. Posted by tests.
+/// Removes hooks without installing them again: what the OS does to a hook
+/// that timed out. Posted by tests.
 const WM_UNHOOK: u32 = WM_APP + 3;
 
 /// The default time between watchdog probes, and how long a probe may take.
@@ -229,26 +234,82 @@ pub(crate) unsafe extern "system" fn key_proc(code: i32, wp: WPARAM, lp: LPARAM)
     unsafe { CallNextHookEx(None, code, wp, lp) }
 }
 
-struct Hooks(Option<(HHOOK, HHOOK)>);
+/// The system calls that install and remove one low-level hook.
+pub(crate) trait HookApi {
+    /// The new hook, or `None` when the system refuses it.
+    fn install(&self, hook: Hook) -> Option<HHOOK>;
+    /// Removes it; `false` when the system had already removed it.
+    fn remove(&self, handle: HHOOK) -> bool;
+}
 
-impl Hooks {
-    fn install() -> Self {
-        let hinst = unsafe { GetModuleHandleW(None) }.expect("module handle");
-        let mouse =
-            unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), Some(hinst.into()), 0) }
-                .expect("mouse hook");
-        let key =
-            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_proc), Some(hinst.into()), 0) }
-                .expect("keyboard hook");
-        Hooks(Some((mouse, key)))
+/// The real system calls.
+pub(crate) struct System;
+
+impl HookApi for System {
+    fn install(&self, hook: Hook) -> Option<HHOOK> {
+        let hinst = unsafe { GetModuleHandleW(None) }.ok()?;
+        let (id, proc_) = match hook {
+            Hook::Mouse => (WH_MOUSE_LL, mouse_proc as HookProc),
+            Hook::Keyboard => (WH_KEYBOARD_LL, key_proc as HookProc),
+        };
+        unsafe { SetWindowsHookExW(id, Some(proc_), Some(hinst.into()), 0) }.ok()
     }
 
-    fn remove(&mut self) {
-        if let Some((mouse, key)) = self.0.take() {
-            unsafe {
-                UnhookWindowsHookEx(mouse).expect("remove mouse hook");
-                UnhookWindowsHookEx(key).expect("remove keyboard hook");
-            }
+    fn remove(&self, handle: HHOOK) -> bool {
+        unsafe { UnhookWindowsHookEx(handle) }.is_ok()
+    }
+}
+
+type HookProc = unsafe extern "system" fn(i32, WPARAM, LPARAM) -> LRESULT;
+
+/// The installed hooks.
+pub(crate) struct Hooks<A: HookApi> {
+    api: A,
+    pub(crate) mouse: Option<HHOOK>,
+    pub(crate) keyboard: Option<HHOOK>,
+}
+
+impl<A: HookApi> Hooks<A> {
+    /// Both hooks installed; one the system refuses stays missing, for the
+    /// watchdog to find.
+    pub(crate) fn install(api: A) -> Self {
+        let mut hooks = Hooks {
+            api,
+            mouse: None,
+            keyboard: None,
+        };
+        for hook in Hook::BOTH {
+            hooks.reinstall(hook);
+        }
+        hooks
+    }
+
+    fn slot(&mut self, hook: Hook) -> &mut Option<HHOOK> {
+        match hook {
+            Hook::Mouse => &mut self.mouse,
+            Hook::Keyboard => &mut self.keyboard,
+        }
+    }
+
+    /// Installs `hook` afresh and only then removes the old one, so no event
+    /// slips past in between (both run on this thread, which handles no
+    /// event until this returns). A fresh hook the system refuses leaves the
+    /// old one in place; an old one the system already removed counts as
+    /// removed. Whether the fresh one is in.
+    pub(crate) fn reinstall(&mut self, hook: Hook) -> bool {
+        let Some(fresh) = self.api.install(hook) else {
+            return false;
+        };
+        if let Some(old) = self.slot(hook).replace(fresh) {
+            self.api.remove(old);
+        }
+        true
+    }
+
+    /// Removes `hook`, if it is in.
+    pub(crate) fn remove(&mut self, hook: Hook) {
+        if let Some(old) = self.slot(hook).take() {
+            self.api.remove(old);
         }
     }
 }
@@ -256,12 +317,17 @@ impl Hooks {
 /// The hook thread: install, pump, obey thread messages, remove.
 fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
     dpi::physical_thread();
+    let hurried = watchdog::hurry_this_thread();
+    diag::note(
+        "capture.hook_thread",
+        vec![("time_critical", hurried.to_string())],
+    );
     CTX.set(Some(HookCtx {
         raw,
         shared,
         last: None,
     }));
-    let mut hooks = Hooks::install();
+    let mut hooks = Hooks::install(System);
     // Thread messages can only be posted once the thread has a queue.
     let mut msg = MSG::default();
     let _ = unsafe { PeekMessageW(&mut msg, None, WM_APP, WM_APP, PM_NOREMOVE) };
@@ -271,43 +337,56 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
     while unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 > 0 {
         match msg.message {
             WM_REINSTALL => {
-                hooks.remove();
-                hooks = Hooks::install();
+                for hook in watchdog::hooks_in(msg.wParam.0) {
+                    let ok = hooks.reinstall(hook).to_string();
+                    diag::note(
+                        "capture.reinstall",
+                        vec![("hook", hook.name().into()), ("ok", ok)],
+                    );
+                }
             }
-            WM_UNHOOK => hooks.remove(),
+            WM_UNHOOK => watchdog::hooks_in(msg.wParam.0).for_each(|hook| hooks.remove(hook)),
             WM_STOP => break,
             _ => {}
         }
     }
-    hooks.remove();
+    Hook::BOTH.into_iter().for_each(|hook| hooks.remove(hook));
 }
 
 /// The probe events each hook has seen so far.
-fn seen(shared: &Shared) -> (u32, u32) {
+fn seen(shared: &Shared) -> Counts {
     (
         shared.probed_mouse.load(Ordering::SeqCst),
         shared.probed_key.load(Ordering::SeqCst),
     )
 }
 
-/// What became of one probe.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Outcome {
-    /// Both hooks saw it within the wait.
-    Seen,
-    /// Not seen yet. It may only be late: a stalled guest delivers a probe
-    /// seconds after it was sent (FINDINGS.md, "A stalled guest").
-    Unseen,
-    /// The system refused to take the probe, so nothing is known about the hooks.
-    NotSent,
+/// The virtual desktop `(left, top, width, height)` in physical pixels.
+fn virtual_desktop() -> (i32, i32, i32, i32) {
+    dpi::physical(|| unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        )
+    })
 }
 
-/// Sends a one-pixel move and an F24 release tagged as probes, and reports whether
-/// both hooks saw theirs within `wait`.
+/// Sends a move to where the cursor already is (absolute, so pointer
+/// acceleration cannot shrink it to nothing, and never coalesced) and an F24
+/// release, both tagged as probes, and waits up to `wait` for both hooks to
+/// see theirs.
 pub(crate) fn probe_hooks(shared: &Shared, wait: Duration) -> Outcome {
     probe_hooks_with(shared, wait, &mut || {
-        let mut nudge = mouse_input(MOUSEEVENTF_MOVE, 0, PROBE_TAG);
-        nudge.Anonymous.mi.dx = 1;
+        let (x, y) = watchdog::absolute(cursor_pos()?, virtual_desktop());
+        let flags = MOUSEEVENTF_MOVE
+            | MOUSEEVENTF_ABSOLUTE
+            | MOUSEEVENTF_VIRTUALDESK
+            | MOUSEEVENTF_MOVE_NOCOALESCE;
+        let mut nudge = mouse_input(flags, 0, PROBE_TAG);
+        nudge.Anonymous.mi.dx = x;
+        nudge.Anonymous.mi.dy = y;
         send(&[nudge]).and_then(|()| send(&[key_input(PROBE_SCAN, false, false, PROBE_TAG)]))
     })
 }
@@ -325,73 +404,24 @@ pub(crate) fn probe_hooks_with(
     while Instant::now() < end {
         let now = seen(shared);
         if now.0 != before.0 && now.1 != before.1 {
-            return Outcome::Seen;
+            break;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    Outcome::Unseen
+    Outcome::Sent
 }
 
-/// Said when the hooks are judged lost; withdrawn after the next probe gets
-/// through. The app keeps it out of system notifications, by this text.
+/// Said when a hook stays lost after it was installed again; withdrawn once
+/// every hook sees a probe again. The app keeps it out of system
+/// notifications, by this text.
 pub const LOST_HOLD: &str = "Mouser lost its hold on the keyboard and mouse and took it back; \
                          input may have briefly leaked to this PC.";
 
-/// Tells hooks the system took away from a guest that merely stalled. A probe
-/// that is not seen in time is not yet a loss: the hooks are judged lost only
-/// if it is still unseen when the next cycle begins, measured in probes (the
-/// counters have not moved past the earlier probe), never in wall time, so a
-/// stall of the whole guest cannot trip it.
-#[derive(Default)]
-pub(crate) struct Judge {
-    /// What the hooks had seen when the probe that is still unseen was sent.
-    unseen_since: Option<(u32, u32)>,
-    raised: bool,
-}
+/// Makes the watchdog's view of the PC: the real one, or a test's.
+pub(crate) type MakeSurroundings = fn() -> Box<dyn Surroundings + Send>;
 
-impl Judge {
-    /// Whether the probe left unseen by the last cycle is still unseen; `now`
-    /// is what the hooks have seen at the start of this cycle. Returns `Some`
-    /// when the hooks are lost, with whether this is the first time to say so.
-    fn lost(&mut self, now: (u32, u32)) -> Option<bool> {
-        let before = self.unseen_since.take()?;
-        if now.0 != before.0 && now.1 != before.1 {
-            return None;
-        }
-        Some(!std::mem::replace(&mut self.raised, true))
-    }
-
-    /// Records the outcome of the probe sent when the hooks had seen `before`.
-    /// A probe that got through withdraws an earlier alarm.
-    fn probed(&mut self, before: (u32, u32), outcome: Outcome) -> Option<PlatformProblem> {
-        self.unseen_since = (outcome == Outcome::Unseen).then_some(before);
-        let seen = outcome == Outcome::Seen;
-        let cleared = seen && std::mem::take(&mut self.raised);
-        cleared.then(|| PlatformProblem::Cleared(LOST_HOLD.into()))
-    }
-}
-
-/// One watchdog cycle: judge the previous probe, and, unless the hooks were
-/// just reinstalled, send the next one.
-pub(crate) fn watch_cycle(
-    judge: &mut Judge,
-    counters: &dyn Fn() -> (u32, u32),
-    probe: &mut dyn FnMut() -> Outcome,
-    reinstall: &mut dyn FnMut(),
-    problems: &Problems,
-) {
-    let before = counters();
-    if let Some(first) = judge.lost(before) {
-        reinstall();
-        if first {
-            problems(PlatformProblem::Raised(LOST_HOLD.into()));
-        }
-        // The reinstall is asynchronous: probe once it has had a cycle.
-        return;
-    }
-    if let Some(problem) = judge.probed(before, probe()) {
-        problems(problem);
-    }
+fn real_desk() -> Box<dyn Surroundings + Send> {
+    Box::new(Desk::default())
 }
 
 fn watchdog_thread(
@@ -400,18 +430,26 @@ fn watchdog_thread(
     interval: Duration,
     stop: Receiver<()>,
     problems: Problems,
+    mut surroundings: Box<dyn Surroundings + Send>,
 ) {
     let mut judge = Judge::default();
     while let Err(RecvTimeoutError::Timeout) = stop.recv_timeout(interval) {
-        watch_cycle(
+        watchdog::watch_cycle(
             &mut judge,
-            &|| seen(&shared),
-            &mut || probe_hooks(&shared, PROBE_WAIT),
-            &mut || {
-                unsafe { PostThreadMessageW(hook_thread_id, WM_REINSTALL, WPARAM(0), LPARAM(0)) }
-                    .expect("reinstall hooks");
+            Cycle {
+                counters: &|| seen(&shared),
+                probe: &mut || probe_hooks(&shared, PROBE_WAIT),
+                reinstall: &mut |hooks| {
+                    let which = WPARAM(watchdog::bits(hooks));
+                    // A hook thread that is gone has nothing left to reinstall.
+                    let _ = unsafe {
+                        PostThreadMessageW(hook_thread_id, WM_REINSTALL, which, LPARAM(0))
+                    };
+                },
+                surroundings: surroundings.as_mut(),
+                problems: &problems,
+                note: &|fields| diag::note("capture.probe", fields),
             },
-            &problems,
         );
     }
 }
@@ -451,18 +489,24 @@ fn hide_or_show(hidden: bool) -> Result<()> {
 pub(crate) struct WinCapture {
     problems: Problems,
     interval: Duration,
+    surroundings: MakeSurroundings,
     running: Option<Running>,
 }
 
 impl WinCapture {
     pub(crate) fn new(problems: Problems) -> Self {
-        Self::with_interval(problems, WATCHDOG_INTERVAL)
+        Self::with_watchdog(problems, WATCHDOG_INTERVAL, real_desk)
     }
 
-    pub(crate) fn with_interval(problems: Problems, interval: Duration) -> Self {
+    pub(crate) fn with_watchdog(
+        problems: Problems,
+        interval: Duration,
+        surroundings: MakeSurroundings,
+    ) -> Self {
         WinCapture {
             problems,
             interval,
+            surroundings,
             running: None,
         }
     }
@@ -517,12 +561,25 @@ impl InputCapture for WinCapture {
                 }
             })
         };
+        let unthrottled = watchdog::never_throttle();
+        diag::note(
+            "capture.start",
+            vec![("unthrottled", unthrottled.to_string())],
+        );
         let (stop_watchdog, stop_rx) = channel();
         let watchdog = {
             let (shared, problems, interval) =
                 (shared.clone(), self.problems.clone(), self.interval);
+            let surroundings = (self.surroundings)();
             std::thread::spawn(move || {
-                watchdog_thread(shared, hook_thread_id, interval, stop_rx, problems);
+                watchdog_thread(
+                    shared,
+                    hook_thread_id,
+                    interval,
+                    stop_rx,
+                    problems,
+                    surroundings,
+                );
             })
         };
         self.running = Some(Running {
@@ -563,8 +620,9 @@ impl InputCapture for WinCapture {
         }
         let _ = running.stop_watchdog.send(());
         running.watchdog.join().expect("watchdog thread");
-        unsafe { PostThreadMessageW(running.hook_thread_id, WM_STOP, WPARAM(0), LPARAM(0)) }
-            .expect("stop hook thread");
+        // A hook thread that is already gone has nothing left to stop.
+        let _ =
+            unsafe { PostThreadMessageW(running.hook_thread_id, WM_STOP, WPARAM(0), LPARAM(0)) };
         running.hook.join().expect("hook thread");
         running.forward.join().expect("forward thread");
     }
@@ -585,8 +643,9 @@ impl WinCapture {
         unsafe { PostThreadMessageW(id, WM_APP + 100, WPARAM(0), LPARAM(0)) }.unwrap();
     }
 
-    pub(crate) fn drop_hooks(&self) {
+    pub(crate) fn drop_hooks(&self, hooks: &[Hook]) {
         let id = self.running().unwrap().hook_thread_id;
-        unsafe { PostThreadMessageW(id, WM_UNHOOK, WPARAM(0), LPARAM(0)) }.unwrap();
+        let which = WPARAM(watchdog::bits(hooks));
+        unsafe { PostThreadMessageW(id, WM_UNHOOK, which, LPARAM(0)) }.unwrap();
     }
 }

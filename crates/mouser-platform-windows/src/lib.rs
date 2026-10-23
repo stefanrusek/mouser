@@ -15,6 +15,7 @@ mod autostart;
 mod capture;
 mod clipboard;
 mod cursor;
+mod diag;
 mod displays;
 mod dpi;
 mod drag;
@@ -31,8 +32,10 @@ mod portable;
 mod secrets;
 mod uipi;
 mod vfiles;
+mod watchdog;
 
 pub use capture::LOST_HOLD;
+pub use diag::{Diagnostics, set_diagnostics};
 
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
@@ -330,6 +333,8 @@ mod clipboard_tests;
 #[cfg(test)]
 mod cursor_tests;
 #[cfg(test)]
+mod diag_tests;
+#[cfg(test)]
 mod displays_tests;
 #[cfg(test)]
 mod drag_tests;
@@ -358,6 +363,8 @@ mod secrets_tests;
 
 #[cfg(test)]
 mod uipi_tests;
+#[cfg(test)]
+mod watchdog_tests;
 
 /// Tests that send or capture real input share the machine's one input queue
 /// and one set of hooks, so they take turns.

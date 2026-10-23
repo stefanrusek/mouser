@@ -62,6 +62,8 @@ impl Host {
     pub async fn start_with(params: EngineParams) -> Self {
         let platform = params.platform.clone();
         let engine = Engine::start(params).await;
+        #[cfg(target_os = "windows")]
+        mouser_platform_windows::set_diagnostics(Some(crate::diagnostics::debug_to(engine.log())));
         Self {
             control: engine.control(),
             _engine: Mutex::new(engine),
