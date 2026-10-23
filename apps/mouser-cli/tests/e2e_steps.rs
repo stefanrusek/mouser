@@ -3,6 +3,10 @@
 //! journey runner `e2e_j1` and its `.feature` file are authored in Convergence.
 #![cfg(feature = "e2e")]
 
+#[path = "e2e/active.rs"]
+mod active;
+#[path = "e2e/active_tests.rs"]
+mod active_tests;
 #[path = "e2e/input.rs"]
 mod input;
 #[path = "e2e/layout.rs"]

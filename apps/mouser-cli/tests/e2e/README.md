@@ -127,7 +127,7 @@ wake, and the runner can drive both halves from the Mac.
 The runner starts a J1-owned note window on B inside the logged-in desktop
 session through a scheduled task (`schtasks /it`), because an SSH session has no
 desktop. It is a tiny PowerShell WinForms app (`j1-note.ps1`, copied to B as
-`C:\Users\Public\mouser-j1-note.ps1`): one maximised form titled
+`C:\Users\Public\mouser-j1-note.ps1`): one maximised, always-on-top form titled
 `mouser-j1-note` holding a multiline text box. On Ctrl+S, and only then, it
 writes the text exactly (UTF-8, no BOM, no trailing newline) to
 `C:\Users\Public\mouser-j1-note.txt`; it records its window handle and process

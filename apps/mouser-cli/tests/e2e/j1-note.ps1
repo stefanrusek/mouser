@@ -7,6 +7,10 @@ $note = 'C:\Users\Public\mouser-j1-note.txt'
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'mouser-j1-note'
 $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
+# Always on top: other windows that appear on B during J1 (the console of a
+# console-subsystem mouser-app.exe, for one) must not cover the note, or the
+# focusing click lands on them and typing goes elsewhere.
+$form.TopMost = $true
 $box = New-Object System.Windows.Forms.TextBox
 $box.Multiline = $true
 $box.AcceptsReturn = $true

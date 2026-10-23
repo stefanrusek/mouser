@@ -11,6 +11,7 @@
 
 use cucumber::{given, then, when};
 
+use crate::active::is_active;
 use crate::input;
 use crate::layout;
 use crate::us1_cli::status_where;
@@ -37,13 +38,6 @@ pub(crate) fn wait_active(observer: Computer, controlled: Computer) {
     status_where(observer, "the active computer to change", |s| {
         is_active(s, &id, own)
     });
-}
-
-/// Whether `status` reports `id` as the active computer. A computer's own
-/// status says `active_computer: null` while its own keyboard and pointer are
-/// in use, so `own` (the observer is the controlled computer) matches null too.
-fn is_active(status: &serde_json::Value, id: &str, own: bool) -> bool {
-    status["active_computer"] == id || (own && status["active_computer"].is_null())
 }
 
 /// PowerShell prelude for asking B's desktop session about windows.

@@ -4,6 +4,8 @@
 
 use cucumber::World;
 
+#[path = "e2e/active.rs"]
+mod active;
 #[path = "e2e/input.rs"]
 mod input;
 #[path = "e2e/layout.rs"]
