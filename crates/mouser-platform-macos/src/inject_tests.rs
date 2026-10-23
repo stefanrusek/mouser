@@ -3,6 +3,7 @@ use crate::inject::{MacInject, Poster};
 use core_graphics::event::{CGEvent, CGEventType, EventField};
 use mouser_platform::{Error, InputInject};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// What a posted event looked like, captured before it reaches the OS.
 #[derive(Debug, Clone, PartialEq)]
@@ -15,10 +16,43 @@ struct Posted {
     button: i64,
     delta: (i64, i64),
     scroll: (i64, i64),
+    clicks: i64,
 }
 
-#[derive(Clone, Default)]
-struct Recorder(Arc<Mutex<Vec<Posted>>>);
+/// A fake pointer and clock: tests move the pointer and advance time.
+struct World {
+    at: (f64, f64),
+    start: Instant,
+    elapsed: Duration,
+}
+
+#[derive(Clone)]
+struct Recorder(Arc<Mutex<Vec<Posted>>>, Arc<Mutex<World>>);
+
+impl Default for Recorder {
+    fn default() -> Self {
+        Recorder(
+            Arc::default(),
+            Arc::new(Mutex::new(World {
+                at: (50.0, 60.0),
+                start: Instant::now(),
+                elapsed: Duration::ZERO,
+            })),
+        )
+    }
+}
+
+impl Recorder {
+    fn advance(&self, by: Duration) {
+        self.1.lock().unwrap().elapsed += by;
+    }
+    fn point_at(&self, x: f64, y: f64) {
+        self.1.lock().unwrap().at = (x, y);
+    }
+}
+
+/// The double-click interval the fake world reports.
+const INTERVAL: Duration = Duration::from_millis(400);
 
 impl Poster for Recorder {
     fn post(&self, event: &CGEvent) {
@@ -38,10 +72,18 @@ impl Poster for Recorder {
                 event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_2),
                 event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_1),
             ),
+            clicks: event.get_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE),
         });
     }
     fn location(&self) -> (f64, f64) {
-        (50.0, 60.0)
+        self.1.lock().unwrap().at
+    }
+    fn now(&self) -> Instant {
+        let world = self.1.lock().unwrap();
+        world.start + world.elapsed
+    }
+    fn double_click_interval(&self) -> Duration {
+        INTERVAL
     }
 }
 
@@ -211,6 +253,127 @@ fn the_system_poster_reports_a_pointer_location() {
     assert!(x.is_finite() && y.is_finite());
 }
 
+#[test]
+fn the_system_poster_reports_the_clock_and_the_users_double_click_interval() {
+    let before = Instant::now();
+    assert!(crate::inject::HidPoster.now() >= before);
+    let interval = crate::inject::HidPoster.double_click_interval();
+    assert!(interval > Duration::ZERO && interval <= Duration::from_secs(5));
+}
+
+/// The click count of every posted (type, clicks) pair.
+fn clicks(rec: &Recorder) -> Vec<(u32, i64)> {
+    take(rec).iter().map(|p| (p.ty, p.clicks)).collect()
+}
+
+fn click(inj: &mut MacInject, button: u8) {
+    inj.button(button, true).unwrap();
+    inj.button(button, false).unwrap();
+}
+
+const DOWN: u32 = CGEventType::LeftMouseDown as u32;
+const UP: u32 = CGEventType::LeftMouseUp as u32;
+
+#[test]
+fn presses_in_quick_succession_count_up_single_double_triple_quadruple() {
+    let (rec, mut inj) = injector();
+    for _ in 0..4 {
+        click(&mut inj, 1);
+        rec.advance(Duration::from_millis(150));
+    }
+    assert_eq!(
+        clicks(&rec),
+        [
+            (DOWN, 1),
+            (UP, 1),
+            (DOWN, 2),
+            (UP, 2),
+            (DOWN, 3),
+            (UP, 3),
+            (DOWN, 4),
+            (UP, 4),
+        ]
+    );
+}
+
+#[test]
+fn a_press_exactly_at_the_interval_still_counts_one_past_it_starts_over() {
+    let (rec, mut inj) = injector();
+    click(&mut inj, 1);
+    rec.advance(INTERVAL);
+    click(&mut inj, 1);
+    rec.advance(INTERVAL + Duration::from_millis(1));
+    click(&mut inj, 1);
+    assert_eq!(
+        clicks(&rec),
+        [(DOWN, 1), (UP, 1), (DOWN, 2), (UP, 2), (DOWN, 1), (UP, 1)]
+    );
+}
+
+#[test]
+fn a_different_button_starts_a_new_count() {
+    let (rec, mut inj) = injector();
+    click(&mut inj, 1);
+    click(&mut inj, 2);
+    click(&mut inj, 1);
+    click(&mut inj, 1);
+    let right_down = CGEventType::RightMouseDown as u32;
+    let right_up = CGEventType::RightMouseUp as u32;
+    assert_eq!(
+        clicks(&rec),
+        [
+            (DOWN, 1),
+            (UP, 1),
+            (right_down, 1),
+            (right_up, 1),
+            (DOWN, 1),
+            (UP, 1),
+            (DOWN, 2),
+            (UP, 2),
+        ]
+    );
+}
+
+#[test]
+fn a_press_more_than_a_few_points_away_starts_a_new_count() {
+    let (rec, mut inj) = injector();
+    click(&mut inj, 1);
+    rec.point_at(53.0, 62.0); // within the slop of the first press
+    click(&mut inj, 1);
+    rec.point_at(60.0, 62.0); // well away from the second
+    click(&mut inj, 1);
+    assert_eq!(
+        clicks(&rec),
+        [(DOWN, 1), (UP, 1), (DOWN, 2), (UP, 2), (DOWN, 1), (UP, 1)]
+    );
+}
+
+#[test]
+fn a_drag_and_the_release_carry_the_count_of_their_press_and_moves_carry_none() {
+    let (rec, mut inj) = injector();
+    click(&mut inj, 1);
+    inj.button(1, true).unwrap();
+    // The press is a double click; a slow release keeps its count.
+    rec.advance(INTERVAL * 3);
+    inj.motion_abs(51.0, 60.0).unwrap();
+    inj.button(1, false).unwrap();
+    inj.motion_abs(52.0, 60.0).unwrap();
+    // A release with no press is a single click.
+    inj.button(1, false).unwrap();
+    assert_eq!(
+        clicks(&rec),
+        [
+            (DOWN, 1),
+            (UP, 1),
+            (DOWN, 2),
+            (CGEventType::LeftMouseDragged as u32, 2),
+            (UP, 2),
+            (CGEventType::MouseMoved as u32, 0),
+            (UP, 1),
+        ]
+    );
+}
+
 /// Posts nothing and reports a fixed location.
 pub(crate) struct NullPoster;
 
@@ -218,6 +381,12 @@ impl Poster for NullPoster {
     fn post(&self, _event: &CGEvent) {}
     fn location(&self) -> (f64, f64) {
         (0.0, 0.0)
+    }
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+    fn double_click_interval(&self) -> Duration {
+        INTERVAL
     }
 }
 

@@ -7,6 +7,12 @@
 //! bits). Events created from the `HIDSystemState` source otherwise start
 //! with the system's own modifier state, so a click or key after an injected
 //! Command release could still arrive as a Command-click or shortcut.
+//!
+//! Every button event also carries the click count (`kCGMouseEventClickState`)
+//! the window server would give a physical mouse: apps read double- and
+//! triple-clicks from that field, not from timing, so the injector counts
+//! presses of one button that follow each other within the user's
+//! double-click interval and a few points of each other.
 
 use crate::capture::MOUSER_TAG;
 use crate::echo::Echo;
@@ -18,14 +24,19 @@ use core_graphics::event::{
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use mouser_platform::{Error, InputInject, Result};
-use std::collections::BTreeSet;
+use objc2_app_kit::NSEvent;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-/// Where finished events go and where the pointer is; a seam so event
-/// construction is testable without posting anything.
+/// Where finished events go, where the pointer is, what time it is and the
+/// user's double-click interval; a seam so event construction is testable
+/// without posting anything or waiting.
 pub(crate) trait Poster: Send {
     fn post(&self, event: &CGEvent);
     fn location(&self) -> (f64, f64);
+    fn now(&self) -> Instant;
+    fn double_click_interval(&self) -> Duration;
 }
 
 pub(crate) struct HidPoster;
@@ -38,6 +49,30 @@ impl Poster for HidPoster {
         let at = CGEvent::new(source()).unwrap().location();
         (at.x, at.y)
     }
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+    /// The interval set in System Settings, read each time so a change
+    /// applies at once.
+    fn double_click_interval(&self) -> Duration {
+        Duration::try_from_secs_f64(NSEvent::doubleClickInterval()).unwrap_or(DEFAULT_INTERVAL)
+    }
+}
+
+/// The system's default double-click interval, should `AppKit` report an
+/// unusable one.
+const DEFAULT_INTERVAL: Duration = Duration::from_millis(500);
+
+/// How far, in points, a press may land from the previous one and still
+/// count as the next click of a multi-click.
+const CLICK_SLOP: f64 = 4.0;
+
+/// The previous press, against which the next one is counted.
+struct LastPress {
+    button: u8,
+    at: (f64, f64),
+    when: Instant,
+    count: i64,
 }
 
 fn source() -> CGEventSource {
@@ -49,6 +84,10 @@ pub(crate) struct MacInject {
     held_keys: BTreeSet<u32>,
     held_buttons: BTreeSet<u8>,
     last: Option<(f64, f64)>,
+    last_press: Option<LastPress>,
+    /// The click count of each held button's press, carried by its drags
+    /// and its release.
+    click_counts: BTreeMap<u8, i64>,
     echo: Arc<Echo>,
 }
 
@@ -59,6 +98,8 @@ impl MacInject {
             held_keys: BTreeSet::new(),
             held_buttons: BTreeSet::new(),
             last: None,
+            last_press: None,
+            click_counts: BTreeMap::new(),
             echo,
         }
     }
@@ -70,6 +111,30 @@ impl MacInject {
     fn post(&self, event: CGEvent) {
         event.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, MOUSER_TAG);
         self.poster.post(&event);
+    }
+
+    /// The click count of a press of `button` at `at`: one more than the
+    /// previous press when it was the same button, within the double-click
+    /// interval and within a few points; otherwise a new single click.
+    fn count_press(&mut self, button: u8, at: (f64, f64)) -> i64 {
+        let when = self.poster.now();
+        let count = match &self.last_press {
+            Some(last)
+                if last.button == button
+                    && when.duration_since(last.when) <= self.poster.double_click_interval()
+                    && (at.0 - last.at.0).hypot(at.1 - last.at.1) <= CLICK_SLOP =>
+            {
+                last.count + 1
+            }
+            _ => 1,
+        };
+        self.last_press = Some(LastPress {
+            button,
+            at,
+            when,
+            count,
+        });
+        count
     }
 
     /// The modifier flags of every modifier key held: device-independent
@@ -116,11 +181,16 @@ fn drag_event_type(button: u8) -> CGEventType {
 impl InputInject for MacInject {
     fn motion_abs(&mut self, x: f64, y: f64) -> Result<()> {
         // A held button makes the move a drag, as a physical mouse would.
-        let (ty, button) = match self.held_buttons.iter().next() {
-            Some(held) => (drag_event_type(*held), cg_button(*held)),
-            None => (CGEventType::MouseMoved, CGMouseButton::Left),
+        let (ty, button, clicks) = match self.held_buttons.iter().next() {
+            Some(held) => (
+                drag_event_type(*held),
+                cg_button(*held),
+                self.click_counts[held],
+            ),
+            None => (CGEventType::MouseMoved, CGMouseButton::Left, 0),
         };
         let event = CGEvent::new_mouse_event(source(), ty, CGPoint::new(x, y), button).unwrap();
+        event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
         let (from_x, from_y) = self.last.unwrap_or((x, y));
         event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, (x - from_x) as i64);
         event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, (y - from_y) as i64);
@@ -141,12 +211,18 @@ impl InputInject for MacInject {
         )
         .unwrap();
         event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, i64::from(button) - 1);
-        event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
-        if down {
+        // A release carries its press's count; one without a press is a
+        // single click.
+        let clicks = if down {
             self.held_buttons.insert(button);
+            let count = self.count_press(button, (x, y));
+            self.click_counts.insert(button, count);
+            count
         } else {
             self.held_buttons.remove(&button);
-        }
+            self.click_counts.remove(&button).unwrap_or(1)
+        };
+        event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
         event.set_flags(self.flags());
         self.post(event);
         Ok(())
