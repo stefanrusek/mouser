@@ -114,6 +114,21 @@ jobs:
           fi
           npx --yes "$TAURI_CLI" build --features gui --config tauri.release.conf.json ${{ matrix.tauri_args }}
 
+      - name: Verify the Windows PE subsystems (app = GUI, CLI = console)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          function Get-Subsystem($path) {
+            $b = [System.IO.File]::ReadAllBytes((Resolve-Path $path))
+            $pe = [BitConverter]::ToInt32($b, 0x3C)
+            [int][BitConverter]::ToUInt16($b, $pe + 0x5C)
+          }
+          $app = Get-Subsystem "target/release/mouser-app.exe"
+          $cli = Get-Subsystem "target/x86_64-pc-windows-msvc/release/mouser.exe"
+          "mouser-app.exe subsystem=$app (want 2), mouser.exe subsystem=$cli (want 3)"
+          if ($app -ne 2) { throw "mouser-app.exe must be the windows (GUI) subsystem" }
+          if ($cli -ne 3) { throw "mouser.exe must be the console subsystem" }
+
       - name: Verify the macOS app is signed, notarized and stapled
         if: runner.os == 'macOS'
         run: |

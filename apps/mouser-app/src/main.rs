@@ -1,3 +1,9 @@
+// Release builds on Windows are GUI-subsystem programs: without this the exe is
+// a console program and every launch opens a console window. Consequently the
+// `--headless` refusal printed to stderr is not visible on Windows; the exit
+// code (2) is the signal. Debug builds keep the console for development.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 // Returning the code, rather than `std::process::exit`, lets the process end
 // normally, so exit-time work (such as writing coverage data) still runs.
 #[cfg(feature = "gui")]
