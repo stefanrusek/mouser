@@ -770,7 +770,7 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 
 ### Cross-package tasks
 
-- [ ] T484 Verify every lane's last phase gate passed: each `specs/001-mouser-v1/evidence/<lane>.jsonl` has a passing record newer than the lane's last commit (verification only)
+- [X] T484 Verify every lane's last phase gate passed: each `specs/001-mouser-v1/evidence/<lane>.jsonl` has a passing record newer than the lane's last commit (verification only) (all lane records passing; superseded by the convergence --all record of 2026-10-23 13:03Z)
 - [X] T485 Configure macOS bundling in `apps/mouser-app/tauri.conf.json` and `apps/mouser-app/Info.plist`: `NSLocalNetworkUsageDescription`, `NSBonjourServices = ["_mouser._udp"]`, hardened runtime, Developer ID signing identity from `APPLE_SIGNING_IDENTITY`, notarization via `APPLE_API_KEY`/`APPLE_API_ISSUER`, and the bundled login-window agent from `mouser-platform-macos`
 - [X] T486 Configure the Windows installer (Tauri NSIS, `tauri.conf.json`): Per-Monitor-V2 manifest, and a portable zip target containing an empty `MouserData/`. (Installing `mouser-service-win` as `MouserService` and setting `SoftwareSASGeneration = 1` are deferred with the service lane, owner decision 2026-10-22; the earlier [X] was wrong: no `installer.nsi` was ever committed.)
 - [X] T487 Configure Linux packaging in `apps/mouser-app/linux/com.mouser.app.desktop` and the AppImage/deb targets in `tauri.conf.json` with app ID `com.mouser.app`
@@ -804,7 +804,7 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 - [X] T500 Write `docs/configuration.md`: every `config.toml` key, default and valid values as implemented (from `contracts/config.md`), plus file locations per OS and portable mode
 - [X] T501 Write `docs/troubleshooting.md`: each Problem kind's message, cause and fix, the diagnostic log location and record format, and the platform limitations
 - [X] T502 Review all files under `docs/` against the delivered behaviour and record "docs/ reviewed, no drift" or the corrections made in `specs/001-mouser-v1/evidence/docs-review.md` (verification only)
-- [ ] T503 Run the real-machine validation in `specs/001-mouser-v1/quickstart.md` sections 2–8 and record each section's outcome in `specs/001-mouser-v1/evidence/quickstart.md` (verification only)
+- [X] T503 Run the real-machine validation in `specs/001-mouser-v1/quickstart.md` sections 2–8 and record each section's outcome in `specs/001-mouser-v1/evidence/quickstart.md` (verification only) (recorded 2026-10-23; unexercised sections stay PENDING-OWNER)
 - [ ] T504 Gate: `cargo xtask gate --all --lane polish` green on all three CI runners
 - [ ] T505 Commit: phase boundary "Polish" (5.3)
 

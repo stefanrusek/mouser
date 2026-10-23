@@ -74,6 +74,17 @@ Owner-confirmed this run: Mac-to-Mac daily use (0.2.0 to 0.2.1 auto-update) acro
 | 3 | Mac: lock and unlock from the shared keyboard | VERIFIED-BY-TESTS (simulated) | `us12.feature` scenario 1. PENDING-OWNER: lock the Mac, unlock from the shared keyboard |
 | 4 | Portable build from USB, join desk, remove drive, no files remain | VERIFIED-BY-TESTS (simulated) | `us13.feature` scenarios 1-2 and the Windows limitation. PENDING-OWNER: run the portable build from USB on Windows, join, eject, confirm nothing left |
 
+## Additional real-machine results (2026-10-23, later in the day)
+
+| Reporter / setup | Outcome | Evidence |
+|---|---|---|
+| Steve: two real Windows PCs (0.2.5 to 0.2.7) | VERIFIED-BY-OWNER (reported 2026-10-23) | Corner double-push crossing confirmed. Cursor-vanishing bug fixed in 0.2.6. Pointer drift/fight fixed in 0.2.7 (a6cd3fc). First real Windows-to-Windows evidence |
+| Owner: two Macs + Windows VM, 0.2.6 | VERIFIED-BY-OWNER (2026-10-23) | Double/triple-click selection works (378bed6) |
+| Owner: two Macs + Windows VM, 0.2.7 | VERIFIED-BY-OWNER (2026-10-23) | Using both computers' mice at the same time works and is smoother on Mac (a6cd3fc) |
+| Clipboard HTML nested-header bug and notification flood | FIXED (d1b5ef1, 50c8993, d6ca786) | Covered by the core/platform gates; no separate hand re-run recorded |
+
+Sections not exercised by hand in these reports remain as recorded above (PENDING-OWNER where marked): Wi-Fi network switch, VPN, USB portable mode on Windows, Linux real hardware, Mac lock/unlock from the shared keyboard. No outcome is claimed for them.
+
 ## Not yet verified by hand (summary)
 
 Wi-Fi network switch, VPN, USB portable mode on Windows, Linux real hardware, Windows-to-Windows, login-window/secure desktop (deferred feature).
