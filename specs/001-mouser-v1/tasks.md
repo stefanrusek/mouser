@@ -780,7 +780,7 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 - [X] T507 Implement `--headless` in `apps/mouser-app/src/headless.rs` and the binary entry point (the macOS LaunchAgent runs `[exe, "--headless"]`)
 - [X] T508 [P] Write tests for "Allow control at the login screen" (macOS): a settings action that runs `Engine::export_machine_scope` and `LoginAgent::system(exe).install()` through one OS administrator prompt; refusal leaves nothing changed and is explained; the action is offered only on macOS
 - [X] T509 Implement "Allow control at the login screen" in `apps/mouser-app/src/login_screen.rs` and the settings UI (never run the privileged step in tests)
-- [ ] T490 Run `cargo xtask gate --all --lane convergence` after the packaging changes (verification only; must stay green before E2E)
+- [X] T490 Run `cargo xtask gate --all --lane convergence` after the packaging changes (verification only; must stay green before E2E)
 
 ### E2E — J1 "two real computers on a LAN"
 
