@@ -63,17 +63,25 @@ fn script(body: &str) {
 }
 
 /// Push the pointer horizontally by `distance` points (positive is right) in
-/// 40-point steps, 8 ms apart, along a line 100 points below the top of the
-/// display (computer B's displays are placed to the right of A's, top-aligned).
-pub fn push_pointer(distance: i32) {
+/// 40-point steps, 8 ms apart. From `start` when given (warped there first; a
+/// push only crosses if it starts on the display that borders the other
+/// computer, see `layout.rs`), otherwise along a line 100 points below the top
+/// of the display from where the pointer is (while the pointer is on computer
+/// B only the deltas matter).
+pub fn push_pointer(distance: i32, start: Option<(f64, f64)>) {
     let step = 40 * distance.signum();
     let steps = distance.abs() / 40;
+    let warp = match start {
+        Some((x, y)) => format!("var row = {y};\n$.CGWarpMouseCursorPosition({{x: {x}, y: row}});"),
+        None => "var row = 100;\nvar here = $.CGEventGetLocation($.CGEventCreate(null));\n\
+                 $.CGWarpMouseCursorPosition({x: here.x, y: row});"
+            .to_string(),
+    };
     script(&format!(
-        "var here = $.CGEventGetLocation($.CGEventCreate(null));
-$.CGWarpMouseCursorPosition({{x: here.x, y: 100}});
+        "{warp}
 for (var i = 0; i < {steps}; i++) {{
   var at = $.CGEventGetLocation($.CGEventCreate(null));
-  var e = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, {{x: at.x + {step}, y: 100}}, 0);
+  var e = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, {{x: at.x + {step}, y: row}}, 0);
   $.CGEventSetIntegerValueField(e, $.kCGMouseEventDeltaX, {step});
   $.CGEventSetIntegerValueField(e, $.kCGMouseEventDeltaY, 0);
   post(e);

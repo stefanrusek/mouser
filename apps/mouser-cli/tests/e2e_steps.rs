@@ -5,6 +5,10 @@
 
 #[path = "e2e/input.rs"]
 mod input;
+#[path = "e2e/layout.rs"]
+mod layout;
+#[path = "e2e/layout_tests.rs"]
+mod layout_tests;
 #[path = "e2e/steps/us1-cli.rs"]
 mod us1_cli;
 #[path = "e2e/steps/us2-cli.rs"]

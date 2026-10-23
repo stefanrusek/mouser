@@ -12,6 +12,7 @@
 use cucumber::{given, then, when};
 
 use crate::input;
+use crate::layout;
 use crate::us1_cli::status_where;
 use crate::world::{Computer, J1World};
 
@@ -104,12 +105,32 @@ pub(crate) fn focus_note() {
 
 #[when("the owner moves the pointer off the right edge of computer A's display")]
 async fn cross_to_b(_world: &mut J1World) {
-    input::push_pointer(FAR);
+    input::push_pointer(FAR, Some(push_start()));
+}
+
+/// Where on A a rightward push starts so that it crosses onto B: read from the
+/// desk layout Mouser saved on A, next to the `logs` folder its status names.
+fn push_start() -> (f64, f64) {
+    let status = Computer::A.mouser_json(&["status"]);
+    let log = status["logging"]["path"]
+        .as_str()
+        .expect("status names the log file");
+    let state = std::path::Path::new(log)
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("the log file is in Mouser's logs folder")
+        .join("state.json");
+    let text =
+        std::fs::read_to_string(&state).unwrap_or_else(|e| panic!("read {}: {e}", state.display()));
+    let state: serde_json::Value = serde_json::from_str(&text).expect("state.json is JSON");
+    layout::push_start(&state, &id_of(Computer::A), &id_of(Computer::B)).unwrap_or_else(|| {
+        panic!("no display of computer A borders computer B on the right in the desk layout")
+    })
 }
 
 #[when("the owner moves the pointer off the left edge of computer B's display")]
 async fn cross_to_a(_world: &mut J1World) {
-    input::push_pointer(-FAR);
+    input::push_pointer(-FAR, None);
 }
 
 #[then("the pointer is on computer B")]
