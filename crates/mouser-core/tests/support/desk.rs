@@ -303,6 +303,19 @@ impl Node {
         self.engine.as_ref().expect("node is running").layout()
     }
 
+    /// Wait until the layout this computer holds places `count` displays.
+    pub async fn wait_layout(&self, count: usize) {
+        let end = Instant::now() + WAIT;
+        while self.layout().placements.len() != count {
+            assert!(
+                Instant::now() < end,
+                "{}: timed out waiting for {count} placed displays",
+                self.name
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
     /// Displays awaiting the owner's review of their placement.
     pub fn needs_review(&self) -> Vec<mouser_proto::model::DisplayId> {
         self.engine
@@ -523,7 +536,7 @@ impl Lab {
             .node(creator)
             .call(Method::DeskCreate, json!({ "name": desk }))
             .await;
-        for joiner in joiners {
+        for (joined, joiner) in joiners.iter().enumerate() {
             let target = self.node(creator).sim.clone();
             let address = self.node(joiner).sim.route_to(&target).to_string();
             let _: mouser_proto::control::JoinPending = self
@@ -545,6 +558,10 @@ impl Lab {
                     json!({"request_id": request.request_id, "approve": true}),
                 )
                 .await;
+            // The next computer joins only once this one is placed: placement
+            // follows the order in which displays are reported, so two joins
+            // in flight at once would leave the order of the desk to chance.
+            self.node(creator).wait_layout(joined + 2).await;
         }
         let all = joiners.len() + 1;
         for name in std::iter::once(&creator).chain(joiners) {

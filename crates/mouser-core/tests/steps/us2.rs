@@ -197,8 +197,11 @@ impl CrossWorld {
 
     /// A desk of computers in this order, each with `setup`, the first creating it.
     async fn desk(&mut self, computers: Vec<(&str, Setup)>) {
+        let mut shown = Vec::new();
         for (name, setup) in &computers {
-            self.displays += setup.platform.displays().expect("virtual displays").len();
+            let count = setup.platform.displays().expect("virtual displays").len();
+            self.displays += count;
+            shown.push(count);
             self.lab.add_with(name, setup.clone()).await;
         }
         let first = computers[0].0;
@@ -207,10 +210,35 @@ impl CrossWorld {
             .node(first)
             .call(Method::DeskCreate, json!({"name": "Home office"}))
             .await;
-        for (name, _) in &computers[1..] {
+        // Each computer is placed before the next one joins: placement
+        // follows the order in which displays are reported, so two joins in
+        // flight at once would leave the order of the desk to chance, and
+        // with it which computer the shared mouse reaches first.
+        let mut placed = shown[0];
+        for ((name, _), count) in computers[1..].iter().zip(&shown[1..]) {
             self.join(first, name).await;
+            placed += count;
+            self.lab.node(first).wait_layout(placed).await;
         }
         self.settled().await;
+        let layout = self.lab.node(first).layout();
+        let mut left_edges = Vec::new();
+        for (name, _) in &computers {
+            let id = self.lab.node(name).id();
+            left_edges.push(
+                layout
+                    .placements
+                    .iter()
+                    .filter(|p| p.display_id.computer == id)
+                    .map(|p| p.x)
+                    .min()
+                    .expect("every computer is placed"),
+            );
+        }
+        assert!(
+            left_edges.windows(2).all(|w| w[0] < w[1]),
+            "the computers are placed left to right in the order they joined: {left_edges:?}"
+        );
     }
 
     /// Default computers called `names`.
