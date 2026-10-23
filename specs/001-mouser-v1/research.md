@@ -24,7 +24,7 @@ Phase 0 record for plan.md. Every external-dependency assumption the plan relies
 - **Alternatives:** TCP+TLS (no migration, head-of-line on every message); plain UDP + custom reliability (re-implements QUIC).
 
 ### R2 Liveness and recovery budget (SC-008 ≤ 5 s)
-- **Decision:** `keep_alive_interval = 750 ms`, `max_idle_timeout = 3 s`. Local network-change detection (macOS SCDynamicStore/NWPathMonitor, Windows `NotifyIpInterfaceChange`, Linux netlink, plus 1 s polling fallback) triggers `Endpoint::rebind` immediately; the peer whose address changed re-dials if its role was the accepting side. Rediscovery via mDNS re-announce on change.
+- **Decision:** `keep_alive_interval = 750 ms`, `max_idle_timeout = 3 s`. Local network-change detection (macOS SCDynamicStore/NWPathMonitor, Windows `NotifyIpInterfaceChange`, Linux netlink, plus 1 s polling fallback) triggers an immediate rebind (`Endpoint::rebind_abstract` with the paired IPv4 + IPv6-only sockets, see foundational-notes "IPv4 through a dual-stack socket"); the peer whose address changed re-dials if its role was the accepting side. Rediscovery via mDNS re-announce on change.
 - **Rationale:** detection ≈ max_idle_timeout (1.22/3.08/5.07 s measured); sub-idle outages (0.6 s, 2 s) survived (A3); rebind costs ~15 µs + one RTT (A2). 3 s idle + ≤ 1 s re-dial + handshake ≈ 12 ms fits 5 s.
 - **Alternatives:** 1 s idle (spurious drops on Wi-Fi roam); 5 s idle (blows SC-008).
 
