@@ -13,6 +13,9 @@ $box.AcceptsReturn = $true
 $box.Dock = [System.Windows.Forms.DockStyle]::Fill
 $form.Controls.Add($box)
 $form.Add_Shown({
+    # A hidden-window launch can leave the form minimised; restore, then maximise.
+    $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+    $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
     $form.Activate()
     $box.Focus()
     Set-Content -LiteralPath 'C:\Users\Public\mouser-j1-note.hwnd' -Value $form.Handle.ToInt64()
