@@ -299,11 +299,12 @@ pub(crate) fn session_locked() -> bool {
     flags == Some(WTS_SESSIONSTATE_LOCK as i32)
 }
 
-/// The name of desktop `desk` ("Default" for the user's own).
+/// The name of desktop `desk` ("Default" for the user's own); empty when
+/// Windows will not say (the buffer is then left as it was, all zeros).
 pub(crate) fn desktop_name(desk: HDESK) -> String {
     let mut name = [0u16; 64];
     let mut needed = 0;
-    let got = unsafe {
+    let _ = unsafe {
         GetUserObjectInformationW(
             HANDLE(desk.0),
             UOI_NAME,
@@ -313,10 +314,7 @@ pub(crate) fn desktop_name(desk: HDESK) -> String {
         )
     };
     let len = name.iter().position(|c| *c == 0).unwrap_or(name.len());
-    got.map_or_else(
-        |_| String::new(),
-        |()| String::from_utf16_lossy(&name[..len]),
-    )
+    String::from_utf16_lossy(&name[..len])
 }
 
 /// Whether `desk` is the user's own desktop; closes it.
