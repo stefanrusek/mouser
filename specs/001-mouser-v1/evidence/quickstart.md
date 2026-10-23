@@ -17,7 +17,7 @@ Owner-confirmed this run: Mac-to-Mac daily use (0.2.0 to 0.2.1 auto-update) acro
 | 2 | B sees "Home office", chooses it | VERIFIED-BY-J1 | J1 "the owner chooses "Home office" on computer B" |
 | 3 | A clicks Allow | VERIFIED-BY-J1 | J1 "the owner clicks Allow on computer A" (decline path also in J1) |
 | 4 | Both trays show 2 computers | VERIFIED-BY-J1 | J1 "both computers list each other as connected members of "Home office""; tray text itself not separately asserted: PENDING-OWNER (glance at both trays) |
-| 4 | `mouser status --json` validates against `status.schema.json` | VERIFIED-BY-TESTS | `apps/mouser-cli/tests/contract_cli_status.rs`; not run against the live pair: PENDING-OWNER |
+| 4 | `mouser status --json` validates against `status.schema.json` | VERIFIED-BY-CLI (2026-10-23, Mouser 0.2.4) | Ran on A (Mac mini, `/Applications/Mouser.app`) and on B (Windows VM over ssh); both validated with python jsonschema 4.26.0 (Draft 2020-12) against `contracts/status.schema.json`, 0 errors. Each lists 2 computers (self + the other as `connected`) in desk "Home office" (same desk id). Also `apps/mouser-cli/tests/contract_cli_status.rs` |
 | 5 | Pointer crosses to B, typing works, cross back | VERIFIED-BY-J1 | J1 Story 2 scenarios 2 and 3 steps (type, save, file contents match, cross back); also owner (Mac-Mac, Mac-Windows) |
 | 5 | Landing highlight | VERIFIED-BY-OWNER | Mac-Mac; `us2.feature` scenario 9 for logic |
 | 6 | Esc twice returns control to A | VERIFIED-BY-J1 | J1 "presses Escape twice on computer A" |
@@ -62,8 +62,8 @@ Owner-confirmed this run: Mac-to-Mac daily use (0.2.0 to 0.2.1 auto-update) acro
 | # | Check | Outcome | Evidence |
 |---|---|---|---|
 | 1 | Revoke a permission on B: health panel names it with Open settings | VERIFIED-BY-TESTS (simulated) | `us8.feature` scenarios 1-3. PENDING-OWNER: revoke Accessibility/Input Monitoring for Mouser on B and read the panel |
-| 2 | `mouser logs enable`, crossing, `logs tail -n 20` lines validate against `log-record.schema.json` | VERIFIED-BY-TESTS | `apps/mouser-cli/tests/contract_cli_logs.rs`, `us9.feature` scenario 3. Owner also used a logger on the Mac-Windows run (not a schema check). PENDING-OWNER: run the command pair against the live app |
-| 3 | `mouser config set crossing.block_fullscreen false` shows in GUI | VERIFIED-BY-TESTS | `apps/mouser-cli/tests/contract_cli_config.rs`, `us9.feature` scenario 2. PENDING-OWNER: run it and look at the GUI |
+| 2 | `mouser logs enable`, crossing, `logs tail -n 20` lines validate against `log-record.schema.json` | VERIFIED-BY-CLI (2026-10-23, Mouser 0.2.4, on A; schema check only) | `logs enable` then `logs tail -n 20` on A: every line (1 line, `logging.enabled`, since the log was fresh) validated against `contracts/log-record.schema.json` with jsonschema 4.26.0, 0 errors; logging restored to off (`logs disable`, `diagnostics.logging` false as before). No crossing was reproduced, so crossing log lines are PENDING-OWNER. Also `contract_cli_logs.rs`, `us9.feature` scenario 3 |
+| 3 | `mouser config set crossing.block_fullscreen false` shows in GUI | VERIFIED-BY-CLI (2026-10-23, Mouser 0.2.4, on A; GUI display PENDING-OWNER) | On A: original `true`; `config set ... false` rc 0, `config get` and `config get --json crossing` showed false; restored to `true` and confirmed. (`status --json` has no settings field, so config get is the readback.) GUI display not checked. Also `contract_cli_config.rs`, `us9.feature` scenario 2 |
 
 ## 8. Updates, secure screens, portable
 
