@@ -117,6 +117,20 @@ async fn file_loop(ctx: Arc<Ctx>, conn: quinn::Connection) {
     }
 }
 
+/// Takes a computer out of `dialing` when its dial attempt ends, however it
+/// ends (finished, panicked, or dropped as the engine stops), so the computer
+/// can be dialled again.
+struct DialingGuard {
+    ctx: Arc<Ctx>,
+    peer: ComputerId,
+}
+
+impl Drop for DialingGuard {
+    fn drop(&mut self) {
+        self.ctx.core.lock().unwrap().dialing.remove(&self.peer);
+    }
+}
+
 async fn watch_closed(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, conn: quinn::Connection) {
     let _guard = LinkGuard { ctx, peer, link_id };
     conn.closed().await;
@@ -164,8 +178,13 @@ impl Ctx {
 
     /// Dial a discovered computer and take over the connection.
     pub(crate) async fn dial_found(self: Arc<Self>, found: Found) {
-        let dialled = self.dial_any(&found.addrs, found.computer).await;
-        self.core.lock().unwrap().dialing.remove(&found.computer);
+        let dialled = {
+            let _dialing = DialingGuard {
+                ctx: self.clone(),
+                peer: found.computer,
+            };
+            self.dial_any(&found.addrs, found.computer).await
+        };
         if let Some((link, hello)) = dialled {
             self.adopt(link, hello, None, true);
         }

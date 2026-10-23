@@ -302,3 +302,28 @@ async fn an_attempt_answered_by_the_wrong_computer_fails_at_once() {
     assert!(a.engine.ctx.dial_any(&[live], stranger).await.is_none());
     assert!(started.elapsed() < DIAL_ATTEMPT);
 }
+
+/// A dial attempt that ends any way but by finishing (here it is cut short,
+/// as a panic or the engine stopping would) must not leave the computer in
+/// `dialing`, or it is never dialled again.
+#[tokio::test]
+async fn a_dial_attempt_cut_short_leaves_the_computer_to_be_dialled_again() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let peer = b.engine.computer_id();
+    let found = crate::discovery::Found {
+        computer: peer,
+        display_name: "Beta".into(),
+        protocol: mouser_proto::wire::PROTOCOL_VERSION,
+        desk: None,
+        addrs: vec![SocketAddr::from(([127, 0, 0, 1], free_port()))],
+    };
+    a.engine.ctx.core.lock().unwrap().dialing.insert(peer);
+    let attempt = tokio::spawn(a.engine.ctx.clone().dial_found(found));
+    settle().await;
+    assert!(a.engine.ctx.core.lock().unwrap().dialing.contains(&peer));
+    attempt.abort();
+    let _ = attempt.await;
+    assert!(!a.engine.ctx.core.lock().unwrap().dialing.contains(&peer));
+}
