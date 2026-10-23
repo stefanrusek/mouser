@@ -117,8 +117,8 @@ impl Clip {
 
     /// Write what Mouser got from elsewhere, and tag it as not the user's copy.
     fn write(&mut self, clip: &mut dyn Clipboard, reps: Vec<ClipRep>) {
-        write_best(clip, reps);
-        self.watcher.wrote(clip);
+        write_best(clip, reps.clone());
+        self.watcher.wrote(clip, &reps);
     }
 
     /// The user pasted: fetch what was only referenced.

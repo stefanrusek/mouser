@@ -1,5 +1,5 @@
 use crate::clipboard::{
-    Board, HTML, Item, MacClipboard, PNG, RTF, TEXT, normalise_path, read, write,
+    Board, HTML, Item, MacClipboard, PNG, RTF, TEXT, normalise_path, read, unwrap_cf_html, write,
 };
 use mouser_platform::{ClipRep, Clipboard, Error};
 use std::cell::{Cell, RefCell};
@@ -84,6 +84,47 @@ fn representations_use_the_standard_pasteboard_types() {
     assert_eq!(board.buffer(HTML).unwrap(), b"h");
     assert_eq!(board.buffer(RTF).unwrap(), b"r");
     assert_eq!(board.buffer(PNG).unwrap(), b"p");
+}
+
+/// `fragment` in the Windows CF_HTML envelope, as Windows apps and tools that
+/// copy from Windows (a virtual machine's shared clipboard) produce it.
+fn cf_html(fragment: &str) -> String {
+    let (prefix, suffix) = (
+        "<html><body>\r\n<!--StartFragment-->",
+        "<!--EndFragment-->\r\n</body></html>",
+    );
+    let start = 105 + prefix.len();
+    let end = start + fragment.len();
+    format!(
+        "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{start:010}\r\nEndFragment:{end:010}\r\n{prefix}{fragment}{suffix}",
+        105,
+        end + suffix.len()
+    )
+}
+
+#[test]
+fn a_windows_cf_html_envelope_on_the_pasteboard_is_taken_off_however_deep() {
+    let board = Fake::default();
+    let fragment = "<p>caf\u{e9}</p>";
+    let nested = cf_html(&cf_html(&cf_html(fragment)));
+    board
+        .write(vec![Item::Buffer(HTML, nested.into_bytes())])
+        .unwrap();
+    assert_eq!(read(&board), [ClipRep::Html(fragment.into())]);
+}
+
+#[test]
+fn an_envelope_with_unusable_offsets_falls_back_to_the_fragment_markers() {
+    let marked = "Version:0.9\r\nStartFragment:0000009999\r\nEndFragment:0000099999\r\n<html><body><!--StartFragment--><b>x</b><!--EndFragment--></body></html>";
+    assert_eq!(unwrap_cf_html(marked.into()), "<b>x</b>");
+    // Without offsets or markers there is nothing to take off.
+    let bare = "Version:0.9\r\n<b>y</b>";
+    assert_eq!(unwrap_cf_html(bare.into()), bare);
+    assert_eq!(unwrap_cf_html("<b>plain</b>".into()), "<b>plain</b>");
+    // Offsets naming the whole envelope are not a fragment of it.
+    let whole = "Version:0.9 StartFragment:0000000000 EndFragment:0000000059";
+    assert_eq!(whole.len(), 59);
+    assert_eq!(unwrap_cf_html(whole.into()), whole);
 }
 
 #[test]

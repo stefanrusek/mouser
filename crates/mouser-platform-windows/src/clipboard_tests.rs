@@ -95,6 +95,36 @@ fn html_is_wrapped_with_byte_exact_offsets_and_comes_back_out() {
 }
 
 #[test]
+fn nested_envelopes_are_all_taken_off_and_never_added() {
+    let fragment = "<p>caf\u{e9}</p>";
+    // A tool that took CF_HTML for plain HTML and wrapped it again, twice.
+    let once = cf_html(fragment);
+    let nested = |html: Vec<u8>| -> Vec<u8> {
+        let html = String::from_utf8(html).unwrap();
+        let (prefix, suffix) = (
+            "<html><body>\r\n<!--StartFragment-->",
+            "<!--EndFragment-->\r\n</body></html>",
+        );
+        let start = 105 + prefix.len();
+        let end = start + html.len();
+        format!(
+            "Version:0.9\r\nStartHTML:{:010}\r\nEndHTML:{:010}\r\nStartFragment:{start:010}\r\nEndFragment:{end:010}\r\n{prefix}{html}{suffix}",
+            105,
+            end + suffix.len()
+        )
+        .into_bytes()
+    };
+    let deep = nested(nested(once.clone()));
+    assert_eq!(html_fragment(&deep), fragment);
+    // Wrapping what is already an envelope gives exactly one envelope.
+    let deep = String::from_utf8(deep).unwrap();
+    assert_eq!(cf_html(&deep), once);
+    assert_eq!(cf_html(&String::from_utf8(once.clone()).unwrap()), once);
+    // Text that merely starts like a header is HTML like any other.
+    assert_eq!(html_fragment(b"Version: two"), "Version: two");
+}
+
+#[test]
 fn html_without_fragment_offsets_falls_back_to_the_body_or_everything() {
     let only_html = b"Version:0.9\r\nStartHTML:0000000035\r\n<p>x</p>";
     assert_eq!(html_fragment(only_html), "<p>x</p>");

@@ -25,3 +25,8 @@ Feature: As a desk user, I want copy and paste to work between computers
     Given two desks, "Home office" and "Lab bench", on one network
     When a computer on "Lab bench" is in use
     Then computers on "Home office" receive none of its pointer movement, keystrokes, clipboard contents, or files, and neither desk lists the other's computers as members
+
+  Scenario: Edge case: another clipboard-sharing tool echoes the content back
+    Given another clipboard-sharing tool copies whatever lands on the receiving computer back onto the copying computer
+    When the desk user copies text on the copying computer
+    Then the receiving computer gets the text once and the clipboards stop changing

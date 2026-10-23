@@ -29,6 +29,8 @@ pub struct ClipboardWorld {
     source: Option<tempfile::TempDir>,
     /// What the other computers held before the targeted paste.
     before: Vec<(String, Vec<ClipRep>, u64)>,
+    /// Another clipboard-sharing tool running alongside Mouser.
+    tool: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl fmt::Debug for ClipboardWorld {
@@ -78,6 +80,7 @@ impl ClipboardWorld {
             lab: Lab::new(),
             source: None,
             before: Vec::new(),
+            tool: None,
         }
     }
 
@@ -451,4 +454,58 @@ async fn nothing_crosses(w: &mut ClipboardWorld, _desk: String) {
         names.sort();
         assert_eq!(names, members, "members listed on {name}");
     }
+}
+
+// ---- edge case: another clipboard-sharing tool echoes the content back ------------------
+
+/// The other tool's line endings: what it copies back is not byte-identical.
+fn crlf(reps: Vec<ClipRep>) -> Vec<ClipRep> {
+    reps.into_iter()
+        .map(|rep| match rep {
+            ClipRep::Text(t) => ClipRep::Text(t.replace('\n', "\r\n")),
+            other => other,
+        })
+        .collect()
+}
+
+#[given(
+    "another clipboard-sharing tool copies whatever lands on the receiving computer back onto the copying computer"
+)]
+async fn echoing_tool(w: &mut ClipboardWorld) {
+    w.two().await;
+    let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
+    // Every time Beta's clipboard is written, the tool copies it onto Alpha.
+    w.tool = Some(tokio::spawn(async move {
+        let mut seen = change_count(&beta);
+        loop {
+            let count = change_count(&beta);
+            if count != seen {
+                seen = count;
+                alpha.set_local_clipboard(crlf(beta.clipboard_contents()));
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }));
+}
+
+#[when("the desk user copies text on the copying computer")]
+async fn copies_text(w: &mut ClipboardWorld) {
+    w.platform("Alpha")
+        .set_local_clipboard(text("line one\nline two"));
+}
+
+#[then("the receiving computer gets the text once and the clipboards stop changing")]
+async fn no_ping_pong(w: &mut ClipboardWorld) {
+    w.clipboard_is("Beta", text("line one\nline two")).await;
+    let alpha = w.platform("Alpha");
+    until("the tool to copy it back", || change_count(&alpha) >= 2).await;
+    // Several clipboard polls later, nothing has gone round again.
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    assert_eq!(change_count(&w.platform("Beta")), 1, "Beta written once");
+    assert_eq!(
+        change_count(&alpha),
+        2,
+        "Alpha: the copy and the tool's echo"
+    );
+    w.tool.take().expect("the tool runs").abort();
 }

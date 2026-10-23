@@ -5,7 +5,7 @@ use mouser_platform::{ClipRep, Platform};
 use mouser_proto::wire::{ClipboardKind, ClipboardPayload, ControlMessage};
 use mouser_testkit::VirtualPlatform;
 
-use super::watch::{Watcher, offer};
+use super::watch::{Watcher, offer, same_content};
 use super::{INLINE_LIMIT, decode, encode, kind_of};
 use crate::testing::*;
 
@@ -34,11 +34,63 @@ fn writes_mouser_makes_itself_are_never_offered() {
     let mut clip = platform.clipboard().unwrap();
     let mut watcher = Watcher::new(&mut *clip);
     clip.write(text("from elsewhere")).unwrap();
-    watcher.wrote(&mut *clip);
+    watcher.wrote(&mut *clip, &text("from elsewhere"));
     assert_eq!(watcher.poll(&mut *clip), None);
     // A copy by the user right after is still seen.
     platform.set_local_clipboard(text("mine"));
     assert_eq!(watcher.poll(&mut *clip), Some((1, text("mine"))));
+}
+
+#[test]
+fn what_mouser_wrote_coming_back_through_another_tool_is_not_offered() {
+    let platform = VirtualPlatform::new();
+    let mut clip = platform.clipboard().unwrap();
+    let mut watcher = Watcher::new(&mut *clip);
+    let written = vec![
+        ClipRep::Text("a\nb".into()),
+        ClipRep::Html("<p>a</p>".into()),
+    ];
+    clip.write(written.clone()).unwrap();
+    watcher.wrote(&mut *clip, &written);
+    // Another clipboard-sharing tool copies it back with Windows line endings.
+    platform.set_local_clipboard(vec![ClipRep::Text("a\r\nb\0".into())]);
+    assert_eq!(watcher.poll(&mut *clip), None);
+    // The clipboard re-written with the same content by its owner (Windows
+    // rendering a delayed format) is not a copy either.
+    platform.set_local_clipboard(written.clone());
+    assert_eq!(watcher.poll(&mut *clip), None);
+    platform.set_local_clipboard(text("new"));
+    assert_eq!(watcher.poll(&mut *clip), Some((1, text("new"))));
+}
+
+#[test]
+fn what_this_computer_offered_coming_back_is_not_offered_again() {
+    let platform = VirtualPlatform::new();
+    let mut clip = platform.clipboard().unwrap();
+    let mut watcher = Watcher::new(&mut *clip);
+    platform.set_local_clipboard(text("mine"));
+    assert_eq!(watcher.poll(&mut *clip), Some((1, text("mine"))));
+    platform.set_local_clipboard(text("mine"));
+    assert_eq!(watcher.poll(&mut *clip), None);
+}
+
+#[test]
+fn content_is_the_same_when_every_kind_both_hold_matches() {
+    let html = |s: &str| ClipRep::Html(s.into());
+    let png = |b: &[u8]| ClipRep::Png(b.to_vec());
+    assert!(same_content(&text("x\r\n"), &text("x\n")));
+    assert!(same_content(
+        &[ClipRep::Text("x".into()), html("<b>x</b>")],
+        &[html("<b>x</b>")]
+    ));
+    assert!(!same_content(
+        &[ClipRep::Text("x".into()), html("<b>x</b>")],
+        &[ClipRep::Text("x".into()), html("<i>x</i>")]
+    ));
+    assert!(!same_content(&text("x"), &[png(b"x")]), "nothing in common");
+    assert!(same_content(&[png(b"p")], &[png(b"p")]));
+    assert!(!same_content(&[png(b"p")], &[png(b"q")]));
+    assert!(!same_content(&[], &[]));
 }
 
 #[test]

@@ -4,6 +4,12 @@
 //! the content goes to every desk member as a `ClipboardOffer` with a growing
 //! sequence. What Mouser writes itself is tagged by re-reading the counter
 //! after the write, so it is never offered back (no echo).
+//!
+//! The counter alone is not enough: another clipboard-sharing tool (a virtual
+//! machine's shared clipboard, say) can copy what Mouser wrote straight back,
+//! and Windows advances the counter when it renders a format Mouser offered.
+//! So the content Mouser last wrote or offered is kept too, and a change that
+//! brings that same content back is not a copy (no ping-pong between tools).
 
 use std::path::PathBuf;
 
@@ -20,6 +26,30 @@ pub struct Watcher {
     /// The counter as last seen, including after our own writes.
     seen: u64,
     sequence: u64,
+    /// What Mouser last put on the desk's clipboards: written here or offered.
+    last: Vec<ClipRep>,
+}
+
+/// Text as a comparison sees it: line endings and trailing NULs, which
+/// clipboards and the tools copying between them change, do not count.
+fn normalised(text: &str) -> String {
+    text.trim_end_matches('\0').replace("\r\n", "\n")
+}
+
+/// Whether `a` and `b` hold the same content: they share a kind, and every
+/// kind both hold is equal.
+pub fn same_content(a: &[ClipRep], b: &[ClipRep]) -> bool {
+    let equal = |x: &ClipRep, y: &ClipRep| match (x, y) {
+        (ClipRep::Text(x), ClipRep::Text(y)) | (ClipRep::Html(x), ClipRep::Html(y)) => {
+            normalised(x) == normalised(y)
+        }
+        _ => x == y,
+    };
+    let shared: Vec<_> = a
+        .iter()
+        .filter_map(|x| b.iter().find(|y| kind_of(x) == kind_of(y)).map(|y| (x, y)))
+        .collect();
+    !shared.is_empty() && shared.into_iter().all(|(x, y)| equal(x, y))
 }
 
 impl Watcher {
@@ -28,12 +58,15 @@ impl Watcher {
         Self {
             seen: clip.change_count(),
             sequence: 0,
+            last: Vec::new(),
         }
     }
 
-    /// Mouser just wrote the clipboard: that change is not the user's.
-    pub fn wrote(&mut self, clip: &mut dyn Clipboard) {
+    /// Mouser just wrote `reps` to the clipboard: that change is not the
+    /// user's, and neither is that content coming back.
+    pub fn wrote(&mut self, clip: &mut dyn Clipboard, reps: &[ClipRep]) {
         self.seen = clip.change_count();
+        self.last = reps.to_vec();
     }
 
     /// The new content and its sequence, if the user copied since last time.
@@ -44,9 +77,10 @@ impl Watcher {
         }
         self.seen = count;
         let reps = clip.read().expect("clipboard readable");
-        if reps.is_empty() {
+        if reps.is_empty() || same_content(&reps, &self.last) {
             return None;
         }
+        self.last = reps.clone();
         self.sequence += 1;
         Some((self.sequence, reps))
     }

@@ -113,7 +113,11 @@ const HTML_PREFIX: &str = "<html><body>\r\n<!--StartFragment-->";
 const HTML_SUFFIX: &str = "<!--EndFragment-->\r\n</body></html>";
 
 /// `fragment` in a CF_HTML envelope (version 0.9, 10-digit byte offsets).
+/// A fragment that is itself already an envelope (from a tool that copied
+/// CF_HTML onto a clipboard as plain HTML) is unwrapped first, so the result
+/// is always exactly one envelope deep.
 pub(crate) fn cf_html(fragment: &str) -> Vec<u8> {
+    let fragment = &unwrap_nested(fragment.to_string());
     // The header is fixed-width, so offsets can be computed up front.
     const HEADER_LEN: usize = "Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n".len();
     let start_fragment = HEADER_LEN + HTML_PREFIX.len();
@@ -135,9 +139,26 @@ fn header_number(text: &str, key: &str) -> Option<usize> {
 }
 
 /// The fragment of a CF_HTML buffer; the whole body when the header does not
-/// name one.
+/// name one. A fragment that is itself an envelope (CF_HTML wrapped again by
+/// a tool that took it for plain HTML) is unwrapped too, however deep.
 pub(crate) fn html_fragment(bytes: &[u8]) -> String {
-    let bytes = trim_nul(bytes);
+    unwrap_nested(one_envelope(trim_nul(bytes)))
+}
+
+/// `html` without the CF_HTML envelopes it starts with.
+fn unwrap_nested(mut html: String) -> String {
+    while html.starts_with("Version:") {
+        let inner = one_envelope(html.as_bytes());
+        if inner.len() >= html.len() {
+            break;
+        }
+        html = inner;
+    }
+    html
+}
+
+/// What one CF_HTML envelope holds.
+fn one_envelope(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes);
     let range = header_number(&text, "StartFragment:")
         .zip(header_number(&text, "EndFragment:"))

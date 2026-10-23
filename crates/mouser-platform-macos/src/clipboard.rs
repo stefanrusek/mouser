@@ -78,6 +78,44 @@ fn text_of(bytes: Vec<u8>) -> String {
     String::from_utf8(bytes).expect("pasteboard text is UTF-8")
 }
 
+/// The number after `key` in a CF_HTML header.
+fn header_number(text: &str, key: &str) -> Option<usize> {
+    let at = text.find(key)? + key.len();
+    let digits: String = text[at..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse().ok()
+}
+
+/// The fragment one CF_HTML envelope holds: by its byte offsets, else between
+/// its fragment markers.
+fn cf_html_fragment(html: &str) -> Option<&str> {
+    let by_offsets = header_number(html, "StartFragment:")
+        .zip(header_number(html, "EndFragment:"))
+        .and_then(|(start, end)| html.get(start..end))
+        .filter(|fragment| fragment.len() < html.len());
+    by_offsets.or_else(|| {
+        let start = html.find("<!--StartFragment-->")? + "<!--StartFragment-->".len();
+        let end = html[start..].find("<!--EndFragment-->")? + start;
+        Some(&html[start..end])
+    })
+}
+
+/// `public.html` is plain HTML. A Windows CF_HTML envelope found there (put
+/// by a tool copying from Windows, such as a virtual machine's shared
+/// clipboard) is taken off, however many times it was applied, so it is
+/// neither pasted as text nor shared.
+pub(crate) fn unwrap_cf_html(mut html: String) -> String {
+    while html.starts_with("Version:") {
+        let Some(fragment) = cf_html_fragment(&html) else {
+            break;
+        };
+        html = fragment.to_string();
+    }
+    html
+}
+
 /// Every representation present on the pasteboard.
 pub(crate) fn read(board: &dyn Board) -> Vec<ClipRep> {
     let mut reps = Vec::new();
@@ -85,7 +123,7 @@ pub(crate) fn read(board: &dyn Board) -> Vec<ClipRep> {
         reps.push(ClipRep::Text(text_of(bytes)));
     }
     if let Some(bytes) = board.buffer(HTML) {
-        reps.push(ClipRep::Html(text_of(bytes)));
+        reps.push(ClipRep::Html(unwrap_cf_html(text_of(bytes))));
     }
     if let Some(bytes) = board.buffer(RTF) {
         reps.push(ClipRep::Rtf(bytes));
