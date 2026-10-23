@@ -199,23 +199,39 @@ async fn they_update(world: &mut UpdateWorld) {
         world.lab.node(other).set_version("0.2.0");
         world.lab.restart(other).await;
     }
-    for name in NAMES {
-        world
-            .lab
-            .node(name)
-            .wait_status("every computer back on the desk at 0.2.0", |s| {
-                s.computers.len() == 3
-                    && s.computers.iter().all(|c| {
-                        c.version == "0.2.0"
-                            && (c.connection == ConnectionState::SelfComputer
-                                || c.connection == ConnectionState::Connected)
-                    })
-                    && !s
-                        .problems
-                        .iter()
-                        .any(|p| p.kind == ProblemKind::IncompatibleVersion)
-            })
-            .await;
+    let end = Instant::now() + WAIT;
+    loop {
+        let mut back = true;
+        let mut seen = Vec::new();
+        for name in NAMES {
+            let status = world.lab.node(name).status().await;
+            back &= status.computers.len() == 3
+                && status.computers.iter().all(|c| {
+                    c.version == "0.2.0"
+                        && (c.connection == ConnectionState::SelfComputer
+                            || c.connection == ConnectionState::Connected)
+                })
+                && !status
+                    .problems
+                    .iter()
+                    .any(|p| p.kind == ProblemKind::IncompatibleVersion);
+            // What each computer sees of the others, for a failure to name
+            // which link is missing and from which side.
+            let links: Vec<_> = status
+                .computers
+                .iter()
+                .map(|c| format!("{} {} {:?}", c.name, c.version, c.connection))
+                .collect();
+            seen.push(format!("{name} ({}): {links:?}", status.version));
+        }
+        if back {
+            break;
+        }
+        assert!(
+            Instant::now() < end,
+            "timed out waiting for every computer back on the desk at 0.2.0: {seen:#?}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
 
