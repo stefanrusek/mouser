@@ -79,6 +79,19 @@ fn encoded(script: &str) -> String {
     base64(&utf16)
 }
 
+/// The scheduled-task action that runs the PowerShell script at `path` in B's
+/// desktop session. PowerShell is a console program, and a console program that
+/// Task Scheduler starts on its own is handed to Windows Terminal (Windows 11's
+/// default terminal), which brings an open Terminal window to the front and
+/// takes the foreground from the J1 note window. Under `conhost.exe --headless`
+/// it gets a console with no window and nothing is handed over.
+pub fn task_action(path: &str) -> String {
+    format!(
+        "conhost.exe --headless powershell.exe -NoProfile -STA -ExecutionPolicy Bypass \
+         -WindowStyle Hidden -File {path}"
+    )
+}
+
 impl Computer {
     /// The ssh command that runs the PowerShell `script` on B.
     fn ssh(script: &str) -> Command {
@@ -186,15 +199,16 @@ impl Computer {
     /// runs them where the user is.
     pub fn interactive(self, name: &str, body: &str) {
         assert!(matches!(self, Self::B), "only B has a separate session");
+        let path = format!("{PUBLIC}\\mouser-j1-{name}.ps1");
         let script = format!(
-            "$p = '{PUBLIC}\\mouser-j1-{name}.ps1'; \
-             Set-Content -LiteralPath $p -Value {body}; \
+            "Set-Content -LiteralPath {path_q} -Value {body}; \
              schtasks /end /tn mouser-j1-{name} 2>&1 | Out-Null; \
-             schtasks /create /f /tn mouser-j1-{name} /sc once /st 00:00 /it \
-               /tr \"powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -File $p\"; \
+             schtasks /create /f /tn mouser-j1-{name} /sc once /st 00:00 /it /tr {action}; \
              if ($LASTEXITCODE) {{ exit $LASTEXITCODE }}; \
              schtasks /run /tn mouser-j1-{name}",
-            body = ps_quote(body)
+            path_q = ps_quote(&path),
+            body = ps_quote(body),
+            action = ps_quote(&task_action(&path))
         );
         let out = self.script(&script);
         assert!(

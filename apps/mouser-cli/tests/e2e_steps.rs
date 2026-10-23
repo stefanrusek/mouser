@@ -21,3 +21,5 @@ mod us2_cli;
 mod us3_cli;
 #[path = "e2e/world.rs"]
 mod world;
+#[path = "e2e/world_tests.rs"]
+mod world_tests;
