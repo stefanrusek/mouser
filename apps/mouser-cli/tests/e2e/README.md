@@ -62,7 +62,11 @@ icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant '
 4. Install Mouser (see "Install" below), launch it once by hand, and grant the
    prompts: the firewall prompt (private networks) and any input permission
    prompts. Then in Notepad Settings turn **off** "Open content from previous
-   session" (J1 force-closes Notepad between steps).
+   session", and set "Opening files" to "Open in a new window" if you can.
+   **Close every Notepad on B before a run**: Windows 11 Notepad is
+   single-process with tabs, so J1 refuses to start when any Notepad is running
+   (it would hand the file to that Notepad as a tab). J1 never kills Notepad; it
+   closes only the window it opened, by handle, after the file is saved.
 5. Find the installed paths and note them (the defaults the runner assumes are
    `%LOCALAPPDATA%\Mouser\mouser.exe` and `%LOCALAPPDATA%\Mouser\mouser-app.exe`):
 
@@ -127,8 +131,12 @@ wake, and the runner can drive both halves from the Mac.
 
 The runner starts Notepad on B inside the logged-in desktop session through a
 scheduled task (`schtasks /it`), because an SSH session has no desktop. The file
-is `C:\Users\Public\mouser-j1-note.txt`. Typing on the Mac while the pointer is on
-B goes to Notepad; Command-S arrives as Ctrl-S and saves; the runner reads the
+is `C:\Users\Public\mouser-j1-note.txt`. Notepad is maximised; after the pointer crosses, the
+runner moves it into the middle of B's display with the shared mouse and clicks,
+then asks B's desktop session for the foreground window and fails unless it is
+`mouser-j1-note.txt`. Typing on the Mac then goes to Notepad; Command-S (one
+`keystroke "s" using command down`, never a bare Command press) arrives as
+Ctrl-S and saves; the runner reads the
 file over SSH and compares it exactly. The CLI cannot observe received keys, so
 the file is the observation. The same mechanism starts the Mouser app on B.
 

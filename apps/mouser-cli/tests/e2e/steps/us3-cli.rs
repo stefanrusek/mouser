@@ -15,6 +15,7 @@ use crate::world::{Computer, J1World, env};
 
 #[when("the owner types a continuous passage for 60 seconds on computer A")]
 async fn types_passage(_world: &mut J1World) {
+    crate::us2_cli::focus_note();
     input::type_text(&input::continuous_passage());
 }
 

@@ -76,13 +76,49 @@ for (var i = 0; i < text.length; i++) {{ tap(codes[text[i]], 0); }}"
     ));
 }
 
-/// Press Command-S with real modifier key events.
-pub fn save() {
+/// Move the pointer by (`dx`, `dy`) points relative to where it is, in steps of
+/// at most 40 points, 8 ms apart. No warp: while the pointer is on computer B
+/// these deltas are what Mouser forwards.
+pub fn move_pointer_by(dx: i32, dy: i32) {
+    let steps = (dx.abs().max(dy.abs()) / 40).max(1);
+    let (sx, sy) = (dx / steps, dy / steps);
+    script(&format!(
+        "for (var i = 0; i < {steps}; i++) {{
+  var at = $.CGEventGetLocation($.CGEventCreate(null));
+  var e = $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, {{x: at.x + {sx}, y: at.y + {sy}}}, 0);
+  $.CGEventSetIntegerValueField(e, $.kCGMouseEventDeltaX, {sx});
+  $.CGEventSetIntegerValueField(e, $.kCGMouseEventDeltaY, {sy});
+  post(e);
+  pause(8);
+}}"
+    ));
+}
+
+/// Click the left button where the pointer is.
+pub fn click() {
     script(
-        "key(55, true, $.kCGEventFlagMaskCommand);
+        "var at = $.CGEventGetLocation($.CGEventCreate(null));
+post($.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseDown, at, 0));
 pause(KEY_MS);
-tap(1, $.kCGEventFlagMaskCommand);
-key(55, false, 0);",
+post($.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseUp, at, 0));
+pause(KEY_MS);",
+    );
+}
+
+/// Press Command-S as one keystroke with the Command modifier (System Events
+/// presses and releases Command around it). Nothing posts a bare Command key.
+pub fn save() {
+    let out = Computer::A.run(
+        "osascript",
+        &[
+            "-e",
+            "tell application \"System Events\" to keystroke \"s\" using command down",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "Command-S on computer A failed (Accessibility permission?): {}",
+        String::from_utf8_lossy(&out.stderr)
     );
 }
 

@@ -204,6 +204,33 @@ impl Computer {
         );
     }
 
+    /// Run `body` (PowerShell) like `interactive`, wait for it to finish and
+    /// return what it output. Used to ask B's desktop session questions an ssh
+    /// session cannot answer (the foreground window, the display size).
+    pub fn interactive_result(self, name: &str, body: &str) -> String {
+        let out = format!("{PUBLIC}\\mouser-j1-{name}.out");
+        let removed = self.script(&format!(
+            "Remove-Item -Force -ErrorAction SilentlyContinue '{out}'"
+        ));
+        assert!(removed.status.success(), "clear the {name} result on B");
+        self.interactive(
+            name,
+            &format!(
+                "$r = & {{ {body} }} | Out-String; \
+                 Set-Content -LiteralPath '{out}.tmp' -Value $r; \
+                 Move-Item -Force '{out}.tmp' '{out}'"
+            ),
+        );
+        self.wait_for(&format!("the {name} result from B's desktop"), |c| {
+            let read = c.script(&format!(
+                "if (Test-Path '{out}') {{ [Console]::Out.Write((Get-Content -Raw '{out}')) }} else {{ exit 3 }}"
+            ));
+            read.status
+                .success()
+                .then(|| String::from_utf8_lossy(&read.stdout).trim().to_string())
+        })
+    }
+
     /// The Mouser app exe on B.
     pub fn peer_app() -> String {
         env_or(
