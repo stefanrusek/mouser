@@ -26,10 +26,12 @@ async fn silence_for_the_idle_timeout_is_reconnecting() {
     let (a, b) = (&nodes[0], &nodes[1]);
     let started = Instant::now();
     b.sim.as_ref().unwrap().set_blackhole(true);
+    // The idle timeout counts from the last packet received, sent up to one
+    // keep-alive interval before the blackhole began, so it may fire that early.
     let seen = wait_connection(a, b, ConnectionState::Reconnecting).await;
     let took = started.elapsed();
     assert!(
-        took >= Duration::from_millis(2500) && took < Duration::from_secs(4),
+        took >= MAX_IDLE - KEEP_ALIVE && took < Duration::from_secs(4),
         "declared lost after {took:?}"
     );
     assert!(seen.last_seen.is_some(), "it says when it was last seen");
