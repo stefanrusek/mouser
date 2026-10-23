@@ -332,8 +332,9 @@ pub(crate) fn probe_hooks_with(
     Outcome::Unseen
 }
 
-/// Said when the hooks are judged lost; withdrawn after the next probe gets through.
-pub(crate) const LOST_HOLD: &str = "Mouser lost its hold on the keyboard and mouse and took it back; \
+/// Said when the hooks are judged lost; withdrawn after the next probe gets
+/// through. The app keeps it out of system notifications, by this text.
+pub const LOST_HOLD: &str = "Mouser lost its hold on the keyboard and mouse and took it back; \
                          input may have briefly leaked to this PC.";
 
 /// Tells hooks the system took away from a guest that merely stalled. A probe

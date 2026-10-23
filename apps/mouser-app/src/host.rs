@@ -3,11 +3,15 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use mouser_core::release::{CheckSchedule, Installer};
 use mouser_core::{ControlHandle, Engine, EngineParams};
 use mouser_platform::Platform;
+use mouser_proto::control::Notification;
 use serde_json::Value;
+
+use crate::notify::{Notifier, Toasts};
 
 /// The running engine and the platform it runs on.
 pub struct Host {
@@ -20,6 +24,8 @@ pub struct Host {
     transfers: Mutex<Vec<Value>>,
     /// The problem id of the edge the arranger should open next.
     arranger_edge: Mutex<Option<String>>,
+    /// Which problems were shown as system notifications, and when.
+    toasts: Mutex<Toasts>,
 }
 
 /// How this host takes part in updates. The default takes no part: no
@@ -62,6 +68,7 @@ impl Host {
             platform,
             transfers: Mutex::new(Vec::new()),
             arranger_edge: Mutex::new(None),
+            toasts: Mutex::new(Toasts::default()),
         }
     }
 
@@ -76,6 +83,15 @@ impl Host {
             Some(known) => *known = transfer,
             None => transfers.push(transfer),
         }
+    }
+
+    /// Show the problem in `note` through `notifier` if it needs the owner
+    /// and was not shown lately.
+    pub fn toast(&self, note: &Notification, notifier: &dyn Notifier) {
+        self.toasts
+            .lock()
+            .unwrap()
+            .bridge(note, Instant::now(), notifier);
     }
 
     /// The latest notification of every transfer so far.

@@ -36,7 +36,7 @@ pub fn handle<R: Runtime>(
             serde_json::from_value(note.params.clone()).expect("status matches its schema"),
         ),
         Topic::JoinRequest => windows::show(app, Which::Join),
-        Topic::Problem => notify::bridge(&note, notifier),
+        Topic::Problem => app.state::<Host>().toast(&note, notifier),
         Topic::Transfer => {
             // Progress opens the window once; a question or a stop always brings it forward.
             let state = note.params["state"]

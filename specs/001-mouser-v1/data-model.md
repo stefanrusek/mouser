@@ -139,7 +139,7 @@ Interruption (orchestrator decision 2026-10-21; the spec is silent): if the othe
 | fix | optional FixAction: open_system_settings(kind), approve_join, open_update, cross_anyway_hint, open_arranger_edge |
 | raised_at, cleared_at | |
 
-Shown in health panel (Story 8) and, for kinds the spec lists, as a notification.
+Shown in health panel (Story 8) and announced on the `problem` control topic. The app turns a raised problem into an operating-system notification only if the owner has to act on it: never for `crossing_blocked`, nor for the Windows watchdog's self-healed "lost its hold" platform problem (matched by its text, `mouser_platform_windows::LOST_HOLD`). Each `problem_id` is shown at most once per raise and not again within 10 minutes of the last time it was shown (`QUIET_FOR`), however often it clears and is raised again (spec clarification 2026-10-23).
 
 ## Settings (per computer, plus desk-shared)
 

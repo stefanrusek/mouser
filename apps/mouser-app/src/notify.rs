@@ -1,8 +1,12 @@
-//! The OS-notification bridge: raised problems also reach the owner as a
-//! system notification.
+//! The OS-notification bridge: a raised problem that needs the owner to act
+//! also reaches them as a system notification, once per raise and at most
+//! once per [`QUIET_FOR`]. Every problem still shows in the health panel.
+
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use mouser_core::ControlHandle;
-use mouser_proto::control::{Method, Notification, Problem, Topic};
+use mouser_proto::control::{Method, Notification, Problem, ProblemKind, Topic};
 use serde_json::json;
 
 /// Shows a system notification.
@@ -17,24 +21,68 @@ pub struct Notice {
     pub body: String,
 }
 
-/// The notification for a newly raised problem; none for other topics or
-/// for a problem that was just cleared.
-pub fn notice(note: &Notification) -> Option<Notice> {
-    if note.method != Topic::Problem {
-        return None;
-    }
-    let problem: Problem =
-        serde_json::from_value(note.params.clone()).expect("problem matches its schema");
-    problem.cleared_at.is_none().then(|| Notice {
-        title: "Mouser needs your attention".into(),
-        body: problem.message,
-    })
+/// How long a problem that was shown stays quiet, even if it clears and is
+/// raised again meanwhile.
+pub const QUIET_FOR: Duration = Duration::from_secs(10 * 60);
+
+/// What the Windows capture watchdog says after it took the hooks back. It
+/// healed by itself, so it is left to the health panel.
+pub const LOST_HOLD: &str = "Mouser lost its hold on the keyboard and mouse and took it back; \
+                         input may have briefly leaked to this PC.";
+
+/// Whether `problem` needs the owner to act, which is what a system
+/// notification is for. A blocked crossing already shows where it happened,
+/// and a hold the watchdog took back has fixed itself; both stay in the
+/// health panel and the log.
+fn needs_owner(problem: &Problem) -> bool {
+    problem.kind != ProblemKind::CrossingBlocked && problem.message != LOST_HOLD
 }
 
-/// Show `note` as a system notification if it is a new problem.
-pub fn bridge(note: &Notification, notifier: &dyn Notifier) {
-    if let Some(notice) = notice(note) {
-        notifier.show(&notice.title, &notice.body);
+/// Which problems were shown, so none is shown twice while it stays open
+/// and none again within [`QUIET_FOR`] of the last time it was shown.
+#[derive(Default)]
+pub struct Toasts {
+    /// Problems raised and not yet cleared.
+    open: HashSet<String>,
+    /// When each problem was last shown.
+    shown: HashMap<String, Instant>,
+}
+
+impl Toasts {
+    /// The notification for `note` arriving at `now`: one for a problem that
+    /// was just raised, needs the owner, and was not shown lately; none for
+    /// anything else.
+    pub fn notice(&mut self, note: &Notification, now: Instant) -> Option<Notice> {
+        if note.method != Topic::Problem {
+            return None;
+        }
+        let problem: Problem =
+            serde_json::from_value(note.params.clone()).expect("problem matches its schema");
+        if problem.cleared_at.is_some() {
+            self.open.remove(&problem.problem_id);
+            return None;
+        }
+        let newly_raised = self.open.insert(problem.problem_id.clone());
+        let lately = self
+            .shown
+            .get(&problem.problem_id)
+            .is_some_and(|at| now.duration_since(*at) < QUIET_FOR);
+        if !newly_raised || lately || !needs_owner(&problem) {
+            return None;
+        }
+        self.shown.insert(problem.problem_id, now);
+        Some(Notice {
+            title: "Mouser needs your attention".into(),
+            body: problem.message,
+        })
+    }
+
+    /// Show `note`, arriving at `now`, as a system notification if
+    /// [`Toasts::notice`] makes one of it.
+    pub fn bridge(&mut self, note: &Notification, now: Instant, notifier: &dyn Notifier) {
+        if let Some(notice) = self.notice(note, now) {
+            notifier.show(&notice.title, &notice.body);
+        }
     }
 }
 

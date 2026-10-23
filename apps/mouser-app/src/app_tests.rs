@@ -48,13 +48,17 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
 
     handle(&handle_, &tray, &notifier, problem_note(false));
     assert_eq!(notifier.shown.lock().unwrap().len(), 1);
+    // Cleared and raised again at once: it was just shown, so not again.
+    handle(&handle_, &tray, &notifier, problem_note(true));
+    handle(&handle_, &tray, &notifier, problem_note(false));
+    assert_eq!(notifier.shown.lock().unwrap().len(), 1);
 
     handle(&handle_, &tray, &notifier, transfer_note("copying"));
     assert_eq!(notifier.shown.lock().unwrap().len(), 1);
     assert_eq!(port.views.lock().unwrap().len(), 1);
     assert!(has_window(&handle_, "transfer"));
 
-    eventually(|| *events.lock().unwrap() == 4).await;
+    eventually(|| *events.lock().unwrap() == 6).await;
 }
 
 fn transfer_note(state: &str) -> Notification {

@@ -32,6 +32,8 @@ mod secrets;
 mod uipi;
 mod vfiles;
 
+pub use capture::LOST_HOLD;
+
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
