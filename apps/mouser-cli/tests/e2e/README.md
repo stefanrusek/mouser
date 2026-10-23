@@ -134,9 +134,12 @@ scheduled task (`schtasks /it`), because an SSH session has no desktop. The file
 is `C:\Users\Public\mouser-j1-note.txt`. Notepad is maximised; after the pointer crosses, the
 runner moves it into the middle of B's display with the shared mouse and clicks,
 then asks B's desktop session for the foreground window and fails unless it is
-`mouser-j1-note.txt`. Typing on the Mac then goes to Notepad; Command-S (one
-`keystroke "s" using command down`, never a bare Command press) arrives as
-Ctrl-S and saves; the runner reads the
+`mouser-j1-note.txt`. Typing on the Mac then goes to Notepad; Command-S (left
+Command as a flags-changed event carrying its left-key bit, then S, posted at
+the HID tap like the letters; never System Events `keystroke`, which posts at
+the session tap after Mouser's HID tap and so bypasses Mouser) arrives as
+Ctrl-S and saves; the runner first fails if Secure Input is on on the Mac
+(it hides keys from every event tap, Mouser's included); the runner reads the
 file over SSH and compares it exactly. The CLI cannot observe received keys, so
 the file is the observation. The same mechanism starts the Mouser app on B.
 

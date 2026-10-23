@@ -1,10 +1,18 @@
 //! Hardware-level input on computer A, the controller, for journey J1.
 //!
 //! Mechanism: `osascript -l JavaScript` (stock macOS) bridges to CoreGraphics and
-//! posts mouse-move and key events at the HID event tap, the same level a
-//! physical mouse and keyboard enter at, so Mouser's capture sees them exactly
-//! as it sees real devices. Nothing is compiled or installed. The terminal (or
-//! whatever launches the test) needs Accessibility permission to post events.
+//! posts mouse and key events at the HID event tap, the same level a physical
+//! mouse and keyboard enter at, so Mouser's capture tap (also at the HID tap)
+//! sees them exactly as it sees real devices. Every key event is built the way
+//! Mouser's own injector builds them (crates/mouser-platform-macos/src/inject.rs):
+//! from an `HIDSystemState` source, with its modifier flags set explicitly as a
+//! hardware keyboard reports them (a modifier key is a flags-changed event that
+//! carries its device left/right bit, not only the device-independent flag), so
+//! nothing inherits whatever modifier state the system had. AppleScript's System
+//! Events `keystroke` is never used: it posts at the session tap, after Mouser's
+//! HID tap, so Mouser never sees it and it goes to the Mac's frontmost app.
+//! Nothing is compiled or installed. The terminal (or whatever launches the
+//! test) needs Accessibility permission to post events.
 
 use std::time::Duration;
 
@@ -19,12 +27,26 @@ pub fn continuous_passage() -> String {
 /// Pause between key presses, per key down and up (30 ms per character).
 const KEY_MS: u32 = 15;
 
+/// `kCGEventFlagMaskCommand | NX_DEVICELCMDKEYMASK`: what a hardware keyboard
+/// reports while the left Command key is down.
+const LEFT_COMMAND_DOWN: u32 = 0x0010_0008;
+
+/// Numeric CoreGraphics constants (JXA exposes some named ones as strings):
+/// `kCGEventSourceStateHIDSystemState` 1, `kCGHIDEventTap` 0,
+/// `kCGEventFlagsChanged` 12, `kCGEventFlagMaskNonCoalesced` 0x100.
 const PRELUDE: &str = "ObjC.import('ApplicationServices'); ObjC.import('Foundation');
-function post(e) { $.CGEventPost($.kCGHIDEventTap, e); }
+var SRC = $.CGEventSourceCreate(1);
+function post(e) { $.CGEventPost(0, e); }
 function pause(ms) { $.NSThread.sleepForTimeInterval(ms / 1000); }
 function key(code, down, flags) {
-  var e = $.CGEventCreateKeyboardEvent(null, code, down);
-  if (flags) { $.CGEventSetFlags(e, flags); }
+  var e = $.CGEventCreateKeyboardEvent(SRC, code, down);
+  $.CGEventSetFlags(e, flags | 0x100);
+  post(e);
+}
+function modifier(code, down, flags) {
+  var e = $.CGEventCreateKeyboardEvent(SRC, code, down);
+  $.CGEventSetType(e, 12);
+  $.CGEventSetFlags(e, flags | 0x100);
   post(e);
 }
 function tap(code, flags) { key(code, true, flags); pause(KEY_MS); key(code, false, flags); pause(KEY_MS); }
@@ -67,6 +89,7 @@ pub fn type_text(text: &str) {
             .all(|c| c == ' ' || c.is_ascii_lowercase() || c.is_ascii_digit()),
         "only lowercase letters, digits and spaces can be typed: {text:?}"
     );
+    assert_no_secure_input();
     script(&format!(
         "var codes = {{a:0,s:1,d:2,f:3,h:4,g:5,z:6,x:7,c:8,v:9,b:11,q:12,w:13,e:14,r:15,y:16,t:17,
   '1':18,'2':19,'3':20,'4':21,'6':22,'5':23,'9':25,'7':26,'8':28,'0':29,o:31,u:32,i:34,p:35,l:37,
@@ -105,20 +128,34 @@ pause(KEY_MS);",
     );
 }
 
-/// Press Command-S as one keystroke with the Command modifier (System Events
-/// presses and releases Command around it). Nothing posts a bare Command key.
+/// Press Command-S as a keyboard does: left Command down (a flags-changed
+/// event carrying Command and its left-key bit), S down and up with those
+/// flags, Command up with no flags. Mouser forwards Command as Control to B.
 pub fn save() {
-    let out = Computer::A.run(
-        "osascript",
-        &[
-            "-e",
-            "tell application \"System Events\" to keystroke \"s\" using command down",
-        ],
-    );
+    assert_no_secure_input();
+    script(&format!(
+        "modifier(55, true, {LEFT_COMMAND_DOWN});
+pause(KEY_MS);
+tap(1, {LEFT_COMMAND_DOWN});
+modifier(55, false, 0);
+pause(KEY_MS);"
+    ));
+}
+
+/// Fail fast when Secure Input is on on computer A: the OS then hides every key
+/// from event taps, Mouser's included, so typed keys would go to the Mac's
+/// frontmost app instead of computer B (pointer events are unaffected).
+fn assert_no_secure_input() {
+    let out = Computer::A.run("ioreg", &["-l", "-w", "0"]);
+    assert!(out.status.success(), "ioreg on computer A failed");
+    let holder = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find(|line| line.contains("kCGSSessionSecureInputPID"))
+        .map(str::to_string);
     assert!(
-        out.status.success(),
-        "Command-S on computer A failed (Accessibility permission?): {}",
-        String::from_utf8_lossy(&out.stderr)
+        holder.is_none(),
+        "Secure Input is on on computer A, so Mouser cannot see typed keys: {}",
+        holder.unwrap_or_default().trim()
     );
 }
 
