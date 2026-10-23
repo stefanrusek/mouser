@@ -177,4 +177,108 @@ mod on_the_wire {
         .await;
         assert!(a.platform.is_grabbed());
     }
+
+    /// Alpha's shared mouse drives Beta, holding A there.
+    async fn alpha_drives_beta(a: &TestNode, b: &TestNode) {
+        push_right(a);
+        eventually("the grab", || async { a.platform.is_grabbed() }).await;
+        a.platform.send_input(LocalInput::Key {
+            usage: A,
+            down: true,
+        });
+        injected_where(&b.platform, "the held key", |i| {
+            *i == Injected::Key {
+                usage: A,
+                down: true,
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn two_escapes_on_the_controlled_computer_bring_the_controller_home() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+        let (a, b) = (&nodes[0], &nodes[1]);
+        alpha_drives_beta(a, b).await;
+        tap(b, ESC);
+        tap(b, ESC);
+        eventually("Alpha to stop forwarding", || async {
+            !a.platform.is_grabbed()
+        })
+        .await;
+        injected_where(&b.platform, "the release", |i| {
+            *i == Injected::Key {
+                usage: A,
+                down: false,
+            }
+        })
+        .await;
+        assert!(!b.platform.is_grabbed());
+    }
+
+    #[tokio::test]
+    async fn two_escapes_on_an_uninvolved_computer_bring_the_controller_home() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta", "Gamma"]).await;
+        let (a, b, c) = (&nodes[0], &nodes[1], &nodes[2]);
+        alpha_drives_beta(a, b).await;
+        tap(c, ESC);
+        tap(c, ESC);
+        eventually("Alpha to stop forwarding", || async {
+            !a.platform.is_grabbed()
+        })
+        .await;
+        injected_where(&b.platform, "the release", |i| {
+            *i == Injected::Key {
+                usage: A,
+                down: false,
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn the_controller_panicking_tells_every_desk_mate() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta", "Gamma"]).await;
+        let (a, b, c) = (&nodes[0], &nodes[1], &nodes[2]);
+        alpha_drives_beta(a, b).await;
+        tap(a, ESC);
+        tap(a, ESC);
+        eventually("control to come home", || async {
+            !a.platform.is_grabbed()
+        })
+        .await;
+        // Gamma, which nothing was driving, changes nothing.
+        settle().await;
+        assert!(!c.platform.is_grabbed());
+        assert!(
+            c.platform.injected().is_empty(),
+            "{:?}",
+            c.platform.injected()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_controlled_computer_crossing_back_with_its_own_mouse_takes_over() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+        let (a, b) = (&nodes[0], &nodes[1]);
+        alpha_drives_beta(a, b).await;
+        push_left(b);
+        eventually("Beta to drive Alpha", || async { b.platform.is_grabbed() }).await;
+        eventually("Alpha to stop forwarding", || async {
+            !a.platform.is_grabbed()
+        })
+        .await;
+        // What Alpha held on Beta is let go when Beta's own devices take over.
+        injected_where(&b.platform, "the release", |i| {
+            *i == Injected::Key {
+                usage: A,
+                down: false,
+            }
+        })
+        .await;
+    }
 }

@@ -91,7 +91,7 @@ While Reconnecting/Offline and the peer was the active computer: control returns
 | pressed | set of held keys + buttons, so releases can be synthesized on switch/loss (edge case: no stuck keys). |
 | seq | u64 per-session input sequence number (Story 3 sc. 1 ordering). |
 
-Transitions: `Local → Remote(c)` on crossing/QuickJump; `Remote(c) → Local` on panic key, crossing back, or loss of c; `Remote(c) → Remote(d)` on crossing between remote displays. Every transition releases all `pressed` on the computer being left.
+Transitions: `Local → Remote(c)` on crossing/QuickJump; `Remote(c) → Local` on panic key, crossing back, or loss of c; `Remote(c) → Remote(d)` on crossing between remote displays. `Remote(c) → Local` also when any computer enters this one (`Enter`), e.g. c's own mouse crossing back onto it: another computer's devices now drive this one, so its grab ends, its pointer is shown again and nothing more is forwarded. A computer that starts controlling (`Local → Remote(c)`) stops receiving from whoever was driving it, releasing what that controller held. The panic key pressed on any computer, whatever its state, resets the whole desk: that computer returns to Local and releases what it received, and sends `Panic` to every desk-mate; a computer receiving `Panic` releases what the sender held there and, if it is `Remote(_)`, returns to Local (telling the computer it controlled with `ReleaseAll`). Peers before 0.2.6 treat `Panic` from a computer they are not receiving from as a no-op. Every transition releases all `pressed` on the computer being left.
 
 ### Pause (Story 2 sc. 12)
 

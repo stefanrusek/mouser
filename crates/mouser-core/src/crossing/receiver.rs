@@ -7,6 +7,7 @@ use mouser_proto::model::{DisplayId, Os};
 use mouser_proto::wire::{MotionDatagram, display_id_hash};
 
 use super::buttons::{self, Action};
+use super::controller::Return;
 use super::modifiers::map_usage;
 use super::ordering::Sequencer;
 use super::state::Pressed;
@@ -66,6 +67,11 @@ impl Crossing {
             })?
             .origin_local;
         self.end_receiving();
+        // Another computer's own devices now drive this one, as when the
+        // computer we were controlling crosses back onto us with its mouse:
+        // our grab ends (showing our pointer again) and nothing more is
+        // forwarded, as after the panic key.
+        self.return_local(Return::Release, None);
         // A computer that cannot inject input cannot be controlled.
         let Some(io) = self.io.as_mut() else {
             return Ok(());

@@ -401,9 +401,8 @@ impl Ctx {
             }
             ControlMessage::SecureAttention => self.input(peer, |c| c.on_secure_attention(peer)),
             ControlMessage::QuickJumpHide => self.input(peer, |c| c.on_quickjump_hide()),
-            ControlMessage::ReleaseAll { .. } | ControlMessage::Panic => {
-                self.input(peer, |c| c.on_release_all(peer))
-            }
+            ControlMessage::ReleaseAll { .. } => self.input(peer, |c| c.on_release_all(peer)),
+            ControlMessage::Panic => self.input(peer, |c| c.on_panic(peer)),
             other => Err(format!("unexpected message {other:?}")),
         }
     }

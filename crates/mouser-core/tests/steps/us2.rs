@@ -784,6 +784,46 @@ async fn control_returns_home(w: &mut CrossWorld) {
     assert_eq!(active, None);
 }
 
+// ---- scenario 8 (whole desk): panic from any computer -------------------------------------------------
+
+#[given("the pointer and a held key are on another computer, moved there with the shared mouse")]
+async fn pointer_and_key_on_another_computer(w: &mut CrossWorld) {
+    pointer_on_another_computer(w).await;
+}
+
+#[when("the desk user presses the panic key on the keyboard of the computer the pointer is on")]
+async fn presses_panic_on_the_controlled_computer(w: &mut CrossWorld) {
+    let beta = w.platform("Beta");
+    for _ in 0..2 {
+        assert!(beta.send_input(key(ESC, true)), "Beta is not grabbed");
+        assert!(beta.send_input(key(ESC, false)));
+    }
+}
+
+#[then(
+    "every computer on the desk returns to its own mouse and keyboard and nothing stays held down"
+)]
+async fn every_computer_returns_home(w: &mut CrossWorld) {
+    let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
+    until("Alpha to stop forwarding", || !alpha.is_grabbed()).await;
+    injected(&beta, "Beta to release the held key", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: false,
+        }
+    })
+    .await;
+    for name in ["Alpha", "Beta"] {
+        let node = w.lab.node(name);
+        node.wait_status("no computer is driven from elsewhere", |s| {
+            s.active_computer.is_none()
+        })
+        .await;
+    }
+    assert!(alpha.send_input(key(C, true)), "Alpha types here again");
+    assert!(!beta.is_grabbed(), "Beta's own devices act on Beta");
+}
+
 // ---- scenario 9: landing highlight -----------------------------------------------------------------
 
 #[given("the pointer crosses to another computer")]
@@ -1243,6 +1283,58 @@ async fn local_input_acts_locally(w: &mut CrossWorld) {
         }
     })
     .await;
+}
+
+// ---- edge case: the controlled computer's own mouse crosses back -------------------------------------------------
+
+#[given("the pointer is on another computer, moved there with the shared mouse")]
+async fn moved_there_with_the_shared_mouse(w: &mut CrossWorld) {
+    w.default_desk(&["Alpha", "Beta"]).await;
+    let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
+    push_right(&alpha);
+    injected(&beta, "Beta entered", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    assert!(alpha.is_grabbed(), "Alpha forwards and hides its pointer");
+}
+
+#[when("the mouse attached to that computer pushes its pointer back across the edge")]
+async fn local_mouse_crosses_back(w: &mut CrossWorld) {
+    push_left(&w.platform("Beta"));
+}
+
+#[then(
+    "the computer with the shared mouse stops forwarding its input, shows its own pointer again, and is driven by the other computer's mouse"
+)]
+async fn shared_mouse_computer_is_driven(w: &mut CrossWorld) {
+    let (alpha, beta) = (w.platform("Alpha"), w.platform("Beta"));
+    injected(&alpha, "Beta's mouse to enter Alpha", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    until("Beta to take over", || beta.is_grabbed()).await;
+    // Alpha's grab, which hides its pointer, ends, as after the panic key.
+    until("Alpha to stop forwarding", || !alpha.is_grabbed()).await;
+    let alpha_id = w.lab.node("Alpha").id();
+    let active = w.lab.node("Alpha").status().await.active_computer;
+    assert_eq!(active, Some(alpha_id), "Alpha no longer drives Beta");
+    // Beta's mouse and keyboard now drive Alpha.
+    beta.send_input(key(C, true));
+    injected(&alpha, "Beta's keyboard on Alpha", |i| {
+        *i == Injected::Key {
+            usage: C,
+            down: true,
+        }
+    })
+    .await;
+    assert!(
+        !beta.injected().contains(&Injected::Key {
+            usage: C,
+            down: true
+        }),
+        "Beta's own key is not echoed back to it"
+    );
 }
 
 // ---- edge case: docked or undocked --------------------------------------------------------------------------------------

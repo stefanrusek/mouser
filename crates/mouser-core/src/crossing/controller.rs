@@ -5,6 +5,7 @@
 use std::time::Instant;
 
 use mouser_platform::LocalInput;
+use mouser_proto::ids::ComputerId;
 use mouser_proto::wire::ControlMessage;
 
 use super::Crossing;
@@ -42,8 +43,33 @@ impl Crossing {
             self.pointer = abs;
             self.cross_from_local(dx, dy, abs, now);
         } else if let LocalInput::Key { usage, down: true } = input {
+            if self.panic.pressed(usage, now) {
+                self.panic_desk();
+            }
             self.clipboard_keys(&self.session.held.keys, usage);
         }
+    }
+
+    /// The panic key, pressed on this computer's own keyboard: every computer
+    /// on the desk goes back to its own devices. Control here comes back and
+    /// what a controller sent here is released, and every desk-mate is told
+    /// with `Panic` to do the same.
+    fn panic_desk(&mut self) {
+        let controlled = self.session.remote();
+        self.return_local(Return::Panic, None);
+        self.end_receiving();
+        for (computer, wire) in &self.map.wires {
+            if Some(*computer) != controlled {
+                wire.send(ControlMessage::Panic);
+            }
+        }
+    }
+
+    /// `Panic` from `from`: the panic key was pressed on a desk-mate. What it
+    /// sent here is released and control that is elsewhere comes back here.
+    pub fn on_panic(&mut self, from: ComputerId) {
+        self.on_release_all(from);
+        self.return_local(Return::Release, None);
     }
 
     /// The pointer pushes past the edge of one of this computer's displays.
@@ -112,6 +138,9 @@ impl Crossing {
         let display = target.display.display_id.clone();
         let (x, y) = edges::to_local(target, at);
         let wire = self.map.wires[&display.computer].clone();
+        // This computer's own devices take over: whoever was driving it stops
+        // being obeyed (what it held is released here).
+        self.end_receiving();
         // Where input cannot be grabbed (Wayland) the platform's capture is
         // driven by the screen edge instead.
         let io = self.io.as_mut().expect("input is running");
@@ -185,7 +214,7 @@ impl Crossing {
             }
             LocalInput::Key { usage, down } => {
                 if down && self.panic.pressed(usage, now) {
-                    self.return_local(Return::Panic, None);
+                    self.panic_desk();
                 } else if self.was_sent(down, |s| s.keys.insert(usage), |s| s.keys.remove(&usage)) {
                     let seq = self.session.next_seq();
                     let modifiers = held_modifiers(&self.session.held.keys);

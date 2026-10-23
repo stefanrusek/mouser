@@ -41,6 +41,11 @@ Feature: As a desk user, I want one mouse and keyboard to drive every computer o
     When the desk user presses the panic key
     Then the pointer and keyboard return to the computer they are physically at
 
+  Scenario: Story 2 scenario 8 (whole desk): the panic key works from any computer
+    Given the pointer and a held key are on another computer, moved there with the shared mouse
+    When the desk user presses the panic key on the keyboard of the computer the pointer is on
+    Then every computer on the desk returns to its own mouse and keyboard and nothing stays held down
+
   Scenario: Story 2 scenario 9: arrival highlight
     Given the pointer crosses to another computer
     When it arrives
@@ -90,6 +95,11 @@ Feature: As a desk user, I want one mouse and keyboard to drive every computer o
     Given a mouse or keyboard is attached directly to the active computer
     When it is used
     Then its input acts on that computer, the same as the shared mouse and keyboard
+
+  Scenario: Edge case: the controlled computer's own mouse crosses back
+    Given the pointer is on another computer, moved there with the shared mouse
+    When the mouse attached to that computer pushes its pointer back across the edge
+    Then the computer with the shared mouse stops forwarding its input, shows its own pointer again, and is driven by the other computer's mouse
 
   Scenario: Edge case: docked or undocked display change
     Given a computer joins with a different screen arrangement than last time (for example a laptop docked or undocked)
