@@ -251,11 +251,8 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
 }
 
 /// The first reason in `checks` that holds.
-pub(crate) fn first_reason(checks: &[(Skip, &dyn Fn() -> bool)]) -> Option<Skip> {
-    checks
-        .iter()
-        .find(|(_, holds)| holds())
-        .map(|(why, _)| *why)
+pub(crate) fn first_reason(checks: &[(Skip, bool)]) -> Option<Skip> {
+    checks.iter().find(|(_, holds)| *holds).map(|(why, _)| *why)
 }
 
 /// Whether nobody used the PC since the last probe: the system's last-input
@@ -350,11 +347,12 @@ pub(crate) fn process_name(pid: u32) -> Option<String> {
     path.rsplit('\\').next().map(str::to_string)
 }
 
-/// The foreground window's program, `?` when there is none or it cannot be read.
+/// The foreground window's program, empty when there is none or it cannot
+/// be read.
 pub(crate) fn foreground_process() -> String {
     let mut pid = 0;
     unsafe { GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid)) };
-    process_name(pid).unwrap_or_else(|| "?".into())
+    process_name(pid).unwrap_or_default()
 }
 
 /// The real PC.
@@ -366,12 +364,12 @@ pub(crate) struct Desk {
 
 impl Surroundings for Desk {
     fn skip(&mut self) -> Option<Skip> {
-        let after_last_probe = self.after_last_probe;
+        // All asked every time: each is cheap, and the watchdog asks every few seconds.
         first_reason(&[
-            (Skip::Locked, &session_locked),
-            (Skip::OtherDesktop, &other_desktop),
-            (Skip::Elevated, &crate::uipi::foreground_elevated),
-            (Skip::Idle, &|| idle(after_last_probe, last_input())),
+            (Skip::Locked, session_locked()),
+            (Skip::OtherDesktop, other_desktop()),
+            (Skip::Elevated, crate::uipi::foreground_elevated()),
+            (Skip::Idle, idle(self.after_last_probe, last_input())),
         ])
     }
 
