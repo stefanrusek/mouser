@@ -406,6 +406,54 @@ fn while_grabbed_input_is_swallowed_and_the_cursor_stays_parked() {
     put_cursor(home);
 }
 
+/// The motion reported for the next untagged move straight down.
+fn next_motion_down(rx: &Receiver<LocalInput>) -> (f64, f64) {
+    mouse(MOUSEEVENTF_MOVE, 0, 4, 0);
+    let LocalInput::Motion { dx, dy, .. } = next(rx, |i| matches!(i, LocalInput::Motion { .. }))
+    else {
+        unreachable!()
+    };
+    (dx, dy)
+}
+
+#[test]
+fn a_move_that_got_past_the_grab_does_not_skew_the_ones_after() {
+    let _live = crate::live_input();
+    let home = cursor();
+    put_cursor((400, 400));
+    let (mut capture, rx) = started(no_problems());
+    capture.set_grabbed(true).unwrap();
+    // A move the hook did not swallow (one that came just before the grab
+    // took hold, or one the system let past a slow hook) leaves the cursor
+    // off the point it was parked at. `SetCursorPos` stands in for it: it
+    // moves the cursor without reaching the hooks.
+    put_cursor((460, 400));
+    for _ in 0..3 {
+        let (dx, dy) = next_motion_down(&rx);
+        assert_eq!(dx, 0.0, "a move straight down goes straight down");
+        assert!(dy > 0.0, "{dy}");
+    }
+    capture.stop();
+    put_cursor(home);
+}
+
+#[test]
+fn motion_after_the_cursor_was_placed_is_measured_from_where_it_is() {
+    let _live = crate::live_input();
+    let home = cursor();
+    put_cursor((400, 400));
+    let (mut capture, rx) = started(no_problems());
+    next_motion_down(&rx);
+    // Another computer drives this one: Mouser places the cursor, which the
+    // hooks never see. The owner's own next move must not count the jump.
+    put_cursor((400, 700));
+    let (dx, dy) = next_motion_down(&rx);
+    assert_eq!(dx, 0.0);
+    assert!(dy > 0.0 && dy < 100.0, "{dy}");
+    capture.stop();
+    put_cursor(home);
+}
+
 #[test]
 fn warping_moves_and_re_parks_the_cursor() {
     let _live = crate::live_input();
