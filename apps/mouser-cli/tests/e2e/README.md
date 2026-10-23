@@ -61,12 +61,7 @@ icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant '
 
 4. Install Mouser (see "Install" below), launch it once by hand, and grant the
    prompts: the firewall prompt (private networks) and any input permission
-   prompts. Then in Notepad Settings turn **off** "Open content from previous
-   session", and set "Opening files" to "Open in a new window" if you can.
-   **Close every Notepad on B before a run**: Windows 11 Notepad is
-   single-process with tabs, so J1 refuses to start when any Notepad is running
-   (it would hand the file to that Notepad as a tab). J1 never kills Notepad; it
-   closes only the window it opened, by handle, after the file is saved.
+   prompts.
 5. Find the installed paths and note them (the defaults the runner assumes are
    `%LOCALAPPDATA%\Mouser\mouser.exe` and `%LOCALAPPDATA%\Mouser\mouser-app.exe`):
 
@@ -129,12 +124,18 @@ wake, and the runner can drive both halves from the Mac.
 
 ## How text on B is verified
 
-The runner starts Notepad on B inside the logged-in desktop session through a
-scheduled task (`schtasks /it`), because an SSH session has no desktop. The file
-is `C:\Users\Public\mouser-j1-note.txt`. Notepad is maximised; after the pointer crosses, the
-runner moves it into the middle of B's display with the shared mouse and clicks,
-then asks B's desktop session for the foreground window and fails unless it is
-`mouser-j1-note.txt`. Typing on the Mac then goes to Notepad; Command-S (left
+The runner starts a J1-owned note window on B inside the logged-in desktop
+session through a scheduled task (`schtasks /it`), because an SSH session has no
+desktop. It is a tiny PowerShell WinForms app (`j1-note.ps1`, copied to B as
+`C:\Users\Public\mouser-j1-note.ps1`): one maximised form titled
+`mouser-j1-note` holding a multiline text box. On Ctrl+S, and only then, it
+writes the text exactly (UTF-8, no BOM, no trailing newline) to
+`C:\Users\Public\mouser-j1-note.txt`; it records its window handle and process
+id in `mouser-j1-note.hwnd` and `.pid` next to it. J1 deletes those files before
+starting the window, clicks into it with the shared mouse, fails unless the
+foreground window is titled exactly `mouser-j1-note`, and at the end closes only
+that window by handle (WM_CLOSE) and checks its process exited; it never kills
+anything. Typing on the Mac then goes to the text box; Command-S (left
 Command as a flags-changed event carrying its left-key bit, then S, posted at
 the HID tap like the letters; never System Events `keystroke`, which posts at
 the session tap after Mouser's HID tap and so bypasses Mouser) arrives as

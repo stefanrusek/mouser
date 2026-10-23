@@ -190,7 +190,7 @@ impl Computer {
             "$p = '{PUBLIC}\\mouser-j1-{name}.ps1'; \
              Set-Content -LiteralPath $p -Value {body}; \
              schtasks /create /f /tn mouser-j1-{name} /sc once /st 00:00 /it \
-               /tr \"powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $p\"; \
+               /tr \"powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -File $p\"; \
              if ($LASTEXITCODE) {{ exit $LASTEXITCODE }}; \
              schtasks /run /tn mouser-j1-{name}",
             body = ps_quote(body)

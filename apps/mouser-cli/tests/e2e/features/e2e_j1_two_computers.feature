@@ -32,7 +32,7 @@ Feature: J1 two real computers on a LAN
     Then computer B is back on "Home office" with no action in Mouser
 
     # Story 2 scenarios 2 and 3: cross both ways and type
-    Given a plain text file is open in Notepad on computer B
+    Given a plain text file is open in a note window on computer B
     When the owner moves the pointer off the right edge of computer A's display
     Then the pointer is on computer B
     When the owner types "hello from computer a 123" on computer A
@@ -48,7 +48,7 @@ Feature: J1 two real computers on a LAN
     Then the pointer is back on computer A
 
     # Story 3 scenario 1: continuous typing
-    Given a plain text file is open in Notepad on computer B
+    Given a plain text file is open in a note window on computer B
     When the owner moves the pointer off the right edge of computer A's display
     Then the pointer is on computer B
     When the owner types a continuous passage for 60 seconds on computer A
@@ -61,7 +61,7 @@ Feature: J1 two real computers on a LAN
     When computer B is put to sleep
     And computer B wakes from sleep
     And 5 seconds pass
-    Given a plain text file is open in Notepad on computer B
+    Given a plain text file is open in a note window on computer B
     When the owner moves the pointer off the right edge of computer A's display
     Then the pointer is on computer B
     When the owner types "after wake 456" on computer A

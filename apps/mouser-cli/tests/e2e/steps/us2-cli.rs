@@ -4,9 +4,9 @@
 //! steps 5 and 6).
 //!
 //! Computer A's pointer and keyboard are driven by `input.rs`. Computer B shows
-//! what arrived in a plain-text file open in Notepad (started in the user's
+//! what arrived in the J1 note window (a tiny WinForms text box started in the user's
 //! desktop session by a scheduled task, see `Computer::interactive`); Command-S
-//! on A reaches Notepad as Ctrl-S, which saves, and the file is read back over
+//! on A reaches the window as Ctrl-S, whose handler saves the text, and the file is read back over
 //! SSH. Computer B is placed to the right of A by Mouser's automatic placement.
 
 use cucumber::{given, then, when};
@@ -15,7 +15,7 @@ use crate::input;
 use crate::us1_cli::status_where;
 use crate::world::{Computer, J1World};
 
-/// The file Notepad holds open on computer B.
+/// The file the note window writes on Ctrl+S on computer B.
 const NOTE: &str = r"C:\Users\Public\mouser-j1-note.txt";
 
 /// Far enough to cross any plausible pair of displays.
@@ -49,47 +49,30 @@ const WIN32: &str = r#"Add-Type -Namespace J1 -Name W -MemberDefinition '
 function Title($h) { $s = New-Object System.Text.StringBuilder 512; [void][J1.W]::GetWindowText($h, $s, 512); $s.ToString() };
 "#;
 
-/// Where B's desktop session leaves the handle of the Notepad window J1 opened.
+/// Where the note window leaves its handle and its process id.
 const NOTE_HWND: &str = r"C:\Users\Public\mouser-j1-note.hwnd";
+const NOTE_PID: &str = r"C:\Users\Public\mouser-j1-note.pid";
 
-#[given("a plain text file is open in Notepad on computer B")]
+/// The J1-owned note window (a tiny WinForms app, see `j1-note.ps1`).
+const NOTE_SCRIPT: &str = include_str!("../j1-note.ps1");
+
+#[given("a plain text file is open in a note window on computer B")]
 async fn note_open(_world: &mut J1World) {
-    let running = Computer::B
-        .script("Get-Process notepad -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }");
-    let pids = String::from_utf8_lossy(&running.stdout).trim().to_string();
-    assert!(
-        pids.is_empty(),
-        "Notepad is already running on computer B (pid {pids}); Windows 11 Notepad is \
-         single-process with tabs and J1 would add a tab to it and could disturb the \
-         owner's text. Close Notepad on B (or set Notepad's \"Opening files\" to \"Open \
-         in a new window\") and run J1 again. J1 never closes a Notepad it did not start."
-    );
-    let created = Computer::B.script(&format!("[IO.File]::WriteAllText('{NOTE}', '')"));
-    assert!(created.status.success(), "create the note on B");
-    let opened = Computer::B.interactive_result(
-        "note",
-        &format!(
-            "{WIN32} Remove-Item -Force -ErrorAction SilentlyContinue '{NOTE_HWND}'; \
-             Start-Process notepad.exe -ArgumentList '{NOTE}'; \
-             for ($i = 0; $i -lt 50; $i++) {{ \
-               $p = Get-Process notepad -ErrorAction SilentlyContinue | \
-                    Where-Object {{ $_.MainWindowTitle -like 'mouser-j1-note.txt*' }} | \
-                    Select-Object -First 1; \
-               if ($p) {{ break }}; Start-Sleep -Milliseconds 200 }}; \
-             if (-not $p) {{ 'NOWINDOW'; return }}; \
-             [void][J1.W]::ShowWindow($p.MainWindowHandle, 3); \
-             Set-Content -LiteralPath '{NOTE_HWND}' -Value $p.MainWindowHandle.ToInt64(); \
-             'OK'"
-        ),
-    );
-    assert_eq!(
-        opened, "OK",
-        "Notepad showed no window for the note on computer B"
-    );
+    let cleared = Computer::B.script(&format!(
+        "Remove-Item -Force -ErrorAction SilentlyContinue '{NOTE}', '{NOTE_HWND}', '{NOTE_PID}'"
+    ));
+    assert!(cleared.status.success(), "clear the note files on B");
+    Computer::B.interactive("note", NOTE_SCRIPT);
+    Computer::B.wait_for("the J1 note window to show on computer B", |c| {
+        let out = c.script(&format!(
+            "if ((Test-Path '{NOTE_HWND}') -and (Test-Path '{NOTE_PID}')) {{ exit 0 }} else {{ exit 3 }}"
+        ));
+        out.status.success().then_some(())
+    });
     input::settle(2);
 }
 
-/// With the pointer on B, give the J1 Notepad window keyboard focus by a real
+/// With the pointer on B, give the J1 note window keyboard focus by a real
 /// click from A's mouse in the middle of B's display (the window is maximised),
 /// then check the foreground window is the note.
 pub(crate) fn focus_note() {
@@ -113,7 +96,7 @@ pub(crate) fn focus_note() {
         &format!("{WIN32} Title ([J1.W]::GetForegroundWindow())"),
     );
     assert!(
-        title.starts_with("mouser-j1-note.txt"),
+        title == "mouser-j1-note",
         "the foreground window on computer B is {title:?}, not the J1 note; typing would go \
          to the wrong window"
     );
@@ -155,8 +138,8 @@ async fn file_contains(_world: &mut J1World, text: String) {
     read_back(&text);
 }
 
-/// Wait for the note on B to equal `expected`, then close the Notepad window
-/// J1 opened (only that window, by its handle, with a plain close request: the
+/// Wait for the note on B to equal `expected`, then close the note window
+/// J1 started (only that window, by its handle, with a plain close request: the
 /// file is already saved so there is no prompt) and remove the note.
 pub(crate) fn read_back(expected: &str) {
     let found = Computer::B.wait_for("the typed text to be saved on computer B", |c| {
@@ -171,7 +154,7 @@ pub(crate) fn read_back(expected: &str) {
         "close",
         &format!(
             "{WIN32} $h = [IntPtr][int64](Get-Content -Raw '{NOTE_HWND}'); \
-             if ((Title $h) -like '*mouser-j1-note.txt*') {{ \
+             if ((Title $h) -eq 'mouser-j1-note') {{ \
                [void][J1.W]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero); 'CLOSED' }} \
              else {{ 'GONE' }}"
         ),
@@ -180,13 +163,17 @@ pub(crate) fn read_back(expected: &str) {
         closed == "CLOSED" || closed == "GONE",
         "close the J1 note window on B: {closed}"
     );
-    Computer::B.wait_for("the J1 Notepad window to close on computer B", |c| {
-        c.script("if (Get-Process notepad -ErrorAction SilentlyContinue) { exit 1 }")
-            .status
-            .success()
-            .then_some(())
+    Computer::B.wait_for("the J1 note window to exit on computer B", |c| {
+        c.script(&format!(
+            "if (Get-Process -Id ([int](Get-Content -Raw '{NOTE_PID}')) -ErrorAction SilentlyContinue) {{ exit 1 }}"
+        ))
+        .status
+        .success()
+        .then_some(())
     });
-    let removed = Computer::B.script(&format!("Remove-Item -Force '{NOTE}', '{NOTE_HWND}'"));
+    let removed = Computer::B.script(&format!(
+        "Remove-Item -Force '{NOTE}', '{NOTE_HWND}', '{NOTE_PID}'"
+    ));
     assert!(removed.status.success(), "remove the note on B");
 }
 
