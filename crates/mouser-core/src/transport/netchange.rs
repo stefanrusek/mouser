@@ -9,7 +9,8 @@
 //!    physical LAN interfaces only, so a virtual adapter's addresses are
 //!    never advertised;
 //! 2. if the physical LAN addresses changed, the QUIC endpoint is rebound
-//!    (`Endpoint::rebind`) onto a new handle of its wildcard-bound socket,
+//!    (`Endpoint::rebind_abstract`) onto new handles of its wildcard-bound
+//!    sockets,
 //!    which migrates every connection this computer dialled to the new
 //!    address with one round trip, on the configured port;
 //! 3. and connections this computer accepted are dialled again (`redial`).
@@ -25,18 +26,16 @@ use crate::engine::Ctx;
 
 impl Transport {
     /// Tell the endpoint its path changed, keeping every connection. The
-    /// socket stays the one bound to the configured port on the wildcard
-    /// address (`[::]` or `0.0.0.0`), so the operating system sends from
+    /// sockets stay the ones bound to the configured port on the wildcard
+    /// addresses (`0.0.0.0` and `[::]`), so the operating system sends from
     /// whatever address the computer has now, and join-by-address and
-    /// firewall rules on that port keep working. The endpoint is handed a
-    /// fresh handle of that socket: that is what makes every connection
+    /// firewall rules on that port keep working. The endpoint is handed
+    /// fresh handles of those sockets: that is what makes every connection
     /// probe its path (QUIC migration, research R2). Returns the address.
     pub fn rebind(&self) -> SocketAddr {
-        let handle = self
-            .socket
-            .try_clone()
-            .expect("socket handle can be duplicated");
-        self.endpoint.rebind(handle).expect("endpoint can rebind");
+        self.endpoint
+            .rebind_abstract(self.sockets.quinn())
+            .expect("endpoint can rebind");
         self.local_addr()
     }
 }

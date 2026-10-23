@@ -26,8 +26,8 @@ fn hello(
 async fn links() -> (Identity, Identity, Link, Link) {
     let (ia, ib) = (Identity::from_seed([1; 32]), Identity::from_seed([2; 32]));
     let (a, b) = (
-        crate::testing::bind_loopback(&ia),
-        crate::testing::bind_loopback(&ib),
+        crate::transport::Transport::bind(&ia, 0),
+        crate::transport::Transport::bind(&ib, 0),
     );
     let to = std::net::SocketAddr::from(([127, 0, 0, 1], b.local_addr().port()));
     let (dialed, accepted) = crate::testing::handshake(&a, &b, to, Some(ib.computer_id())).await;

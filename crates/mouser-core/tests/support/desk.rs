@@ -185,7 +185,11 @@ fn free_port() -> u16 {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
     })
-    .find(|port| *port != DEFAULT_PORT && std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .find(|port| {
+        *port != DEFAULT_PORT
+            && std::net::UdpSocket::bind(("0.0.0.0", *port)).is_ok()
+            && std::net::UdpSocket::bind(("::", *port)).is_ok()
+    })
     .expect("an endless iterator")
 }
 

@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use mouser_proto::ids::ComputerId;
@@ -40,27 +40,30 @@ async fn connected() -> (
     Connection,
 ) {
     let (ia, ib) = (identity(1), identity(2));
-    let (a, b) = (
-        crate::testing::bind_loopback(&ia),
-        crate::testing::bind_loopback(&ib),
-    );
+    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
     let (dialed, accepted) =
         crate::testing::handshake(&a, &b, loopback(&b), Some(ib.computer_id())).await;
     (ia, ib, a, b, dialed, accepted)
 }
 
 #[tokio::test]
-async fn binds_the_dual_stack_wildcard() {
+async fn binds_both_wildcards_on_one_port() {
     let t = Transport::bind(&identity(1), 0);
     assert!(t.local_addr().ip().is_unspecified());
-    assert_ne!(t.local_addr().port(), 0);
+    let port = t.local_addr().port();
+    assert_ne!(port, 0);
+    assert!(std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_err());
+    assert!(super::udp_socket(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port))).is_err());
 }
 
 #[tokio::test]
-async fn falls_back_to_the_next_address_when_binding_fails() {
-    let unassigned: IpAddr = "2001:db8::1".parse().unwrap();
-    let t = Transport::bind_first(&identity(1), &[unassigned, Ipv4Addr::LOCALHOST.into()], 0);
-    assert_eq!(t.local_addr().ip(), IpAddr::from(Ipv4Addr::LOCALHOST));
+async fn ipv6_peers_are_reached_too() {
+    let (ia, ib) = (identity(1), identity(2));
+    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
+    let to = SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, b.local_addr().port()));
+    let (dialed, accepted) = crate::testing::handshake(&a, &b, to, Some(ib.computer_id())).await;
+    assert_eq!(dialed.remote_address(), to);
+    assert!(accepted.remote_address().is_ipv6());
 }
 
 #[tokio::test]
@@ -78,10 +81,7 @@ async fn the_connection_speaks_the_mouser_alpn_and_identifies_both_peers() {
 #[tokio::test]
 async fn a_peer_whose_key_is_not_the_expected_computer_is_rejected() {
     let (ia, ib) = (identity(1), identity(2));
-    let (a, b) = (
-        crate::testing::bind_loopback(&ia),
-        crate::testing::bind_loopback(&ib),
-    );
+    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
     let wrong = ComputerId([0xee; 16]);
     let to = loopback(&b);
     let server = tokio::spawn(async move { Transport::complete(b.accept().await.unwrap()).await });
@@ -96,10 +96,7 @@ async fn a_peer_whose_key_is_not_the_expected_computer_is_rejected() {
 #[tokio::test]
 async fn an_unknown_peer_can_be_dialled_without_an_expected_id() {
     let (ia, ib) = (identity(1), identity(2));
-    let (a, b) = (
-        crate::testing::bind_loopback(&ia),
-        crate::testing::bind_loopback(&ib),
-    );
+    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
     let (dialed, _accepted) = crate::testing::handshake(&a, &b, loopback(&b), None).await;
     assert_eq!(peer_id(&dialed), ib.computer_id());
 }
@@ -218,40 +215,12 @@ fn the_verifiers_accept_only_the_expected_computer() {
     assert!(ClientCertVerifier::root_hint_subjects(&matching).is_empty());
 }
 
-/// Take a free port on both wildcard addresses. Whether `[::]:p` also blocks
-/// `0.0.0.0:p` is per-OS (it does on Linux and macOS, not on Windows), so the
-/// IPv4 wildcard is bound explicitly; where the IPv6 socket already covers
-/// it, that bind failing is the conflict itself. Either way every wildcard
-/// candidate for the port is taken once this returns.
-fn hold_wildcard_port() -> (std::net::UdpSocket, Option<std::net::UdpSocket>) {
-    let v6 = super::udp_socket(std::net::SocketAddr::from((
-        std::net::Ipv6Addr::UNSPECIFIED,
-        0,
-    )))
-    .unwrap();
-    let port = v6.local_addr().unwrap().port();
-    let v4 = super::udp_socket(std::net::SocketAddr::from((
-        std::net::Ipv4Addr::UNSPECIFIED,
-        port,
-    )))
-    .ok();
-    (v6, v4)
-}
-
-/// A failure to bind says which addresses were tried and what the operating
-/// system answered for each.
-#[test]
-fn a_bind_failure_names_every_address_tried_and_the_os_error() {
-    let held = hold_wildcard_port();
-    let port = held.0.local_addr().unwrap().port();
-    let candidates = [
-        std::net::Ipv6Addr::UNSPECIFIED.into(),
-        std::net::Ipv4Addr::UNSPECIFIED.into(),
-    ];
-    let error = super::bind_any(&candidates, port).unwrap_err();
-    assert!(error.contains(&format!("[::]:{port}")), "{error}");
-    assert!(error.contains(&format!("0.0.0.0:{port}")), "{error}");
-    assert!(error.matches(": ").count() >= 2, "{error}");
+/// Take a free port on both wildcard addresses.
+pub(super) fn hold_wildcard_port() -> (std::net::UdpSocket, std::net::UdpSocket) {
+    let v4 = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+    let port = v4.local_addr().unwrap().port();
+    let v6 = super::udp_socket(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port))).unwrap();
+    (v4, v6)
 }
 
 #[tokio::test]
@@ -279,10 +248,50 @@ async fn a_port_binds_again_right_after_its_endpoint_is_closed() {
         drop(endpoint);
         // The endpoint's driver lets go of the socket on its next turn.
         let mut turns = 0;
-        while super::bind_any(&[std::net::Ipv6Addr::UNSPECIFIED.into()], port).is_err() {
+        while std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_err()
+            || super::udp_socket(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port))).is_err()
+        {
             turns += 1;
             assert!(turns < 100, "the port was never released");
             tokio::task::yield_now().await;
         }
+    }
+}
+
+/// Regression: on macOS an IPv6 socket's port is checked against IPv6 sockets
+/// only, so a dual-stack `[::]:p` bound although an IPv4 socket held
+/// `0.0.0.0:p`, and every IPv4 datagram to the port went to that socket: the
+/// endpoint looked fine and never heard an IPv4 peer. A port held on IPv4
+/// alone is a port that cannot be bound.
+#[tokio::test]
+#[should_panic(expected = "a UDP socket can be bound: ")]
+async fn a_port_held_on_ipv4_alone_cannot_be_bound() {
+    let held = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+    let id = crate::identity::Identity::from_seed([5; 32]);
+    super::Transport::bind(&id, held.local_addr().unwrap().port());
+}
+
+/// Regression: on macOS an ephemeral dual-stack `[::]:0` was handed ports
+/// that IPv4 sockets held (about 1 in 7 with 2000 held), and the IPv4
+/// datagrams of a whole handshake then went to the other socket (the loopback
+/// tests' intermittent handshake timeouts). The endpoint's IPv4 port is never
+/// one another IPv4 socket holds.
+#[tokio::test]
+async fn an_ephemeral_endpoint_never_shares_its_ipv4_port() {
+    let held: Vec<_> = (0..150)
+        .map(|_| std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap())
+        .collect();
+    let ports: std::collections::HashSet<u16> = held
+        .iter()
+        .map(|s| s.local_addr().unwrap().port())
+        .collect();
+    let id = crate::identity::Identity::from_seed([6; 32]);
+    for _ in 0..1000 {
+        let t = super::Transport::bind(&id, 0);
+        assert!(
+            !ports.contains(&t.local_addr().port()),
+            "{}",
+            t.local_addr()
+        );
     }
 }

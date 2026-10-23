@@ -2,7 +2,7 @@
 //! `mouser/1`, a self-signed certificate over the device key, and peers
 //! verified by pinning the certificate key to the expected `ComputerId`.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -198,59 +198,35 @@ fn transport_config() -> Arc<TransportConfig> {
     Arc::new(config)
 }
 
+/// One UDP socket bound at `addr`; an IPv6 one carries IPv6 only (IPv4 has
+/// a socket of its own, see [`socket`]).
 fn udp_socket(addr: SocketAddr) -> std::io::Result<std::net::UdpSocket> {
     let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
     if addr.is_ipv6() {
-        socket.set_only_v6(false)?;
+        socket.set_only_v6(true)?;
     }
     socket.bind(&addr.into())?;
     Ok(socket.into())
 }
 
-/// The first socket that binds on `port` at one of `candidates`; if none
-/// does, every address tried with the operating system's reason.
-fn bind_any(candidates: &[IpAddr], port: u16) -> Result<std::net::UdpSocket, String> {
-    let mut errors = Vec::new();
-    for ip in candidates {
-        let addr = SocketAddr::new(*ip, port);
-        match udp_socket(addr) {
-            Ok(socket) => return Ok(socket),
-            Err(e) => errors.push(format!("{addr}: {e}")),
-        }
-    }
-    Err(errors.join("; "))
-}
-
-/// [`bind_any`], and a panic that says why if nothing binds.
-fn bind_or_panic(candidates: &[IpAddr], port: u16) -> std::net::UdpSocket {
-    bind_any(candidates, port)
-        .unwrap_or_else(|errors| panic!("a UDP socket can be bound: {errors}"))
-}
-
 /// One computer's QUIC endpoint.
 pub struct Transport {
     endpoint: Endpoint,
-    /// The bound socket, kept so the endpoint can be moved onto another handle of
-    /// it: the configured port never changes.
-    socket: std::net::UdpSocket,
+    /// The bound sockets, kept so the endpoint can be moved onto other
+    /// handles of them: the configured port never changes.
+    sockets: socket::Sockets,
     certificate: CertificateDer<'static>,
     pkcs8: Vec<u8>,
 }
 
 impl Transport {
-    /// Bind `[::]:port` (dual stack), falling back to `0.0.0.0:port`.
+    /// Bind `0.0.0.0:port` and, where IPv6 can be had, `[::]:port`; the
+    /// endpoint then speaks both (see [`socket`]). Panics saying why if the
+    /// port cannot be bound.
     pub fn bind(identity: &Identity, port: u16) -> Self {
-        Self::bind_first(
-            identity,
-            &[Ipv6Addr::UNSPECIFIED.into(), Ipv4Addr::UNSPECIFIED.into()],
-            port,
-        )
-    }
-
-    /// Bind the first of `candidates` that can be bound.
-    pub fn bind_first(identity: &Identity, candidates: &[IpAddr], port: u16) -> Self {
-        let socket = bind_or_panic(candidates, port);
-        let kept = socket.try_clone().expect("socket handle can be duplicated");
+        let sockets =
+            socket::Sockets::bind(Ipv4Addr::UNSPECIFIED, Some(Ipv6Addr::UNSPECIFIED), port)
+                .unwrap_or_else(|error| panic!("a UDP socket can be bound: {error}"));
         let (certificate, pkcs8) = certificate(identity);
         let mut tls = ServerConfig::builder_with_provider(provider())
             .with_protocol_versions(&[&quinn::rustls::version::TLS13])
@@ -263,16 +239,16 @@ impl Transport {
             QuicServerConfig::try_from(tls).expect("QUIC-capable TLS"),
         ));
         server.transport_config(transport_config());
-        let endpoint = Endpoint::new(
+        let endpoint = Endpoint::new_with_abstract_socket(
             EndpointConfig::default(),
             Some(server),
-            socket,
+            sockets.quinn(),
             Arc::new(TokioRuntime),
         )
         .expect("QUIC endpoint");
         Self {
             endpoint,
-            socket: kept,
+            sockets,
             certificate,
             pkcs8,
         }
@@ -432,8 +408,11 @@ impl Link {
 }
 
 pub mod netchange;
+mod socket;
 
 #[cfg(test)]
 mod netchange_tests;
+#[cfg(test)]
+mod socket_tests;
 #[cfg(test)]
 mod tests;
