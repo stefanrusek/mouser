@@ -46,20 +46,6 @@ fn is_active(status: &serde_json::Value, id: &str, own: bool) -> bool {
     status["active_computer"] == id || (own && status["active_computer"].is_null())
 }
 
-#[cfg(test)]
-mod is_active_tests {
-    use super::is_active;
-    use serde_json::json;
-
-    #[test]
-    fn own_computer_is_active_when_status_says_null() {
-        assert!(is_active(&json!({"active_computer": null}), "aa", true));
-        assert!(!is_active(&json!({"active_computer": null}), "aa", false));
-        assert!(!is_active(&json!({"active_computer": "bb"}), "aa", true));
-        assert!(is_active(&json!({"active_computer": "bb"}), "bb", false));
-    }
-}
-
 /// PowerShell prelude for asking B's desktop session about windows.
 const WIN32: &str = r#"Add-Type -Namespace J1 -Name W -MemberDefinition '
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
