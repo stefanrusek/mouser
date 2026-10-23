@@ -33,9 +33,31 @@ pub(crate) fn id_of(computer: Computer) -> String {
 /// Wait until `controlled`'s keyboard and pointer are the desk's active computer.
 pub(crate) fn wait_active(observer: Computer, controlled: Computer) {
     let id = id_of(controlled);
+    let own = controlled as u8 == observer as u8;
     status_where(observer, "the active computer to change", |s| {
-        s["active_computer"] == id.as_str()
+        is_active(s, &id, own)
     });
+}
+
+/// Whether `status` reports `id` as the active computer. A computer's own
+/// status says `active_computer: null` while its own keyboard and pointer are
+/// in use, so `own` (the observer is the controlled computer) matches null too.
+fn is_active(status: &serde_json::Value, id: &str, own: bool) -> bool {
+    status["active_computer"] == id || (own && status["active_computer"].is_null())
+}
+
+#[cfg(test)]
+mod is_active_tests {
+    use super::is_active;
+    use serde_json::json;
+
+    #[test]
+    fn own_computer_is_active_when_status_says_null() {
+        assert!(is_active(&json!({"active_computer": null}), "aa", true));
+        assert!(!is_active(&json!({"active_computer": null}), "aa", false));
+        assert!(!is_active(&json!({"active_computer": "bb"}), "aa", true));
+        assert!(is_active(&json!({"active_computer": "bb"}), "bb", false));
+    }
 }
 
 /// PowerShell prelude for asking B's desktop session about windows.
