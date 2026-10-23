@@ -805,8 +805,8 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 - [X] T501 Write `docs/troubleshooting.md`: each Problem kind's message, cause and fix, the diagnostic log location and record format, and the platform limitations
 - [X] T502 Review all files under `docs/` against the delivered behaviour and record "docs/ reviewed, no drift" or the corrections made in `specs/001-mouser-v1/evidence/docs-review.md` (verification only)
 - [X] T503 Run the real-machine validation in `specs/001-mouser-v1/quickstart.md` sections 2–8 and record each section's outcome in `specs/001-mouser-v1/evidence/quickstart.md` (verification only) (recorded 2026-10-23; unexercised sections stay PENDING-OWNER)
-- [ ] T504 Gate: `cargo xtask gate --all --lane polish` green on all three CI runners
-- [ ] T505 Commit: phase boundary "Polish" (5.3)
+- [X] T504 Gate: `cargo xtask gate --all --lane polish` green on all three CI runners (CI run 40016785332 on a4e6daa green on macos-14, windows-2025, ubuntu-24.04; local --all not rerun because the macOS suite drives real input; Polish tasks are docs/evidence only)
+- [X] T505 Commit: phase boundary "Polish" (5.3) (commit "Polish: phase boundary")
 
 ---
 
