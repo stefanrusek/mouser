@@ -93,7 +93,13 @@ async fn a_secure_attention_message_only_counts_from_the_controller() {
     assert!(!b.platform.injected().iter().any(is_cad));
     // The controller can send it, also by hand.
     push_right(a);
-    eventually("the crossing", || async { a.platform.is_grabbed() }).await;
+    // Alpha's grab shows before its `Enter` is queued, and `send_to` does not
+    // wait for the crossing: wait until Beta has been entered, or the message
+    // can overtake the `Enter` and rightly count for nothing.
+    injected_where(&b.platform, "the crossing", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
     send_to(a, b, ControlMessage::SecureAttention);
     injected_where(&b.platform, "the secure attention sequence", is_cad).await;
 }
