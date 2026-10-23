@@ -131,7 +131,7 @@ impl Ctx {
         expected: Option<ComputerId>,
     ) -> Option<(Link, PeerHello)> {
         let conn = self.transport.connect(addr, expected).await.ok()?;
-        let mut link = Link::open(conn).await;
+        let mut link = Link::open(conn).await?;
         let hello = exchange(&mut link, self.hello()).await?;
         Some((link, hello))
     }

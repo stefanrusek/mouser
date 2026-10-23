@@ -379,10 +379,12 @@ impl Link {
     }
 
     /// Open the control stream on a connection we dialled. The peer sees the
-    /// stream once the first frame is written.
-    pub async fn open(conn: Connection) -> Self {
-        let (send, recv) = conn.open_bi().await.expect("control stream opens");
-        Self::new(conn, send, recv)
+    /// stream once the first frame is written. `None` if the connection has
+    /// already ended: the peer can hang up the moment it is reached (it was
+    /// shutting down).
+    pub async fn open(conn: Connection) -> Option<Self> {
+        let (send, recv) = conn.open_bi().await.ok()?;
+        Some(Self::new(conn, send, recv))
     }
 
     /// Accept the control stream on a connection we accepted; `None` if the

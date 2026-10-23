@@ -452,7 +452,7 @@ impl Rogue {
             .connect(addr, Some(node.engine.computer_id()))
             .await
             .unwrap();
-        let mut link = crate::transport::Link::open(conn).await;
+        let mut link = crate::transport::Link::open(conn).await.unwrap();
         let hello = mouser_proto::wire::ControlMessage::Hello {
             protocol_version: mouser_proto::wire::PROTOCOL_VERSION,
             mouser_version: "0.0.1".into(),

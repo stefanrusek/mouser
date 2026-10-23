@@ -104,7 +104,7 @@ async fn an_unknown_peer_can_be_dialled_without_an_expected_id() {
 #[tokio::test]
 async fn framed_messages_travel_both_ways_on_the_control_stream() {
     let (ia, ib, _a, _b, dialed, accepted) = connected().await;
-    let mut dialer = Link::open(dialed).await;
+    let mut dialer = Link::open(dialed).await.unwrap();
     dialer.writer.send(&hello(ia.computer_id())).await.unwrap();
     let mut acceptor = Link::accepted(accepted).await.unwrap();
     assert_eq!(acceptor.peer, ia.computer_id());
@@ -131,10 +131,20 @@ async fn framed_messages_travel_both_ways_on_the_control_stream() {
     assert_eq!(dialer.reader.recv::<ControlMessage>().await, None);
 }
 
+/// A computer can hang up the moment the connection is up (it is shutting
+/// down): there is then no control stream to open, and no link.
+#[tokio::test]
+async fn a_connection_closed_before_its_control_stream_opens_is_no_link() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    accepted.close(0u32.into(), b"shutdown");
+    dialed.closed().await;
+    assert!(Link::open(dialed).await.is_none());
+}
+
 #[tokio::test]
 async fn datagrams_are_read_through_the_link() {
     let (ia, _ib, _a, _b, dialed, accepted) = connected().await;
-    let mut dialer = Link::open(dialed).await;
+    let mut dialer = Link::open(dialed).await.unwrap();
     dialer.writer.send(&hello(ia.computer_id())).await.unwrap();
     let acceptor = Link::accepted(accepted).await.unwrap();
     let motion = MotionDatagram {
