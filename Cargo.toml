@@ -18,7 +18,7 @@ exclude = ["specs"]
 [workspace.package]
 edition = "2024"
 rust-version = "1.99"
-version = "0.2.5"
+version = "0.2.6"
 publish = false
 license = "MIT"
 
