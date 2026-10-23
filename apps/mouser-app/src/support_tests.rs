@@ -32,15 +32,33 @@ const DEFAULT_PORT: u16 = 32121;
 /// A UDP port nobody is using. Taken from a range the operating system never
 /// hands out as an ephemeral port (another test's sockets would otherwise
 /// take it between the probe and the host's bind), at an offset that differs
-/// per process and per call; as `mouser_core::testing::free_port` does.
+/// per process and per call; as `mouser_core::testing::free_port` does. A
+/// port is also claimed with a lock file held until the process exits, so test
+/// processes running at once (the offsets can coincide) never hand out the
+/// same one in the gap before the host binds it.
 pub(crate) fn free_port() -> u16 {
     static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     std::iter::repeat_with(|| {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
     })
-    .find(|port| *port != DEFAULT_PORT && std::net::UdpSocket::bind(("::", *port)).is_ok())
+    .find(|port| {
+        *port != DEFAULT_PORT
+            && std::net::UdpSocket::bind(("0.0.0.0", *port)).is_ok()
+            && std::net::UdpSocket::bind(("::", *port)).is_ok()
+            && claim(*port)
+    })
     .expect("an endless iterator")
+}
+
+/// Lock `port` against every other test process; the lock lasts until exit.
+fn claim(port: u16) -> bool {
+    static HELD: std::sync::Mutex<Vec<std::fs::File>> = std::sync::Mutex::new(Vec::new());
+    let path = std::env::temp_dir().join(format!("mouser-test-port-{port}.lock"));
+    let file = std::fs::File::create(path).expect("a lock file can be created");
+    let locked = file.try_lock().is_ok();
+    HELD.lock().unwrap().push(file);
+    locked
 }
 
 #[cfg(unix)]
