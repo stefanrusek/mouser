@@ -527,8 +527,25 @@ fn the_watchdog_quietly_reinstalls_a_hook_the_system_removed() {
         key(0x76, false);
     };
     arrives(&rx, press, |i| matches!(i, LocalInput::Key { .. }));
-    capture.drop_hooks(&Hook::BOTH);
-    arrives(&rx, press, |i| matches!(i, LocalInput::Key { .. }));
+    // Wait for a probe both hooks see after the reinstall: the miss is cured.
+    let shared = capture.running().unwrap().shared.clone();
+    let counts = || {
+        use std::sync::atomic::Ordering::SeqCst;
+        (
+            shared.probed_mouse.load(SeqCst),
+            shared.probed_key.load(SeqCst),
+        )
+    };
+    let back = counts();
+    let end = Instant::now() + Duration::from_secs(5);
+    while !(counts().0 > back.0 && counts().1 > back.1) {
+        assert!(
+            Instant::now() < end,
+            "no probe got through after the reinstall"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // The mouse hook was left alone and still works.
     arrives(
         &rx,
         || mouse(MOUSEEVENTF_MOVE, 2, 0, 0),
@@ -537,6 +554,26 @@ fn the_watchdog_quietly_reinstalls_a_hook_the_system_removed() {
     capture.stop();
     // One miss that a reinstall cured is not the owner's problem.
     assert!(prx.try_recv().is_err());
+}
+
+#[test]
+fn the_watchdog_reinstalls_both_hooks_when_both_were_removed() {
+    let _live = crate::live_input();
+    let (tx, rx) = channel();
+    let mut capture = WinCapture::with_watchdog(no_problems(), Duration::from_millis(100), always);
+    capture.start(tx).unwrap();
+    capture.drop_hooks(&Hook::BOTH);
+    let press = || {
+        key(0x76, true);
+        key(0x76, false);
+    };
+    arrives(&rx, press, |i| matches!(i, LocalInput::Key { .. }));
+    arrives(
+        &rx,
+        || mouse(MOUSEEVENTF_MOVE, 2, 0, 0),
+        |i| matches!(i, LocalInput::Motion { .. }),
+    );
+    capture.stop();
 }
 
 /// Hook calls as a fake system takes them.
