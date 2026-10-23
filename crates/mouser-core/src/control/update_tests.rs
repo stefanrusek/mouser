@@ -279,3 +279,65 @@ async fn a_failed_automatic_update_is_logged() {
     })
     .await;
 }
+
+/// The app's installer downloads the bundle over the engine's own runtime
+/// from a thread of its own and waits for it, then restarts. A lone fetcher
+/// (no desk-mates online) updating by itself must leave the runtime free to
+/// do that download, or the engine hangs with it (v0.2.2 on a desk of one).
+#[tokio::test]
+async fn a_lone_fetcher_installs_with_an_installer_that_needs_the_runtime() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let (lab, server, signer) = (Lab::new(), Server::start().await, Signer::new(1));
+    publish(&server, &signer, "0.2.0", &[]);
+    let (runtime, port) = (tokio::runtime::Handle::current(), server.port);
+    let installed: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+    let sink = installed.clone();
+    let install: crate::release::Installer = Arc::new(move |bundle| {
+        let (runtime, (tx, rx)) = (runtime.clone(), std::sync::mpsc::channel());
+        std::thread::spawn(move || {
+            let reply = runtime.block_on(async move {
+                let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                    .await
+                    .unwrap();
+                stream
+                    .write_all(b"GET /latest.json HTTP/1.1\r\n\r\n")
+                    .await
+                    .unwrap();
+                let mut reply = String::new();
+                stream.read_to_string(&mut reply).await.unwrap();
+                reply
+            });
+            let _ = tx.send(reply);
+        });
+        let reply = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the installer can use the network while it installs");
+        assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
+        sink.lock().unwrap().push(bundle.version);
+        Ok(())
+    });
+    let schedule = CheckSchedule {
+        first: Duration::from_millis(20),
+        every: Duration::from_secs(3600),
+    };
+    let node = lab
+        .start_released(
+            "Alpha",
+            |c| c.updates.release_url = server.url("/latest.json"),
+            |p| {
+                p.release_pubkey = signer.pubkey();
+                p.installer = Some(install);
+                p.check_schedule = Some(schedule);
+            },
+        )
+        .await;
+    eventually("the release to be installed", || async {
+        !installed.lock().unwrap().is_empty()
+    })
+    .await;
+    assert_eq!(installed.lock().unwrap().as_slice(), ["0.2.0"]);
+    // The engine still answers while and after it installs.
+    let result: UpdateResult = call(&node, Method::UpdateCheck, json!({})).await;
+    assert_eq!(result.available.as_deref(), Some("0.2.0"));
+}

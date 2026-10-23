@@ -186,7 +186,14 @@ impl Ctx {
         // Desk-mates still fetching from this computer are not cut short
         // by the restart the installer ends with.
         self.settle_fetches().await;
-        installer(Bundle { version, bytes })
+        // The installer blocks until the update is in place (the app's
+        // downloads it over this same runtime), so it runs off the async
+        // workers: run on one, it can starve the runtime of the very I/O it
+        // waits for, and every control request with it.
+        let installer = installer.clone();
+        tokio::task::spawn_blocking(move || installer(Bundle { version, bytes }))
+            .await
+            .expect("the installer returns")
     }
 
     /// Ask `from` for a bundle over the desk connection.
