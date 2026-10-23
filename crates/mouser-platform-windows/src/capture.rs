@@ -7,10 +7,16 @@
 //! (probe 1, FINDINGS.md). A second thread turns those raw events into
 //! `LocalInput` in desktop logical coordinates.
 //!
-//! While grabbed the hooks swallow every event. The cursor is parked with
-//! `SetCursorPos` (which does not reach the hooks) and, because swallowed
-//! moves leave it there and the hook's point is not clamped to the screen
-//! (probe 1, `edge`), a motion's delta is its hook point minus the park point.
+//! While grabbed the hooks swallow every event, so the cursor stays where
+//! the grab found it or where `warp` parked it with `SetCursorPos` (which
+//! does not reach the hooks). A motion's delta is its hook point minus where
+//! the cursor is as the hook sees it, before the move: the hook's point is
+//! not clamped to the screen (probe 1, `edge`), so a push past an edge
+//! counts. Measured from the cursor, not from a stored park point or the
+//! previous hook point, a move the grab did not swallow (one just before the
+//! grab took hold, or one the system let past a slow hook) or a cursor
+//! Mouser placed for another computer is not added to every move after it,
+//! which would keep the pointer running in that direction.
 //! Events carrying Mouser's tag are Mouser's own and are ignored.
 //!
 //! A watchdog sends a tagged probe event through both hooks every few
@@ -26,7 +32,7 @@ use crate::{diag, dpi, keymap};
 use mouser_platform::{Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result};
 use std::cell::RefCell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -74,26 +80,24 @@ pub(crate) enum Raw {
     Key { usage: u32, down: bool },
 }
 
-/// The mouse message's meaning. `parked` is where the cursor is held while
-/// grabbed; `last` the previous hook point while not.
+/// The mouse message's meaning. `from` is where the cursor is before the
+/// event; while `grabbed` it stays there.
 pub(crate) fn mouse_raw(
     msg: u32,
     at: (i32, i32),
     data: u32,
-    parked: Option<(i32, i32)>,
-    last: &mut Option<(i32, i32)>,
+    from: (i32, i32),
+    grabbed: bool,
 ) -> Option<Raw> {
     let button = |button, down| Some(Raw::Button { button, down });
     let wheel = (data >> 16) as u16 as i16 as i32;
     match msg {
         WM_MOUSEMOVE => {
-            let from = parked.or(*last).unwrap_or(at);
-            *last = if parked.is_some() { None } else { Some(at) };
             let (dx, dy) = (at.0 - from.0, at.1 - from.1);
-            if parked.is_some() && (dx, dy) == (0, 0) {
+            if grabbed && (dx, dy) == (0, 0) {
                 return None;
             }
-            let (x, y) = parked.unwrap_or(at);
+            let (x, y) = if grabbed { from } else { at };
             Some(Raw::Motion { dx, dy, x, y })
         }
         WM_LBUTTONDOWN => button(1, true),
@@ -141,36 +145,20 @@ pub(crate) fn convert(all: &[LocalDisplay], raw: Raw) -> LocalInput {
     }
 }
 
-fn pack(x: i32, y: i32) -> u64 {
-    (u64::from(x as u32) << 32) | u64::from(y as u32)
-}
-
-fn unpack(p: u64) -> (i32, i32) {
-    ((p >> 32) as u32 as i32, p as u32 as i32)
-}
-
 /// State the hook thread, the caller and the watchdog share.
 pub(crate) struct Shared {
     pub(crate) grabbed: AtomicBool,
-    pub(crate) park: AtomicU64,
     /// Probe events each hook has seen.
     pub(crate) probed_mouse: AtomicU32,
     pub(crate) probed_key: AtomicU32,
-}
-
-impl Shared {
-    fn parked(&self) -> Option<(i32, i32)> {
-        self.grabbed
-            .load(Ordering::SeqCst)
-            .then(|| unpack(self.park.load(Ordering::SeqCst)))
-    }
 }
 
 /// What the hook callbacks work with; they run on the hook thread.
 pub(crate) struct HookCtx {
     pub(crate) raw: Sender<Raw>,
     pub(crate) shared: Arc<Shared>,
-    pub(crate) last: Option<(i32, i32)>,
+    /// Where the cursor is; in a hook, where it is before the event.
+    pub(crate) cursor: fn() -> Option<(i32, i32)>,
 }
 
 thread_local! {
@@ -188,13 +176,15 @@ pub(crate) fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bo
         MOUSER_TAG => return false,
         _ => {}
     }
-    let parked = ctx.shared.parked();
+    let grabbed = ctx.shared.grabbed.load(Ordering::SeqCst);
     let at = (info.pt.x, info.pt.y);
-    if let Some(raw) = mouse_raw(msg, at, info.mouseData, parked, &mut ctx.last) {
+    // A cursor the system will not tell makes the move count for nothing.
+    let from = (ctx.cursor)().unwrap_or(at);
+    if let Some(raw) = mouse_raw(msg, at, info.mouseData, from, grabbed) {
         // A receiver that has gone away just means nobody is listening.
         let _ = ctx.raw.send(raw);
     }
-    parked.is_some()
+    grabbed
 }
 
 /// Whether to swallow a keyboard event.
@@ -325,7 +315,7 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
     CTX.set(Some(HookCtx {
         raw,
         shared,
-        last: None,
+        cursor: || cursor_pos().ok(),
     }));
     let mut hooks = Hooks::install(System);
     // Thread messages can only be posted once the thread has a queue.
@@ -525,11 +515,9 @@ fn cursor_pos() -> Result<(i32, i32)> {
     Ok((p.x, p.y))
 }
 
-fn park_cursor(shared: &Shared, x: i32, y: i32) -> Result<()> {
+fn park_cursor(x: i32, y: i32) -> Result<()> {
     let set = dpi::physical(|| unsafe { SetCursorPos(x, y) });
-    os("SetCursorPos", set)?;
-    shared.park.store(pack(x, y), Ordering::SeqCst);
-    Ok(())
+    os("SetCursorPos", set)
 }
 
 impl InputCapture for WinCapture {
@@ -539,7 +527,6 @@ impl InputCapture for WinCapture {
         }
         let shared = Arc::new(Shared {
             grabbed: AtomicBool::new(false),
-            park: AtomicU64::new(0),
             probed_mouse: AtomicU32::new(0),
             probed_key: AtomicU32::new(0),
         });
@@ -596,19 +583,18 @@ impl InputCapture for WinCapture {
 
     fn set_grabbed(&mut self, grabbed: bool) -> Result<()> {
         let shared = &self.running()?.shared;
-        if grabbed {
-            let (x, y) = cursor_pos()?;
-            park_cursor(shared, x, y)?;
-        }
-        set_pointer_hidden(grabbed, &self.problems, hide_or_show);
+        // Grab first: hiding the pointer takes a while (every cursor shape),
+        // and moves made meanwhile are to be swallowed and sent on, not left
+        // to move this computer's cursor.
         shared.grabbed.store(grabbed, Ordering::SeqCst);
+        set_pointer_hidden(grabbed, &self.problems, hide_or_show);
         Ok(())
     }
 
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
         let running = self.running()?;
         let (px, py) = displays::logical_to_pixel(&running.displays.snapshot(), x, y);
-        park_cursor(&running.shared, px, py)
+        park_cursor(px, py)
     }
 
     fn stop(&mut self) {

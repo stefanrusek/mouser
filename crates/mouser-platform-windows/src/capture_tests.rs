@@ -96,20 +96,9 @@ fn display(origin: f64, scale: f32) -> LocalDisplay {
 }
 
 #[test]
-fn motion_without_a_grab_is_the_change_since_the_last_point() {
-    let mut last = None;
-    let m = |at, last: &mut _| mouse_raw(WM_MOUSEMOVE, at, 0, None, last);
+fn motion_without_a_grab_is_the_change_from_the_cursor() {
     assert_eq!(
-        m((100, 50), &mut last),
-        Some(Raw::Motion {
-            dx: 0,
-            dy: 0,
-            x: 100,
-            y: 50
-        })
-    );
-    assert_eq!(
-        m((103, 48), &mut last),
+        mouse_raw(WM_MOUSEMOVE, (103, 48), 0, (100, 50), false),
         Some(Raw::Motion {
             dx: 3,
             dy: -2,
@@ -117,15 +106,24 @@ fn motion_without_a_grab_is_the_change_since_the_last_point() {
             y: 48
         })
     );
+    // However far the cursor was placed since the last move (Mouser places
+    // it for a computer driving this one), only this move counts.
+    assert_eq!(
+        mouse_raw(WM_MOUSEMOVE, (900, 701), 0, (900, 700), false),
+        Some(Raw::Motion {
+            dx: 0,
+            dy: 1,
+            x: 900,
+            y: 701
+        })
+    );
 }
 
 #[test]
-fn motion_while_grabbed_is_the_distance_from_the_parked_cursor() {
-    let mut last = Some((1, 1));
-    let parked = Some((2559, 600));
+fn motion_while_grabbed_is_the_distance_from_the_held_cursor() {
     // The hook point is not clamped to the screen, so a push past the edge counts.
     assert_eq!(
-        mouse_raw(WM_MOUSEMOVE, (2578, 590), 0, parked, &mut last),
+        mouse_raw(WM_MOUSEMOVE, (2578, 590), 0, (2559, 600), true),
         Some(Raw::Motion {
             dx: 19,
             dy: -10,
@@ -133,18 +131,80 @@ fn motion_while_grabbed_is_the_distance_from_the_parked_cursor() {
             y: 600
         })
     );
-    assert_eq!(last, None, "the next ungrabbed motion starts afresh");
     assert_eq!(
-        mouse_raw(WM_MOUSEMOVE, (2559, 600), 0, parked, &mut last),
+        mouse_raw(WM_MOUSEMOVE, (2559, 600), 0, (2559, 600), true),
         None
     );
+}
+
+/// Where the cursor of a test's hook context is.
+const CURSOR: (i32, i32) = (500, 300);
+
+fn hook_ctx(cursor: fn() -> Option<(i32, i32)>) -> (HookCtx, Receiver<Raw>) {
+    let (raw, forwarded) = channel();
+    let ctx = HookCtx {
+        raw,
+        shared: Arc::new(shared()),
+        cursor,
+    };
+    (ctx, forwarded)
+}
+
+fn moved_to(x: i32, y: i32) -> windows::Win32::UI::WindowsAndMessaging::MSLLHOOKSTRUCT {
+    windows::Win32::UI::WindowsAndMessaging::MSLLHOOKSTRUCT {
+        pt: POINT { x, y },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_grabbed_move_counts_from_where_the_cursor_is_not_from_where_it_was_parked() {
+    // The cursor got away from where the grab began (a move just before the
+    // grab took hold, or one the system let past a slow hook): every move
+    // after it is still only itself, so the other computer's pointer does
+    // not keep running in that direction.
+    let (ctx, forwarded) = &mut hook_ctx(|| Some(CURSOR));
+    ctx.shared
+        .grabbed
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    for _ in 0..3 {
+        assert!(on_mouse(ctx, WM_MOUSEMOVE, &moved_to(500, 304)));
+        assert_eq!(
+            forwarded.try_recv(),
+            Ok(Raw::Motion {
+                dx: 0,
+                dy: 4,
+                x: 500,
+                y: 300
+            })
+        );
+    }
+}
+
+#[test]
+fn a_move_when_the_cursor_cannot_be_read_counts_for_nothing() {
+    let (ctx, forwarded) = &mut hook_ctx(|| None);
+    assert!(!on_mouse(ctx, WM_MOUSEMOVE, &moved_to(10, 20)));
+    assert_eq!(
+        forwarded.try_recv(),
+        Ok(Raw::Motion {
+            dx: 0,
+            dy: 0,
+            x: 10,
+            y: 20
+        })
+    );
+    ctx.shared
+        .grabbed
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(on_mouse(ctx, WM_MOUSEMOVE, &moved_to(10, 20)));
+    assert!(forwarded.try_recv().is_err());
 }
 
 #[test]
 fn buttons_are_numbered_one_to_five() {
     let at = (0, 0);
-    let mut last = None;
-    let mut button = |msg, data| mouse_raw(msg, at, data, None, &mut last);
+    let button = |msg, data| mouse_raw(msg, at, data, at, false);
     let b = |button, down| Some(Raw::Button { button, down });
     assert_eq!(button(WM_LBUTTONDOWN, 0), b(1, true));
     assert_eq!(button(WM_LBUTTONUP, 0), b(1, false));
@@ -162,9 +222,8 @@ fn buttons_are_numbered_one_to_five() {
 
 #[test]
 fn wheel_deltas_are_signed_per_axis() {
-    let mut last = None;
-    let mut wheel =
-        |msg, delta: i16| mouse_raw(msg, (0, 0), u32::from(delta as u16) << 16, None, &mut last);
+    let wheel =
+        |msg, delta: i16| mouse_raw(msg, (0, 0), u32::from(delta as u16) << 16, (0, 0), false);
     assert_eq!(
         wheel(WM_MOUSEWHEEL, 120),
         Some(Raw::Scroll { dx: 0, dy: 120 })
@@ -283,12 +342,6 @@ fn input_passes_through_and_is_reported_until_grabbed() {
     let home = cursor();
     put_cursor((400, 400));
     let (mut capture, rx) = started(no_problems());
-    // The first motion has nothing to be relative to.
-    mouse(MOUSEEVENTF_MOVE, 2, 0, 0);
-    next(
-        &rx,
-        |i| matches!(i, LocalInput::Motion { dx, .. } if *dx == 0.0),
-    );
     mouse(MOUSEEVENTF_MOVE, 8, 0, 0);
     let right = next(
         &rx,
@@ -402,6 +455,54 @@ fn while_grabbed_input_is_swallowed_and_the_cursor_stays_parked() {
             down: true
         }
     );
+    capture.stop();
+    put_cursor(home);
+}
+
+/// The motion reported for the next untagged move straight down.
+fn next_motion_down(rx: &Receiver<LocalInput>) -> (f64, f64) {
+    mouse(MOUSEEVENTF_MOVE, 0, 4, 0);
+    let LocalInput::Motion { dx, dy, .. } = next(rx, |i| matches!(i, LocalInput::Motion { .. }))
+    else {
+        unreachable!()
+    };
+    (dx, dy)
+}
+
+#[test]
+fn a_move_that_got_past_the_grab_does_not_skew_the_ones_after() {
+    let _live = crate::live_input();
+    let home = cursor();
+    put_cursor((400, 400));
+    let (mut capture, rx) = started(no_problems());
+    capture.set_grabbed(true).unwrap();
+    // A move the hook did not swallow (one that came just before the grab
+    // took hold, or one the system let past a slow hook) leaves the cursor
+    // off the point it was parked at. `SetCursorPos` stands in for it: it
+    // moves the cursor without reaching the hooks.
+    put_cursor((460, 400));
+    for _ in 0..3 {
+        let (dx, dy) = next_motion_down(&rx);
+        assert_eq!(dx, 0.0, "a move straight down goes straight down");
+        assert!(dy > 0.0, "{dy}");
+    }
+    capture.stop();
+    put_cursor(home);
+}
+
+#[test]
+fn motion_after_the_cursor_was_placed_is_measured_from_where_it_is() {
+    let _live = crate::live_input();
+    let home = cursor();
+    put_cursor((400, 400));
+    let (mut capture, rx) = started(no_problems());
+    next_motion_down(&rx);
+    // Another computer drives this one: Mouser places the cursor, which the
+    // hooks never see. The owner's own next move must not count the jump.
+    put_cursor((400, 700));
+    let (dx, dy) = next_motion_down(&rx);
+    assert_eq!(dx, 0.0);
+    assert!(dy > 0.0 && dy < 100.0, "{dy}");
     capture.stop();
     put_cursor(home);
 }
@@ -740,7 +841,6 @@ fn the_problem_text_is_unchanged() {
 fn shared() -> Shared {
     Shared {
         grabbed: std::sync::atomic::AtomicBool::new(false),
-        park: std::sync::atomic::AtomicU64::new(0),
         probed_mouse: std::sync::atomic::AtomicU32::new(0),
         probed_key: std::sync::atomic::AtomicU32::new(0),
     }
@@ -806,20 +906,15 @@ fn the_real_probe_is_seen_by_working_hooks_and_leaves_the_cursor_alone() {
 #[test]
 fn a_mouse_message_that_means_nothing_is_not_forwarded_and_passes_through() {
     use windows::Win32::UI::WindowsAndMessaging::MSLLHOOKSTRUCT;
-    let (raw, forwarded) = channel();
-    let mut ctx = HookCtx {
-        raw,
-        shared: Arc::new(shared()),
-        last: None,
-    };
+    let (ctx, forwarded) = &mut hook_ctx(|| Some(CURSOR));
     let info = MSLLHOOKSTRUCT::default();
     // Not grabbed: swallowed never, and a message with no meaning sends nothing.
-    assert!(!on_mouse(&mut ctx, 0x9999, &info));
+    assert!(!on_mouse(ctx, 0x9999, &info));
     assert!(forwarded.try_recv().is_err());
     // Grabbed: swallowed, still nothing sent.
     ctx.shared
         .grabbed
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    assert!(on_mouse(&mut ctx, 0x9999, &info));
+    assert!(on_mouse(ctx, 0x9999, &info));
     assert!(forwarded.try_recv().is_err());
 }
