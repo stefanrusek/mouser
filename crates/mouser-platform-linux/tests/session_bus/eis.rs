@@ -7,6 +7,7 @@ use reis::eis;
 use reis::eis::device::DeviceType;
 use reis::request::{DeviceCapability, EisRequest, Seat};
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -36,6 +37,9 @@ pub struct FakeEis {
     pub starts: Arc<Mutex<Vec<String>>>,
     commands: Sender<Emit>,
     signal: LoopSignal,
+    /// Set when the server is dropped; the loop checks it after every wake-up,
+    /// because `LoopSignal::stop` is forgotten if it comes before `run` starts.
+    stopped: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -46,8 +50,10 @@ impl FakeEis {
         let (commands, channel_source) = channel::<Emit>();
         let (signal_tx, signal_rx) = std::sync::mpsc::channel();
         let log = received.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
         let thread = std::thread::spawn({
             let starts = starts.clone();
+            let stopped = stopped.clone();
             move || {
                 run(
                     stream,
@@ -56,6 +62,7 @@ impl FakeEis {
                     offer_keyboard,
                     channel_source,
                     signal_tx,
+                    stopped,
                 )
             }
         });
@@ -64,6 +71,7 @@ impl FakeEis {
             starts,
             commands,
             signal: signal_rx.recv().unwrap(),
+            stopped,
             thread: Some(thread),
         }
     }
@@ -88,6 +96,7 @@ impl FakeEis {
 
 impl Drop for FakeEis {
     fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Release);
         self.signal.stop();
         self.signal.wakeup();
         self.thread.take().unwrap().join().unwrap();
@@ -115,6 +124,7 @@ fn run(
     offer_keyboard: bool,
     commands: Channel<Emit>,
     signal: std::sync::mpsc::Sender<LoopSignal>,
+    stopped: Arc<AtomicBool>,
 ) {
     let mut event_loop: EventLoop<()> = EventLoop::try_new().unwrap();
     let handle = event_loop.handle();
@@ -265,5 +275,30 @@ fn run(
         })
         .unwrap();
     signal.send(event_loop.get_signal()).unwrap();
-    event_loop.run(None, &mut (), |_| {}).unwrap();
+    let loop_signal = event_loop.get_signal();
+    event_loop
+        .run(None, &mut (), |_| {
+            if stopped.load(Ordering::Acquire) {
+                loop_signal.stop();
+            }
+        })
+        .unwrap();
+}
+
+/// Stopping the server as soon as it is serving must still stop it: a stop
+/// that arrives before the loop has started running used to be forgotten, and
+/// dropping the server then waited for the loop for ever.
+#[test]
+fn a_server_dropped_the_moment_it_is_serving_stops() {
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for _ in 0..3000 {
+            let (server, _client) = UnixStream::pair().unwrap();
+            drop(FakeEis::serve(server, false));
+        }
+        done.send(()).unwrap();
+    });
+    finished
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .expect("every server stopped when dropped");
 }
