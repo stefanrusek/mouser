@@ -343,6 +343,25 @@ fn warping_moves_the_pointer_and_moves_the_parking_spot() {
     assert_eq!(s.server.display.chars().next(), Some(':'));
 }
 
+#[test]
+fn warping_outside_every_display_is_refused() {
+    let mut s = session();
+    s.capture.warp(120.0, 140.0).unwrap();
+    for (x, y) in [
+        (-1.0, 10.0),
+        (10.0, -1.0),
+        (1920.0, 10.0),
+        (10.0, 1080.0),
+        (1.0e6, 1.0e6),
+    ] {
+        assert!(
+            matches!(s.capture.warp(x, y), Err(mouser_platform::Error::Os(_))),
+            "{x},{y}"
+        );
+    }
+    assert_eq!(s.pointer(), (120, 140));
+}
+
 fn wait_until(mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     while !condition() {

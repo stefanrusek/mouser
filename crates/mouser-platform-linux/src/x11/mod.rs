@@ -5,6 +5,7 @@ pub(crate) mod capture;
 pub(crate) mod clipboard;
 pub(crate) mod displays;
 pub(crate) mod echo;
+pub(crate) mod foreground;
 pub(crate) mod fullscreen;
 pub(crate) mod inject;
 
@@ -63,6 +64,8 @@ mod clipboard_tests;
 mod displays_tests;
 #[cfg(test)]
 mod echo_tests;
+#[cfg(test)]
+mod foreground_tests;
 #[cfg(test)]
 mod fullscreen_tests;
 #[cfg(test)]

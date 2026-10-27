@@ -234,6 +234,10 @@ fn a_push_through_a_barrier_activates_and_libei_input_becomes_local_input() {
     );
     capture.stop();
     assert!(p.calls.contains("session.close"));
+    assert!(
+        rx.try_iter()
+            .all(|i| !matches!(i, LocalInput::CaptureLost(_)))
+    );
 }
 
 #[test]

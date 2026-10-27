@@ -10,6 +10,11 @@ pub(crate) mod inject;
 pub(crate) mod portal;
 pub(crate) mod portal_clip;
 
+/// Wayland does not let a client name the application in front.
+pub(crate) fn foreground_app() -> Option<mouser_platform::ForegroundApp> {
+    None
+}
+
 #[cfg(test)]
 mod capture_tests;
 #[cfg(test)]

@@ -17,6 +17,8 @@ pub(crate) const NO_POINTER_CAPTURE: &str =
 pub(crate) const APPROVE_EACH_LOGIN: &str = "This desktop asks you to approve Mouser each time you sign in before it can share this computer's mouse and keyboard.";
 pub(crate) const NO_FULLSCREEN: &str = "Mouser cannot tell when an app is full-screen on Wayland, so the pointer may still cross to another computer during a game or video.";
 pub(crate) const NO_QUICKJUMP: &str = "QuickJump and hotkey crossings can't start from this computer on Wayland; push the pointer off the screen edge instead.";
+pub(crate) const NO_FOREGROUND_APP: &str =
+    "Mouser can't tell which application is in front here, so its diagnostic log doesn't name it.";
 pub(crate) const NO_INJECT: &str = "This desktop does not let Mouser move the mouse or type here, so other computers cannot control this one.";
 
 /// `XDG_SESSION_TYPE` decides; without it a `WAYLAND_DISPLAY` means Wayland.

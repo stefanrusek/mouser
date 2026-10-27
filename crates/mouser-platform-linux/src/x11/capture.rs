@@ -5,7 +5,7 @@
 use super::echo::Echo;
 use super::{connect, create_stop_window, wake};
 use crate::keymap;
-use mouser_platform::{InputCapture, LocalInput, Result};
+use mouser_platform::{Error, InputCapture, LocalInput, Result};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -353,6 +353,15 @@ impl InputCapture for X11Capture {
 
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
         let (conn, root) = connect(&self.env);
+        let inside = super::displays::displays(&conn, root).iter().any(|d| {
+            x >= d.origin.0
+                && x < d.origin.0 + d.logical_size.0
+                && y >= d.origin.1
+                && y < d.origin.1 + d.logical_size.1
+        });
+        if !inside {
+            return Err(Error::Os(format!("({x}, {y}) is outside every display")));
+        }
         let (x, y) = (x.round() as i16, y.round() as i16);
         conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, x, y)
             .unwrap();

@@ -107,7 +107,6 @@ fn wayland_has_a_clipboard_that_starts_on_first_use() {
 fn windows_and_macos_only_features_are_absent() {
     let (p, _dir) = platform("x11");
     assert!(p.secure_input().is_none());
-    assert!(p.foreground_app().is_none());
     assert!(p.file_drag().is_none());
 }
 
@@ -168,4 +167,94 @@ fn x11_displays_and_their_changes_come_from_randr() {
 fn the_platform_watches_the_network_until_the_handle_is_dropped() {
     let (p, _dir) = platform("x11");
     drop(p.watch_network(std::sync::mpsc::channel().0).unwrap());
+}
+
+#[test]
+fn the_x11_foreground_app_is_the_process_of_the_active_window() {
+    use crate::x11::testserver::Xvfb;
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{
+        AtomEnum, ConnectionExt as _, CreateWindowAux, PropMode, WindowClass,
+    };
+    use x11rb::wrapper::ConnectionExt as _;
+    let server = Xvfb::start();
+    let (p, _dir) = platform_on("x11", server.env());
+    assert_eq!(p.foreground_app(), None);
+    let (conn, root) = crate::x11::connect(&server.env());
+    let w = conn.generate_id().unwrap();
+    conn.create_window(
+        0,
+        w,
+        root,
+        0,
+        0,
+        10,
+        10,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        0,
+        &CreateWindowAux::new(),
+    )
+    .unwrap();
+    let atom = |n: &str| {
+        conn.intern_atom(false, n.as_bytes())
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom
+    };
+    let (pid_atom, active) = (atom("_NET_WM_PID"), atom("_NET_ACTIVE_WINDOW"));
+    conn.change_property32(
+        PropMode::REPLACE,
+        w,
+        pid_atom,
+        AtomEnum::CARDINAL,
+        &[std::process::id()],
+    )
+    .unwrap();
+    conn.change_property32(PropMode::REPLACE, root, active, AtomEnum::WINDOW, &[w])
+        .unwrap();
+    conn.get_input_focus().unwrap().reply().unwrap();
+    let app = p.foreground_app().unwrap();
+    let comm = std::fs::read_to_string("/proc/self/comm").unwrap();
+    assert_eq!(app.name, comm.trim_end());
+    assert!(!app.outranks_mouser);
+}
+
+#[test]
+fn on_wayland_the_foreground_app_is_unknown() {
+    let (p, _dir) = platform("wayland");
+    assert_eq!(p.foreground_app(), None);
+}
+
+#[test]
+fn x11_capture_never_reports_a_loss() {
+    use crate::x11::testserver::Xvfb;
+    use mouser_platform::LocalInput;
+    let server = Xvfb::start();
+    let (p, _dir) = platform_on("x11", server.env());
+    let mut capture = p.capture().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    capture.start(tx).unwrap();
+    capture.set_grabbed(true).unwrap();
+    capture.stop();
+    assert!(
+        rx.try_iter()
+            .all(|i| !matches!(i, LocalInput::CaptureLost(_)))
+    );
+}
+
+#[test]
+fn only_wayland_lists_that_the_foreground_app_is_unknown() {
+    let text = "Mouser can't tell which application is in front here, so its diagnostic log doesn't name it.";
+    let has = |p: &LinuxPlatform| {
+        p.info()
+            .limitations
+            .iter()
+            .any(|l| l.capability == Capability::Capture && l.text == text)
+    };
+    let (wayland, _a) = platform("wayland");
+    let (x11, _b) = platform("x11");
+    assert!(has(&wayland));
+    assert!(!has(&x11));
 }

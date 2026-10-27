@@ -146,6 +146,7 @@ impl Platform for LinuxPlatform {
             limitations.extend(session::wayland_limitations(&portals));
             limitations.push(limitation(Capability::Capture, session::NO_FULLSCREEN));
             limitations.push(limitation(Capability::Capture, session::NO_QUICKJUMP));
+            limitations.push(limitation(Capability::Capture, session::NO_FOREGROUND_APP));
             limitations.extend(wayland::clipboard::limitations(gnome, shell));
         }
         limitations.push(limitation(Capability::FileDrag, drag::NO_FILE_DRAG));
@@ -260,8 +261,13 @@ impl Platform for LinuxPlatform {
     }
 
     fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
-        // v2: real foreground_app in platform-linux US1
-        None
+        match self.session() {
+            SessionType::Wayland => wayland::foreground_app(),
+            _ => {
+                let (conn, root) = x11::connect(&self.settings.env);
+                x11::foreground::foreground_app(&conn, root, std::path::Path::new("/proc"))
+            }
+        }
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
