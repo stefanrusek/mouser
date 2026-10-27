@@ -255,12 +255,74 @@ pub(crate) fn pipe_name(path: &Path) -> PathBuf {
 #[cfg(windows)]
 const SERVICE_PIPE_SDDL: &str = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;IU)";
 
+/// The pipe's instance waiting for the next client, and that wait.
+///
+/// The wait is the listener's own overlapped connect, whose end sets an event
+/// and does not reach the runtime: so dropping the listener ends the wait and
+/// closes the pipe there and then. Left to the runtime, a pipe with a connect
+/// in flight closes only once the runtime has seen that connect cancelled, a
+/// moment after shutdown, and until then clients still get in.
 #[cfg(windows)]
 pub(crate) struct Listener {
     name: PathBuf,
     /// The pipe is the service's: it gets [`SERVICE_PIPE_SDDL`].
     service: bool,
     next: tokio::net::windows::named_pipe::NamedPipeServer,
+    wait: Wait,
+}
+
+/// An overlapped connect that sets `event` when it ends. The low bit of the
+/// event handle keeps the end off the runtime's completion port.
+#[cfg(windows)]
+struct Wait {
+    overlapped: Box<windows_sys::Win32::System::IO::OVERLAPPED>,
+    event: Arc<Event>,
+}
+
+// SAFETY: the OVERLAPPED is used only by the listener that owns it.
+#[cfg(windows)]
+unsafe impl Send for Wait {}
+
+#[cfg(windows)]
+impl Wait {
+    fn new() -> Self {
+        let event = Arc::new(Event::new());
+        // SAFETY: an all-zero OVERLAPPED is a valid, unused one.
+        let mut overlapped: Box<windows_sys::Win32::System::IO::OVERLAPPED> =
+            Box::new(unsafe { std::mem::zeroed() });
+        overlapped.hEvent = event.0.map_addr(|address| address | 1);
+        Self { overlapped, event }
+    }
+}
+
+/// A manual-reset event.
+#[cfg(windows)]
+struct Event(windows_sys::Win32::Foundation::HANDLE);
+
+// SAFETY: an event may be waited on and closed from any thread.
+#[cfg(windows)]
+unsafe impl Send for Event {}
+// SAFETY: as above.
+#[cfg(windows)]
+unsafe impl Sync for Event {}
+
+#[cfg(windows)]
+impl Event {
+    fn new() -> Self {
+        use windows_sys::Win32::System::Threading::CreateEventW;
+        // SAFETY: no name and default security: plain arguments.
+        let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+        assert!(!event.is_null(), "{}", std::io::Error::last_os_error());
+        Self(event)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Event {
+    fn drop(&mut self) {
+        // SAFETY: the handle is this event's, closed once.
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0) };
+    }
 }
 
 #[cfg(windows)]
@@ -325,18 +387,77 @@ impl Listener {
         let name = pipe_name(path);
         Self {
             next: Self::instance(&name, true, service),
+            wait: Wait::new(),
             name,
             service,
         }
     }
 
+    /// The next client. Dropped before it returns, the listener can only be
+    /// dropped too: the wait it started is still on.
     pub(crate) async fn accept(&mut self) -> Box<dyn Duplex> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Foundation::{
+            ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED, GetLastError,
+        };
+        use windows_sys::Win32::System::IO::GetOverlappedResult;
+        use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
+        use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
+        let pipe = self.next.as_raw_handle();
+        // SAFETY: the OVERLAPPED is `next`'s and outlives the connect: the
+        // listener ends the connect before it lets go of either.
+        let done = unsafe { ConnectNamedPipe(pipe, &mut *self.wait.overlapped) } != 0;
+        // SAFETY: reads this thread's last error.
+        let error = unsafe { GetLastError() };
+        // A client that came (and maybe went) before the wait is connected.
+        if !done && error != ERROR_PIPE_CONNECTED && error != ERROR_NO_DATA {
+            assert_eq!(error, ERROR_IO_PENDING, "control pipe waits for a client");
+            let event = self.wait.event.clone();
+            tokio::task::spawn_blocking(move || {
+                let event = &event;
+                // SAFETY: `event` keeps the handle open for the wait.
+                unsafe { WaitForSingleObject(event.0, INFINITE) };
+            })
+            .await
+            .expect("the wait for a client ends");
+            let mut moved = 0;
+            // SAFETY: the connect has ended: its event is set.
+            let connected =
+                unsafe { GetOverlappedResult(pipe, &*self.wait.overlapped, &mut moved, 0) };
+            assert_ne!(
+                connected,
+                0,
+                "control pipe accepts: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        // The runtime was not there to see the connect: tell it.
         self.next.connect().await.expect("control pipe accepts");
         let connected = std::mem::replace(
             &mut self.next,
             Self::instance(&self.name, false, self.service),
         );
+        self.wait = Wait::new();
         Box::new(connected)
+    }
+}
+
+/// Ends the wait (a client may still get in as it ends), so that `next`
+/// closes as it is dropped: nothing is in flight on it.
+#[cfg(windows)]
+impl Drop for Listener {
+    fn drop(&mut self) {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult};
+        let pipe = self.next.as_raw_handle();
+        let mut moved = 0;
+        // SAFETY: the OVERLAPPED is `next`'s. Without a connect in flight the
+        // cancel finds nothing and the result is the unused one's, at once;
+        // with one, the result waits for its end, and then nothing uses it.
+        unsafe {
+            CancelIoEx(pipe, &*self.wait.overlapped);
+            GetOverlappedResult(pipe, &*self.wait.overlapped, &mut moved, 1);
+        }
     }
 }
 

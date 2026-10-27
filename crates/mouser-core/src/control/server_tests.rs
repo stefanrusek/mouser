@@ -397,12 +397,13 @@ fn off_windows_the_default_path_is_always_the_users() {
     );
 }
 
-/// Shutdown ends the pipe at once: a pipe whose waiting instance has a
-/// connect in flight would otherwise take clients until the runtime has seen
-/// that connect cancelled.
+/// The pipe's listener: it serves each client, and dropped (the engine shuts
+/// down) it closes the pipe at once, so no client gets in after shutdown.
 #[cfg(windows)]
-mod closing_the_pipe {
+mod the_pipe_listener {
     use super::super::server::{Listener, pipe_name};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::windows::named_pipe::ClientOptions;
 
     /// A listener on its own pipe, already waiting for a client.
     async fn waiting(dir: &tempfile::TempDir) -> (Listener, std::path::PathBuf) {
@@ -416,8 +417,41 @@ mod closing_the_pipe {
         (listener, name)
     }
 
+    /// `server` and `client` are the two ends of one connection.
+    async fn connected(
+        mut server: Box<dyn super::super::server::Duplex>,
+        mut client: impl tokio::io::AsyncRead + Unpin,
+    ) {
+        server.write_all(b"x").await.unwrap();
+        let mut seen = [0; 1];
+        client.read_exact(&mut seen).await.unwrap();
+        assert_eq!(&seen, b"x");
+    }
+
     #[tokio::test]
-    async fn once_dropped_the_listener_takes_no_client() {
+    async fn a_client_that_comes_while_it_waits_is_served() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = pipe_name(dir.path());
+        let mut listener = Listener::bind(dir.path(), false);
+        let (server, client) = tokio::join!(listener.accept(), async {
+            // The listener's wait starts first.
+            tokio::task::yield_now().await;
+            ClientOptions::new().open(&name).unwrap()
+        });
+        connected(server, client).await;
+    }
+
+    #[tokio::test]
+    async fn a_client_that_came_before_the_wait_is_served() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = pipe_name(dir.path());
+        let mut listener = Listener::bind(dir.path(), false);
+        let client = ClientOptions::new().open(&name).unwrap();
+        connected(listener.accept().await, client).await;
+    }
+
+    #[tokio::test]
+    async fn once_dropped_while_it_waits_it_takes_no_client() {
         let dir = tempfile::tempdir().unwrap();
         let (listener, name) = waiting(&dir).await;
         drop(listener);
@@ -425,7 +459,7 @@ mod closing_the_pipe {
     }
 
     #[tokio::test]
-    async fn a_client_that_got_in_first_keeps_the_pipe_from_waiting() {
+    async fn dropped_as_a_client_gets_in_it_takes_no_other() {
         let dir = tempfile::tempdir().unwrap();
         let (listener, name) = waiting(&dir).await;
         let first = std::fs::OpenOptions::new()
