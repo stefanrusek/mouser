@@ -617,29 +617,29 @@ Package `crates/mouser-platform-linux` (`x11` and `wayland` modules). Gate per p
 
 #### Phase 24: US1-platform-linux — As a desk user, I want my pointer and keyboard to keep working whatever goes wrong inside Mouser (P1)
 
-- [ ] T430 [P] [US1-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_v2.rs` running conformance rules 10 and 11 against the X11 backend under Xvfb (rule 10 query: XFixes cursor-hidden state)
-- [ ] T431 [P] [US1-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/x11/foreground_tests.rs`: `foreground_app()` follows `_NET_ACTIVE_WINDOW` → `_NET_WM_PID` → `/proc/<pid>/comm` for `name`; `admin` is true when the process euid is 0; `outranks_mouser = false`; `None` without an active window
-- [ ] T432 [US1-platform-linux] Implement X11 `foreground_app()` in `crates/mouser-platform-linux/src/x11/foreground.rs` and wire it into `crates/mouser-platform-linux/src/lib.rs`, replacing the T063 placeholder
-- [ ] T433 [P] [US1-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/lib_tests.rs`: on Wayland `foreground_app()` returns `None`; neither backend emits `CaptureLost`
-- [ ] T434 [US1-platform-linux] Return `None` for Wayland in `crates/mouser-platform-linux/src/wayland/mod.rs`
-- [ ] T435 [P] [US1-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/lib_tests.rs`: a Wayland session lists the limitation "Mouser can't tell which application is in front here, so its diagnostic log doesn't name it." under `Capability::Capture`; an X11 session does not (spec Assumptions; contracts/platform-api-delta.md)
-- [ ] T436 [US1-platform-linux] Add the Wayland foreground limitation in `crates/mouser-platform-linux/src/lib.rs`
-- [ ] T437 [US1-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T438 [US1-platform-linux] Commit: phase boundary "US1-platform-linux" (5.3)
+- [X] T430 [P] [US1-platform-linux] Write `crates/mouser-platform-linux/tests/contract_platform_linux_v2.rs` running conformance rules 10 and 11 against the X11 backend under Xvfb (rule 10 query: XFixes cursor-hidden state)
+- [X] T431 [P] [US1-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/x11/foreground_tests.rs`: `foreground_app()` follows `_NET_ACTIVE_WINDOW` → `_NET_WM_PID` → `/proc/<pid>/comm` for `name`; `admin` is true when the process euid is 0; `outranks_mouser = false`; `None` without an active window
+- [X] T432 [US1-platform-linux] Implement X11 `foreground_app()` in `crates/mouser-platform-linux/src/x11/foreground.rs` and wire it into `crates/mouser-platform-linux/src/lib.rs`, replacing the T063 placeholder
+- [X] T433 [P] [US1-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/lib_tests.rs`: on Wayland `foreground_app()` returns `None`; neither backend emits `CaptureLost`
+- [X] T434 [US1-platform-linux] Return `None` for Wayland in `crates/mouser-platform-linux/src/wayland/mod.rs`
+- [X] T435 [P] [US1-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/lib_tests.rs`: a Wayland session lists the limitation "Mouser can't tell which application is in front here, so its diagnostic log doesn't name it." under `Capability::Capture`; an X11 session does not (spec Assumptions; contracts/platform-api-delta.md)
+- [X] T436 [US1-platform-linux] Add the Wayland foreground limitation in `crates/mouser-platform-linux/src/lib.rs`
+- [X] T437 [US1-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T438 [US1-platform-linux] Commit: phase boundary "US1-platform-linux" (5.3)
 
 #### Phase 25: US3-platform-linux — As a desk owner, I want one Mouser window where I can find everything (P2)
 
-- [ ] T439 [P] [US3-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/tray_tests.rs`: with a tray that emits no click events (libappindicator) the limitation "Clicking the tray icon doesn't pause Mouser here; use Pause in its menu." is listed under `Capability::Tray`; the 001 no-tray limitation keeps its text and moves from `Capability::Capture` to `Capability::Tray` (`tray.rs:24`) (spec Assumptions; Story 3 sc. 13)
-- [ ] T440 [US3-platform-linux] Implement the tray limitations in `crates/mouser-platform-linux/src/tray.rs`
-- [ ] T441 [US3-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T442 [US3-platform-linux] Commit: phase boundary "US3-platform-linux" (5.3)
+- [X] T439 [P] [US3-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/tray_tests.rs`: with a tray that emits no click events (libappindicator) the limitation "Clicking the tray icon doesn't pause Mouser here; use Pause in its menu." is listed under `Capability::Tray`; the 001 no-tray limitation keeps its text and moves from `Capability::Capture` to `Capability::Tray` (`tray.rs:24`) (spec Assumptions; Story 3 sc. 13)
+- [X] T440 [US3-platform-linux] Implement the tray limitations in `crates/mouser-platform-linux/src/tray.rs`
+- [X] T441 [US3-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T442 [US3-platform-linux] Commit: phase boundary "US3-platform-linux" (5.3)
 
 #### Phase 26: US6-platform-linux — As a desk owner, I want Mouser to run without its window or tray on Windows and Linux (P3)
 
-- [ ] T443 [P] [US6-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/lib_tests.rs`: every Linux session (X11 and Wayland) lists the limitation "Mouser can't control this computer's login screen." under `Capability::LoginScreen` (Story 6 sc. 2; FR-006)
-- [ ] T444 [US6-platform-linux] Add the login-screen limitation in `crates/mouser-platform-linux/src/lib.rs`
-- [ ] T445 [US6-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
-- [ ] T446 [US6-platform-linux] Commit: phase boundary "US6-platform-linux" (5.3)
+- [X] T443 [P] [US6-platform-linux] Write unit tests in `crates/mouser-platform-linux/src/lib_tests.rs`: every Linux session (X11 and Wayland) lists the limitation "Mouser can't control this computer's login screen." under `Capability::LoginScreen` (Story 6 sc. 2; FR-006)
+- [X] T444 [US6-platform-linux] Add the login-screen limitation in `crates/mouser-platform-linux/src/lib.rs`
+- [X] T445 [US6-platform-linux] Gate: `cargo xtask gate --packages mouser-platform-linux --lane platform-linux` on the Ubuntu runner
+- [X] T446 [US6-platform-linux] Commit: phase boundary "US6-platform-linux" (5.3)
 
 ### Lane: service-win
 

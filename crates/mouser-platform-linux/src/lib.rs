@@ -154,6 +154,10 @@ impl Platform for LinuxPlatform {
             Capability::SecureAttention,
             "Ctrl-Alt-Del can only be sent to Windows computers.",
         ));
+        limitations.push(limitation(
+            Capability::LoginScreen,
+            "Mouser can't control this computer's login screen.",
+        ));
         limitations.extend(tray::limitations(tray));
         limitations.extend(portable::limitations(self.data_dir.is_some(), session));
         PlatformInfo {

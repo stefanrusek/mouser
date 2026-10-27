@@ -201,7 +201,7 @@ fn a_tray_watcher_on_the_bus_removes_the_tray_limitation() {
     let bus = Daemon::start();
     let m = machine(Some(&bus), "x11");
     let has_tray_limit = |m: &Machine| {
-        texts(&m.platform, Capability::Capture)
+        texts(&m.platform, Capability::Tray)
             .iter()
             .any(|t| t.contains("AppIndicator"))
     };
@@ -213,8 +213,9 @@ fn a_tray_watcher_on_the_bus_removes_the_tray_limitation() {
 #[test]
 fn without_a_session_bus_the_tray_and_portals_are_missing() {
     let m = machine(None, "wayland");
+    let tray = texts(&m.platform, Capability::Tray);
+    assert!(tray.iter().any(|t| t.contains("AppIndicator")));
     let capture = texts(&m.platform, Capability::Capture);
-    assert!(capture.iter().any(|t| t.contains("AppIndicator")));
     assert!(
         capture
             .iter()

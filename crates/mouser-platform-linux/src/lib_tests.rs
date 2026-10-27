@@ -258,3 +258,22 @@ fn only_wayland_lists_that_the_foreground_app_is_unknown() {
     assert!(has(&wayland));
     assert!(!has(&x11));
 }
+
+#[test]
+fn every_session_lists_the_login_screen_limitation() {
+    for session in ["x11", "wayland"] {
+        let (p, _dir) = platform(session);
+        let texts: Vec<String> = p
+            .info()
+            .limitations
+            .into_iter()
+            .filter(|l| l.capability == Capability::LoginScreen)
+            .map(|l| l.text)
+            .collect();
+        assert_eq!(
+            texts,
+            ["Mouser can't control this computer's login screen."],
+            "{session}"
+        );
+    }
+}
