@@ -403,10 +403,10 @@ impl Listener {
         use windows_sys::Win32::System::IO::GetOverlappedResult;
         use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
         use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
-        let pipe = self.next.as_raw_handle();
         // SAFETY: the OVERLAPPED is `next`'s and outlives the connect: the
         // listener ends the connect before it lets go of either.
-        let done = unsafe { ConnectNamedPipe(pipe, &mut *self.wait.overlapped) } != 0;
+        let done =
+            unsafe { ConnectNamedPipe(self.next.as_raw_handle(), &mut *self.wait.overlapped) } != 0;
         // SAFETY: reads this thread's last error.
         let error = unsafe { GetLastError() };
         // A client that came (and maybe went) before the wait is connected.
@@ -422,8 +422,14 @@ impl Listener {
             .expect("the wait for a client ends");
             let mut moved = 0;
             // SAFETY: the connect has ended: its event is set.
-            let connected =
-                unsafe { GetOverlappedResult(pipe, &*self.wait.overlapped, &mut moved, 0) };
+            let connected = unsafe {
+                GetOverlappedResult(
+                    self.next.as_raw_handle(),
+                    &*self.wait.overlapped,
+                    &mut moved,
+                    0,
+                )
+            };
             assert_ne!(
                 connected,
                 0,
