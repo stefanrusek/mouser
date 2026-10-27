@@ -5,7 +5,8 @@ This contract covers Story 2 sc. 10, Story 3 sc. 12 and FR-007. The bundle is pr
 ## File
 
 - **Name:** `mouser-logs-<desk>-<yyyymmddThhmmssZ>.zip`. `<desk>` is the desk name with every character outside `[A-Za-z0-9_-]` replaced by `-`, or `no-desk` when the computer is on no desk.
-- **Location:** the `dir` param if one is given. Otherwise the user's Downloads folder, or the machine folder's `bundles/` subfolder for the service or headless `--machine` engines. If a file with that name already exists, ` (2)`, ` (3)` and so on is added before `.zip`.
+- **Location:** the `dir` param if one is given. Otherwise the user's Downloads folder, or the machine folder's `bundles/` subfolder for a headless `--machine` engine on macOS or Linux. If a file with that name already exists, ` (2)`, ` (3)` and so on is added before `.zip`.
+- **Windows installed (mode `service`, owner decision OD-7):** the SYSTEM session engine writes no file. It returns the zip over the control pipe (`logs.collect_stream`, control-api-delta.md), and the user's own Mouser app or CLI writes it, as the user, to the folder the user chose or the user's Downloads folder, with the same name and collision rule.
 - **Delivery:** the file is written only on the requesting computer. Nothing is sent to any other computer or to the internet (FR-007, constitution III).
 
 ## Layout

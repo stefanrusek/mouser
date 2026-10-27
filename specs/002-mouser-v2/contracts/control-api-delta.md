@@ -17,7 +17,8 @@ These are changes to `specs/001-mouser-v1/contracts/control-api.md`: newline-del
 
 | Method | Params | Result | Errors |
 |---|---|---|---|
-| `logs.collect` | `{dir?: string}` | `{path, computers: [{id, name, included, reason?}]}` (log-bundle.md) | -32603 when the bundle cannot be written (the OS reason is in `message`) |
+| `logs.collect` | `{dir?: string}` | `{path, computers: [{id, name, included, reason?}]}` (log-bundle.md) | -32603 when the bundle cannot be written (the OS reason is in `message`). **Mode `service`** (Windows installed session engine): the engine writes no file; a call with `dir` returns -32602 `"logs.collect: the installed Mouser service does not write to a chosen folder; use logs.collect_stream"`, and a call without `dir` returns the same error (owner decision OD-7) |
+| `logs.collect_stream` (new, every mode; required in mode `service`) | `{}` | `{name, size, sha256, computers: [{id, name, included, reason?}]}`, sent after the last `logs.chunk` notification | -32603 when the bundle cannot be built. The engine gathers the parts as for `logs.collect`, builds the zip in memory and sends it to the calling connection only as notifications `logs.chunk {seq, data}` (`seq` from 0, `data` base64 of at most 65536 bytes). The caller writes `name` into the user's Downloads folder or the folder the user chose, as the user, applying log-bundle.md's naming and collision rules, and checks `size` and `sha256` |
 | `desk.rename` | `{computer: id, name: string}` (1–64 chars, trimmed) | `{}` | -32602 if the name is invalid; -32001 `data.kind=join_refused` if this computer is not on a desk |
 | `layout.keep_placement` | `{computer: id}` | `{}` | clears `needs_review` for that computer's displays and logs `layout.changed change=kept_placement` |
 | `elevation.restart` | `{computer: id}` | `{}` | for this computer: emits `EngineEvent::RestartElevated`. For a peer: sends wire `RestartElevated`. -32001 `data.kind=platform_limitation` when the target is not portable Windows, or is a peer older than 0.3.0 |
@@ -26,6 +27,8 @@ These are changes to `specs/001-mouser-v1/contracts/control-api.md`: newline-del
 
 - **`config.set`** gains an optional `origin: "app" | "cli"` (default `"cli"`). It is recorded in `setting.changed`. Setting `general.computer_name` also renames this computer desk-wide (same effect as `desk.rename`).
 - **`status`** returns `status.schema.json` v2 (in this directory), which adds `tray_summary`, `computers[].mode`, `computers[].os_version`, `problems[].problem_id`, `problems[].app` and the new fix values.
+
+**Who calls which (OD-7):** the CLI and the app read `status` first; when this computer's `mode` is `service` (the endpoint is the Windows installed session engine) they call `logs.collect_stream` and write the file themselves as the user, otherwise they call `logs.collect`. The service-mode engine therefore never writes a file to a path a user chose.
 
 ## Topics
 

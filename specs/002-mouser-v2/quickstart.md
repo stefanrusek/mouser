@@ -13,7 +13,8 @@ These are the runnable scenarios that prove v2 works end to end. They are differ
   - the owner's two Macs;
   - the Parallels Windows 11 VM, with Parallels shared clipboard **off** for every clipboard check (OD-3);
   - optional and not gating (owner decision OD-3): Steve's two Windows PCs with VMware Workstation;
-  - one Linux computer (X11, GNOME Wayland and KDE Wayland sessions where available).
+  - the Linux computer: the owner's Lima Ubuntu VM with a desktop session, with X11, GNOME Wayland and KDE Wayland sessions installed (owner decision OD-6; it gates every Linux row);
+  - optional and not gating: a Linux user's own computer.
 - Builds:
   - the 0.3.0 release candidate: Windows NSIS installer, Windows portable zip, macOS dmg, Linux AppImage/deb;
   - one 0.2.8 build, for the mixed-version checks.
@@ -69,7 +70,7 @@ On a desk of two Macs, Windows and Linux:
 - Count the notices. Each limitation appears once, under its own computer, in Health only. No raw decimals appear (SC-006). Responsiveness reads like "Responds quickly (9 ms)".
 - With a 0.2.8 peer, both versions are shown. With an incompatible peer, the computer to update is named.
 - Tray: a left click pauses and then resumes, and a right click opens the menu. Unplug a desk-mate's network and the badge appears. Reconnect it and the badge goes away. Remove that computer from the desk and no badge is shown. Take a greyscale screenshot and check that the states can still be told apart (SC-008).
-- In the Parallels VM, start `spike_uipi swallow`, a third-party-style LL hook installed after Mouser's that eats Mouser's probes. Use the VM for 10 minutes. Health shows no "lost its hold" problem (Story 3 sc. 16). Optionally confirm on Steve's PC with ASUS AsHotplugCtrl (not gating).
+- In the Parallels VM, start `spike_uipi swallow`, a third-party-style LL hook installed after Mouser's that eats Mouser's probes. Use the VM for 10 minutes (a test duration chosen by the plan so that many 5 s watchdog cycles pass; it is not an owner timing target). Health shows no "lost its hold" problem (Story 3 sc. 16). Optionally confirm on Steve's PC with ASUS AsHotplugCtrl (not gating).
 
 ## 5. Settings (Story 4)
 
@@ -94,7 +95,9 @@ In Settings:
 | 5e | Start an elevated application (`cmd.exe` or Task Manager "Run as administrator"; VMware Workstation as administrator on Steve's PC as an optional extra). Type, click, scroll and move into it from a Mac. Then sit at the PC: push past an edge, press the panic key and press a hotkey. | Everything works (sc. 4, 5). |
 | 5f | Portable zip, with an elevated application in front. Cross onto the PC. | Control returns to the Mac. The Mac shows the message naming the application and the PC, with "Restart Mouser as administrator" and the hint to install (sc. 6). |
 | 5g | Choose Restart. Approve UAC **at the PC's own keyboard** (in the VM: the Parallels window; owner decision OD-1). Cross again. | The elevated application receives the input. The edge, panic key and hotkeys work there (sc. 7). Health lists the portable limitations (sc. 8). |
-| 5h | Uninstall. | No Mouser process remains, and no `MouserService` exists (FR-013). |
+| 5h | Uninstall (with the tray app open in the signed-in session). | No Mouser process remains — no session engine, tray app or `--cursor-guard` process — and no `MouserService` exists (FR-013). |
+| 5i | With Mouser installed, Diagnostics → "Collect logs from the desk", then `mouser logs collect --out C:\Users\<you>\Desktop`. | Each zip is written by the signed-in user (file owner is that user, not SYSTEM) to Downloads / the chosen folder; File Explorer opens on it (OD-7, Story 3 sc. 12). |
+| 5j | Portable restarted as administrator (after 5g), then start `mouser-app.exe` again from Explorer (not elevated). | The second launch shows "Mouser is already running as administrator on this computer. Open it from the tray icon." and exits; one Mouser keeps running (spec edge case). |
 
 ## 7. Headless (Story 6)
 
@@ -107,15 +110,17 @@ Record every row in `specs/002-mouser-v2/evidence/quickstart.md`.
 
 | ID | Check | Hardware |
 |---|---|---|
-| R1 | Wi-Fi to Ethernet switch, and Wi-Fi toggle while controlling a computer → crossing works within 5 s | Mac pair; Windows PC |
+| R1 | Wi-Fi to Ethernet switch, and Wi-Fi toggle while controlling a computer → crossing works within 5 s | Mac pair (gating); real Windows PC (optional, Steve) |
+| R1w | While the Mac controls the Parallels VM, switch the VM's network adapter between Shared and Bridged (Wi-Fi) → crossing works within 5 s. This tests the Windows guest's interface and address change, not a real Wi-Fi/Ethernet switch (OD-6) | Parallels VM (gating) |
 | R2 | VPN connect and disconnect | Mac |
 | R3 | Unplug the network while the computer has the pointer → control returns, no key is stuck | Mac ↔ Windows |
-| R4 | Kill Mouser (Activity Monitor / Task Manager → End task, `kill -9`) while the pointer is remote → pointer visible on that computer (SC-002; research V5) | Mac, Windows, Linux X11, Linux Wayland |
+| R4 | Kill Mouser (Activity Monitor / Task Manager → End task, `kill -9`) while the pointer is remote → pointer visible on that computer (SC-002; research V5) | Mac, Parallels VM, Lima VM X11, Lima VM Wayland |
 | R5 | Portable from USB: join, eject, nothing left behind | Windows |
-| R6 | Real Linux on X11, GNOME Wayland and KDE Wayland: join, cross, clipboard | Linux |
+| R6 | Linux on X11, GNOME Wayland and KDE Wayland: join, cross, clipboard; on Wayland Health lists "Mouser can't tell which application is in front here, so its diagnostic log doesn't name it." | Lima VM (gating); a Linux user's computer (optional) |
 | R7 | Lock and unlock a Mac, and the Mac login window, from the shared keyboard | Mac |
 | R8 | Section 6 rows 5a–5h | Parallels VM (gating); Steve's PC (optional) |
 | R9 | **Trigger case (FR-011, SC-001), gating form:** the owner's Mac and the Parallels Windows 11 VM, with Mouser installed on Windows. The VM receives the pointer from the Mac. Bring an elevated application to the front with a click (`cmd.exe` Run as administrator). Then type, press Esc×2, cross back and cross again. Repeat 20 times. Then repeat with a non-elevated application, then do both again with portable Mouser (portable and not elevated → sc. 6 behaviour). **Expected:** in 20 of 20 runs per variant, the pointer is visible and working on a computer the user can use. After that, the user can cross both ways without restarting Mouser, within 5 s of the computers being able to reach each other. The bundle names the computer, the time, the cause and the application (SC-003). **Optional, not gating:** the original two-PC VMware Workstation form on Steve's PCs (VMware does not run on Windows ARM64). | Mac + Parallels VM (gating); Steve's two PCs (optional) |
+| R10a | Run `spike_uipi capture` (captures the pointer itself: `ClipCursor` to its window plus raw input with `RIDEV_CAPTUREMOUSE`, released by Ctrl+Alt) on the VM while it has the pointer from the Mac; click into it, then press Ctrl+Alt → the stand-in releases its capture and Mouser never leaves the pointer hidden on either computer (spec VM-capture edge case; a stand-in for a VM application, not VMware) | Parallels VM (gating) |
 | R10 | VMware VM captures the pointer (click into a running VM) → Ctrl+Alt releases VMware's capture, and Mouser never leaves the pointer hidden (spec edge case) | Steve's PC (optional, not gating; no VMware on the ARM64 VM) |
 | R11 | Installing past the unknown-publisher warning using only the release notes (SC-010) | Parallels VM, by someone new to Mouser if possible |
 | R12 | Mixed desk 0.2.8 + 0.3.0: crossing, pause, and `logs collect` lists the 0.2.8 computer as "older version" | Mac + Mac |

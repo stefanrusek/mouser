@@ -6,7 +6,7 @@ This file lists changes to `specs/001-mouser-v1/contracts/cli.md`. The exit code
 
 | Command | Behaviour | Spec |
 |---|---|---|
-| `mouser logs collect [--out DIR] [--json]` (new) | Calls `logs.collect`. Text output is the bundle path, then one line per computer: `<name>: included` or `<name>: not included (<offline\|logging off\|older version>)`. `--json` prints the method's result. If the engine is not running it exits 2. | Story 2 sc. 10 |
+| `mouser logs collect [--out DIR] [--json]` (new) | Calls `logs.collect` (with `dir` = `--out`); when `status` reports this computer's mode as `service` (Windows installed) it calls `logs.collect_stream` instead and writes the zip itself, as the calling user, into `--out` or the user's Downloads folder (owner decision OD-7). Text output is the bundle path, then one line per computer: `<name>: included` or `<name>: not included (<offline\|logging off\|older version>)`. `--json` prints the method's result. If the engine is not running it exits 2. | Story 2 sc. 10 |
 | `mouser desk rename <computer> <name>` (new) | Calls `desk.rename`. `<computer>` is a name or an id. | Story 4 sc. 3 |
 | `mouser config set …` (changed) | Sends `origin: "cli"`. Offline `config set hotkeys.enable_disable` is now validated (001 docs said it was not). | Story 2 sc. 8 |
 | `mouser status` (changed) | The text output shows each computer's friendly name, version and mode, and the tray connection state. JSON follows status.schema.json v2. | Story 3 sc. 4, 8 |

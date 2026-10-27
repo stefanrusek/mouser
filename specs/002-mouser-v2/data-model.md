@@ -53,7 +53,7 @@ every non-removed member is connected (paused counts) → connected
 |---|---|
 | Attribution key | Problems are unique per `(problem_id, computer)` everywhere: the core merge, the UI and toasts. |
 | Start-up limitations | Startup limitations are no longer raised as problems. The ids `platform_limitation:<capability>` are never raised in v2, and when they arrive from 0.2.x peers they are dropped on merge. Limitations live only in `Computer.limitations`. |
-| New kind `elevated_app` | Fields: `computer` = the Windows computer the app runs on, `message` = "Mouser on <computer> can't control <app> because it runs as administrator.", `app` (new optional field) = the program name. The fix is `restart_elevated:<computer id>` when that computer is portable and not elevated; with no fix the message also names installing Mouser (Story 5 sc. 6). It is raised by the receiver (V6) and cleared when control next enters that computer without an outranking foreground. It toasts on the controller once per raise (`QUIET_FOR` as in 001). |
+| New kind `elevated_app` | Fields: `computer` = the Windows computer the app runs on, `app` (new optional field) = the program name, `message` by mode (Story 5 sc. 6): mode `portable` (not elevated) → "Portable Mouser on <computer> can't control <app> because it runs as administrator. Restart Mouser as administrator to control it, or install Mouser to also control the login screen, permission prompts and Ctrl-Alt-Del." with fix `restart_elevated:<computer id>`; any other mode (no fix) → "Mouser on <computer> can't control <app> because it runs as administrator. Install Mouser to control it."  It is raised by the receiver (V6) and cleared when control next enters that computer without an outranking foreground. It toasts on the controller once per raise (`QUIET_FOR` as in 001). |
 | New fix actions | `restart_elevated:<computer id>`, `keep_placement:<computer id>`, `update_computer:<computer id>`. The last one is offered when the incompatible computer is this one and an update is available locally (Story 3 sc. 8). |
 | LOST_HOLD | It is raised only after real-input misses (V7). The Story 3 sc. 16 case therefore raises nothing. |
 
@@ -70,6 +70,7 @@ every non-removed member is connected (paused counts) → connected
 | Windows, policy blocks software SAS | "Ctrl-Alt-Del is blocked by this PC's policy." | SecureAttention |
 | Windows, every build | "Windows warns that Mouser comes from an unknown publisher when it is installed or first run." | Install (new Capability variant) |
 | Linux | "Mouser can't control this computer's login screen." | LoginScreen (new Capability variant) |
+| Linux, Wayland session | "Mouser can't tell which application is in front here, so its diagnostic log doesn't name it." | Capture |
 | Linux, tray without click events | "Clicking the tray icon doesn't pause Mouser here; use Pause in its menu." | Tray (new Capability variant) |
 | Linux, no tray | Same text as 001. It moves from `Capture` to `Tray`. | Tray |
 
@@ -141,6 +142,8 @@ open/rotate ──▶ write `log.header` ──▶ append records
 
 **Never included:** `state.json`, `secrets/`, the desk key, the device key.
 
+**Who writes the file (OD-7):** in every mode except `service` the engine that ran `logs.collect` writes it. In mode `service` (Windows installed session engine, SYSTEM) the engine never writes a bundle: `logs.collect` with `dir` is rejected and `logs.collect_stream` returns the zip bytes over the control pipe; the user's UI-mode app or CLI writes the file as that user, to their Downloads folder or the folder they chose.
+
 **Collection states** (one per computer):
 
 ```text
@@ -162,11 +165,13 @@ portable ─UAC declined─▶ portable (problem stays)
 
 **Restart sequence states:** `idle → prompting → handing_over (old instance shutting down) → elevated_running`. A declined UAC prompt returns to `idle`.
 
+**Elevated marker:** `MouserData/elevated.pid` holds the elevated instance's pid while it runs (written at start, deleted at exit). A non-elevated second launch that finds a live pid there shows "Mouser is already running as administrator on this computer. Open it from the tray icon." and exits 0 (spec edge case).
+
 ## Service and session engine (new, Windows installed)
 
 | Entity | Fields | States |
 |---|---|---|
-| ServiceState | `console_session: Option<u32>`, `engine: Option<EnginePid>`, `sas_policy: 0..3` | `Starting → WaitingForSession (session id 0xFFFFFFFF) → Running(session, pid)`. On a console session change: `Running → Relaunching → Running`. If the engine exits: `Running → Relaunching`. On stop: `Stopping` (it sends `Shutdown` and ends the engine). |
+| ServiceState | `console_session: Option<u32>`, `engine: Option<EnginePid>`, `sas_policy: 0..3` | `Starting → WaitingForSession (session id 0xFFFFFFFF) → Running(session, pid)`; `WaitingForSession` is left only on a `SERVICE_CONTROL_SESSIONCHANGE` after which `WTSGetActiveConsoleSessionId` returns a real id (no polling, no timer). On a console session change: `Running → Relaunching → Running`. If the engine exits: `Running → Relaunching`. On stop: `Stopping` (it sends `Shutdown` and ends the engine). |
 | SessionEngine | `session_id`, `desktop: Default\|Winlogon\|Other(name)` | It follows the input desktop. Each switch reinstalls the hooks on the new desktop and re-attaches injection. |
 
 ## UI navigation state (new)

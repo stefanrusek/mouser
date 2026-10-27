@@ -40,6 +40,8 @@ Mouser v2 (release 0.3.0) covers seven stories on top of v0.2.8:
   - Names ride on the existing `DeskState`.
   - The new desk-shared toggles ride on a version-gated `DeskSettings` message (V17, V20).
 
+**E2E (Principle 4.3, for the operator):** the inventory is J1 only. J1 is a **modified** journey for 002, decided by the owner (OD-4): its scenario text is unchanged, but the Windows computer it installs on now gets the machine-wide installer and `MouserService`. J1 is therefore re-run in Convergence (T-IDs in tasks.md "E2E"). No new journey is proposed.
+
 ## Technical Context
 
 **Language/Version**: Rust 1.99 (edition 2024), unchanged. The UI is static HTML + ES modules served by Tauri, unchanged.
@@ -58,7 +60,8 @@ Mouser v2 (release 0.3.0) covers seven stories on top of v0.2.8:
 **Testing**: as 001 (cargo test, cucumber 0.23.0 `acc_`, `contract_` with jsonschema, cargo-llvm-cov 0.9.1 at 100% lines, node `--test` + happy-dom for the UI), plus:
 - new VirtualPlatform knobs (contracts/platform-api-delta.md);
 - a `WinApi` seam in service-win;
-- the closed log-event schema used as a contract oracle.
+- the closed log-event schema used as a contract oracle;
+- one coverage exclusion, approved by the owner (OD-5): `apps/mouser-service-win/src/winapi_sys.rs`, the thin SYSTEM-only pass-through to the real Windows APIs behind the `WinApi` seam. It is recorded as debt and verified by probe P2 on the VM and the manual rows R8/R9.
 
 **Target Platform**: as 001. Windows installed mode needs an administrator once, at install.
 
@@ -89,17 +92,19 @@ Mouser v2 (release 0.3.0) covers seven stories on top of v0.2.8:
 | VI Test the seams | PASS | Simulated-network and VirtualPlatform acceptance tests. Version-gate contract tests. Real-hardware Story 7. |
 | VII Simplicity | PASS (see Complexity Tracking) | The engine moves into the session (Deskflow model) instead of proxying the Platform trait over IPC. Existing patterns are reused: `Panic`, release streams, `DeskState`. |
 | Dev workflow: Polish updates docs/ | PASS | Polish phase: troubleshooting, configuration, cli, releasing, technical-decisions, product-requirements. |
-| 1.3 No open markers before tasks | PASS | No `[NEEDS CLARIFICATION]` markers. OD-1 to OD-3 and contract approval were decided by the owner on 2026-10-26 (see "Owner Decisions"). |
+| 1.3 No open markers before tasks | PASS | No `[NEEDS CLARIFICATION]` markers. OD-1 to OD-3 and contract approval were decided by the owner on 2026-10-26, OD-4 to OD-7 on 2026-10-27 (see "Owner Decisions"). |
 | 1.4 Deferred-work mechanism | PASS | Same as 001: the "Deferred to a future feature" section of tasks.md, plus "Open" items in this feature's notes file. No GitHub issues are in use. |
 | 2.6 Handoff consumed | PASS | research.md disposition table H-1…H-12. |
-| 3.1 External deps probed | PASS (OD-3: probes on the Parallels VM, risk accepted) | Windows APIs, desk research and source reading done. Probes P1–P4 are scheduled as Setup tasks that gate their lanes. |
+| 3.1 External deps probed | PASS (OD-3: probes on the Parallels VM, risk accepted; OD-6: Linux checks on the Lima Ubuntu VM) | Windows APIs, desk research and source reading done. Probes P1–P4 are scheduled as Setup tasks that gate their lanes. |
 | 3.2 Gap analysis | PASS | See "Gap Analysis" below. |
 | 3.3 Contracts before implementation | PASS | `contracts/` is fixed. The frozen-crate changes are listed below for approval. |
 | 3.4 Test infra present | GAP → setup tasks | The gate's evidence directory, `schemas_in_sync` and `lane_disjointness.py` are hard-wired to 001. VirtualPlatform needs the new knobs. A Windows runner exists (001 CI). |
 | 3.5 Sequence diagrams | PASS | One diagram per story, below. |
 | 3.8 Debt survey | PASS | See below. |
-| 4.1 Test doubles are operator decisions | PASS | VirtualPlatform/SimNet are 001 D2 (sanctioned). The extended knobs are the same double. The service-win `WinApi` seam fakes OS calls the same way the 001 Windows watchdog `HookApi` seam does. Its real-config debt is probe P2 plus the Story 7 rows R8/R9. |
-| 4.3 E2E admission | PASS | Inventory: J1 only. **No new journey is proposed**, and Story 7 is manual real-hardware evidence. |
+| 4.1 Test doubles are operator decisions | PASS (OD-5) | VirtualPlatform/SimNet are 001 D2 (sanctioned). The extended knobs are the same double. The new seams — service-win `WinApi`, app `Shell` (elevated relaunch), app service-query (UI mode), app file-manager reveal, platform-windows input-desktop seam — are sanctioned by the owner (OD-5). Real-config debt per seam: `WinApi` → probe P2 + R8/R9; `Shell` → probe P3 + R8 5g; service-query → R8 5a; file-manager → quickstart §3/§4 by hand; desktop seam → probe P2 item 2 + R8 5b/5c. |
+| 4.1 Contracts both sides | PASS | Every seam has a `contract_` test on each side; the app's consumer side of status v2 is `ui/contract_status_v2.test.js`, and ui-navigation is `src/contract_navigation_tests.rs` / `ui/contract_navigation.test.js` (see Test Strategy). |
+| 4.2 Coverage | PASS (OD-5) | 100% lines everywhere except the one owner-approved module `apps/mouser-service-win/src/winapi_sys.rs` (SYSTEM-only pass-through), added to the gate's exclusion list in Setup and recorded as debt. |
+| 4.3 E2E admission | PASS (OD-4) | Inventory: J1 only. **No new journey is proposed.** J1 is a modified journey (OD-4: the Windows install becomes machine-wide with `MouserService`), so it re-runs in Convergence. Story 7 is manual real-hardware evidence. |
 | 5.2 Workspace bootstrap | PASS | constitution v1.4.0, unchanged. |
 
 ## Project Structure
@@ -166,7 +171,10 @@ xtask/                   # gate evidence dir from .specify/feature.json; disjoin
 | `mouser-proto/schemas/` | status v2, `log-events.schema.json`, `log-bundle.schema.json`. `schemas_in_sync` points at `specs/002-mouser-v2/contracts/` for these three and still at 001 for log-record and release-manifest. | S2, S3 |
 | `mouser-platform/src/lib.rs`, `conformance.rs` | `foreground_app()` replaces `foreground_elevated()`. `LocalInput::CaptureLost`. `Capability::{Install, LoginScreen, Tray}`. Rules 10–11. | S1 sc.3, S2 sc.2/4, S5, S6 sc.2 |
 | `mouser-testkit/src/virtual_platform.rs` | `refuse_input`, `panic_on_next_inject`, `set_foreground_app`, `lose_capture`, `pointer_hidden` | S1 tests |
-| `.feature` files (new) | `crates/mouser-core/tests/features/v2_us1..v2_us6.feature` and `apps/mouser-service-win/tests/features/v2_us5_service.feature`, each written verbatim from spec.md. The 001 `.feature` files are not edited. v2 amendments to 001 scenarios are expressed as new v2 scenarios. | 4.1 |
+| `mouser-proto/src/control.rs` (OD-7) | `logs.collect_stream` and the `logs.chunk {seq, data}` notification; `logs.collect` rejects every call in mode `service` | FR-007, S3 sc.12 |
+| `mouser-platform-windows` cross-lane signatures (approved 2026-10-27) | `cursor_guard::run`, `ServiceClient::{connect, on_shutdown, stopping}`, `console_session_id`, `WinPlatform::with_service_client` (contracts/platform-api-delta.md "Frozen cross-lane Rust signatures"). Implemented by the platform-windows lane, called by the app lane | E1 |
+| `.feature` files (new) | `crates/mouser-core/tests/features/v2_us1..v2_us6.feature`, `apps/mouser-service-win/tests/features/v2_us5_service.feature`, and `crates/mouser-platform-windows/tests/features/{v2_us1_guard,v2_us3_watchdog}.feature` (Story 1 sc. 6 and Story 3 sc. 16, which only the Windows backend can observe), each written verbatim from spec.md. The 001 `.feature` files are not edited. v2 amendments to 001 scenarios are expressed as new v2 scenarios. | 4.1 |
+| Workspace dependencies | Every new dependency (`zip` in core, `windows-service` and `windows` features in service-win, cucumber in app and service-win) is added in one Foundational task, so `Cargo.lock` is written once and no lane writes it | 5.2 |
 
 ## Package Boundary Declaration (Principle 3.3)
 
@@ -236,6 +244,7 @@ sequenceDiagram
   CoreA->>CoreA: C: older_version (not asked); offline members: offline
   CoreA->>CoreA: write mouser-logs-<desk>-<ts>.zip + bundle.json; log logs.collected
   CoreA-->>CLI: {path, computers[]}
+  Note over CLI,CoreA: Windows installed (OD-7): CLI/app → logs.collect_stream; engine (SYSTEM) sends logs.chunk…, result; the caller writes the zip as the user
 ```
 
 ### US3 — As a desk owner, I want one Mouser window where I can find everything
@@ -327,7 +336,7 @@ sequenceDiagram
 ### US7 — As a Mouser developer, I want every v1 behavior still unverified on real hardware checked on real hardware
 ```mermaid
 sequenceDiagram
-  actor Tester as Owner (+ optional Steve) / Linux user
+  actor Tester as Owner (Macs, Parallels VM, Lima VM; optional Steve / Linux user)
   participant HW as Real computers
   participant Bundle as mouser logs collect
   participant Ev as specs/002-mouser-v2/evidence/quickstart.md
@@ -358,7 +367,8 @@ sequenceDiagram
 | log bundle | core | cli |
 | platform rules 10–11 | each backend on its OS runner | VirtualPlatform |
 | service IPC | service-win | platform-windows |
-| ui-navigation | `windows_tests.rs`, `tray_model_tests.rs` | `nav.test.js`, `search_index.test.js` |
+| ui-navigation | `src/contract_navigation_tests.rs` | `ui/contract_navigation.test.js` |
+| control / status v2 (app consumer) | core | `ui/contract_status_v2.test.js` (every `status_fixture.js` fixture validates against `schemas/status.schema.json`) |
 
 **Privacy (SC-004).** `contract_log_privacy` (core) runs a desk session in which a marker is typed and copied, collects a bundle, and asserts zero matches across logs and the zip.
 
@@ -368,7 +378,9 @@ sequenceDiagram
 
 **Evidence.** `cargo xtask gate` → `specs/002-mouser-v2/evidence/<lane>.jsonl`, which is resolved from `.specify/feature.json`.
 
-**E2E.** The inventory is J1 only, and nothing is added. Absorption was considered: J1 could absorb "quit while remote → pointer visible" (Story 1 sc. 5), but nothing that J1 runs can check cursor visibility from outside on macOS. That assertion therefore sits lower: platform rule 10 conformance on each OS runner, plus Story 7 R4. No journey is proposed.
+**Acceptance for Windows-only observations.** Story 1 sc. 6 (unexpected end: the cursor guard) and Story 3 sc. 16 (probes swallowed by another hook) can only be observed in the Windows backend. They get Foundational `.feature` files under `crates/mouser-platform-windows/tests/features/` and `acc_` runners in the platform-windows lane (the guard scenario spawns a real guard child and terminates its parent on the Windows VM/runner; the watchdog scenario runs over the `HookApi` seam).
+
+**E2E.** The inventory is J1 only, and nothing is added. J1 is modified for 002 (OD-4) and re-runs in Convergence. Absorption was considered: J1 could absorb "quit while remote → pointer visible" (Story 1 sc. 5), but nothing that J1 runs can check cursor visibility from outside on macOS. That assertion therefore sits lower: platform rule 10 conformance on each OS runner, plus Story 7 R4. No journey is proposed.
 
 ## Infrastructure Detection (Principle 3.4)
 
@@ -376,7 +388,8 @@ sequenceDiagram
 |---|---|---|
 | Gate evidence directory per feature | **no**: `xtask/src/gate.rs:56-57` hardcodes `specs/001-mouser-v1/evidence` | Read `feature_directory` from `.specify/feature.json` |
 | CI evidence artifact | `.github/workflows/ci.yml` uploads `specs/001-mouser-v1/evidence/` | Upload the evidence of the active feature |
-| Lane disjointness for 002 | **no**: `xtask/scripts/lane_disjointness.py` hardcodes `## Phase 54` | Parameterise the end marker and the frozen prefixes (add `apps/mouser-service-win/tests/features/`) |
+| Lane disjointness for 002 | **no**: `xtask/scripts/lane_disjointness.py` hardcodes `## Phase 54`, and ignores root files such as `Cargo.lock` | Parameterise the end marker and the frozen prefixes (add `apps/mouser-service-win/tests/features/` and `crates/mouser-platform-windows/tests/features/`), and count root files (`Cargo.toml`, `Cargo.lock`) |
+| Coverage exclusion for the SYSTEM-only pass-through | **no** (`xtask/src/gate.rs:9` `EXCLUDE`) | Add `winapi_sys\.rs` to `EXCLUDE` (OD-5; one file) |
 | `schemas_in_sync` | hardwired to the 001 contracts path (`crates/mouser-proto/tests/schemas_in_sync.rs:4-17`) | Foundational (frozen crate): per-schema source paths |
 | VirtualPlatform failure / blind / foreground knobs | **no** (`virtual_platform.rs:493-566`) | Foundational (testkit) |
 | Windows CI runner (service-win, platform-windows) | yes (001 CI, windows-2025) | — |
@@ -484,6 +497,8 @@ Each gap is resolved by a V-decision within the plan's authority. Three items ne
 **Foundational** covers:
 - the frozen-crate changes listed above;
 - the v2 `.feature` files;
+- every new workspace dependency (one task, so `Cargo.lock` is written once);
+- tests for the placeholder match arms the frozen changes force into lane packages;
 - the lane disjointness check.
 
 **Convergence** covers:
@@ -502,20 +517,24 @@ Each gap is resolved by a V-decision within the plan's authority. Three items ne
 |---|---|
 | Setup | `cargo xtask gate --all --lane setup`, green on the three CI runners (001 T012 form). It is not run locally on the owner's Mac, because the macOS suites drive real input |
 | Foundational | `cargo xtask gate --packages mouser-proto,mouser-platform,mouser-testkit --lane foundational`, on all three CI runners |
-| Lane phase | `cargo xtask gate --packages <lane package> --lane <lane>`. Windows lanes run on the Windows runner; macOS-input suites run on CI or by the owner, never from an agent on the owner's Mac |
+| Lane phase | `cargo xtask gate --packages <lane package> --lane <lane>`. Windows lanes (platform-windows, service-win, and the Windows parts of core/app/cli) run the gate on the owner's Parallels Windows 11 VM (ARM64) from the Windows Claude session, as in 001, which writes the lane evidence; the pushed lane commit must also be green on the CI `windows-2025` runner. macOS-input suites run on CI or by the owner, never from an agent on the owner's Mac |
 | Convergence and terminal | `cargo xtask gate --all --lane convergence` / `--lane polish`, on the three CI runners. J1 is re-run because Convergence touches packaging |
 
 **Workspace bootstrap**: `cargo fetch --locked && cargo xtask bootstrap` (unchanged).
 
 ## Owner Decisions (2026-10-26)
 
-All decisions below were made by the owner and relayed by the coordinator on 2026-10-26.
+All decisions below were made by the owner and relayed by the coordinator on 2026-10-26 (CA, OD-1 to OD-3) and 2026-10-27 (OD-4 to OD-7).
 
 | ID | Decision |
 |---|---|
 | CA | **Frozen-crate changes approved** as listed in "Frozen Contract Changes" above: `mouser-proto` (wire, control, config, `service_ipc`, schemas), the `mouser-platform` delta, the `mouser-testkit` knobs, and the new v2 `.feature` files. The 001 `.feature` files stay untouched. |
 | OD-1 | **Approved.** The UAC prompt raised by portable "Restart Mouser as administrator" is approved at the Windows PC's own keyboard. Windows shows UAC on that PC's secure desktop, which portable Mouser cannot drive (research V19). The message says "Approve the Windows prompt on <computer>". |
 | OD-2 | **Approved.** When a different administrator account installs the per-machine upgrade from a 0.2.x per-user install, the computer rejoins with one approval (research V12a). |
+| OD-4 | **J1 is a modified journey** (2026-10-27). The Windows install it performs becomes machine-wide with `MouserService`, so J1 re-runs in Convergence (constitution 4.3). Its scenario text is unchanged. |
+| OD-5 | **New seams approved** (2026-10-27): `WinApi` (service-win), `Shell`, service-query and file-manager (app), input-desktop (platform-windows), each with the real-config debt named in the Constitution Check 4.1 row. The thin SYSTEM-only pass-through `apps/mouser-service-win/src/winapi_sys.rs` is excluded from coverage, recorded as debt, and verified by probe P2 on the VM and manual rows R8/R9. |
+| OD-6 | **Linux on a Lima Ubuntu VM** (2026-10-27). A Lima Ubuntu VM with a desktop session (X11, GNOME Wayland and KDE Wayland sessions) counts as "the Linux computer" for every gating Story 7 row; a Linux user's own computer is optional. The Windows part of R1 is not a real Wi-Fi/Ethernet switch on the VM: the gating Windows row is R1w (switch the VM's Parallels adapter between Shared and Bridged while it is controlled), which tests the guest's interface and address change only; a real Windows Wi-Fi/Ethernet switch is optional (Steve). |
+| OD-7 | **The SYSTEM side never writes a user-chosen path** (2026-10-27). In mode `service` the session engine builds the bundle and returns it over the control pipe (`logs.collect_stream`); the user's own non-elevated app or CLI writes it to Downloads or the chosen folder. `logs.collect` is rejected in mode `service`. contracts/control-api-delta.md, cli-delta.md, service-ipc.md and log-bundle.md are updated (owner-approved contract changes). |
 | OD-3 | **VM only.** Windows probes P1–P3 run on the owner's Parallels Windows 11 VM, driven by the Windows Claude session. Steve and his PCs gate no phase. His real-PC checks stay optional, as extra confirmation in Story 7, and gate nothing. VM limits and how each is covered are in research.md "Probes". |
 
 ## Post-Design Constitution Re-check
@@ -528,7 +547,7 @@ The design artifacts introduce no unjustified violations:
   - V7 uses the existing watchdog cycle.
   - The service's engine relaunch is supervision specified by Story 5 (control must be available at all times), not a test accommodation.
 - Error handling added in V1 and V3 is specified by FR-002 and Story 1. It is not invented (5.5, 5.6).
-- No open markers remain. OD-1 to OD-3 and the contract changes are owner-approved.
+- No open markers remain. OD-1 to OD-7 and the contract changes are owner-approved.
 
 ## Complexity Tracking
 

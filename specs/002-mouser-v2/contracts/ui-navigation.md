@@ -1,6 +1,6 @@
 # Contract: Mouser window navigation (v2, Story 3)
 
-There are two sides to this contract. The **Rust app** (`apps/mouser-app/src/windows.rs`, `tray.rs`) produces navigation requests. The **UI** (`apps/mouser-app/ui/index.html` + `ui/nav.js`) consumes them. Both sides test against this document: `windows_tests.rs` and `tray_model_tests.rs` on the Rust side, `nav.test.js` on the UI side.
+There are two sides to this contract. The **Rust app** (`apps/mouser-app/src/windows.rs`, `tray.rs`) produces navigation requests. The **UI** (`apps/mouser-app/ui/index.html` + `ui/nav.js`) consumes them. Both sides test against this document with `contract_`-prefixed tests (constitution 4.1): `apps/mouser-app/src/contract_navigation_tests.rs` on the Rust side (producer: `windows.rs` navigation and the tray's navigate calls; `tray_model_tests.rs` is renamed `tray_tests.rs` in 002 and keeps the unit tests) and `apps/mouser-app/ui/contract_navigation.test.js` on the UI side (consumer: routes, sidebar, `mouser://navigate`).
 
 Layout follows `reference/fluid-voice-style.png` (FR-011): one window with a search field at the top of a sidebar, sections grouped under headings, and a home overview as the first section. Colours, fonts and wording are our own.
 

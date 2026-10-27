@@ -23,7 +23,13 @@ The types live in the contract crate, in `crates/mouser-proto/src/service_ipc.rs
 | engine → service | `SendSas` | Asks for Ctrl-Alt-Del. The service calls `SendSAS(FALSE)`. |
 | service → engine | `SasResult(Sent \| PolicyBlocked \| Failed(String))` | `PolicyBlocked` means `SoftwareSASGeneration` is not 1 or 3 when read. The engine's `secure_attention()` returns `Err(Os(..))` for any outcome other than `Sent`. |
 | service → engine | `Shutdown` | The service is stopping or uninstalling, or the console session changed. The engine runs `Engine::shutdown` (research V4) and exits. |
-| engine → service | `Stopping { reason: Quit \| Fault }` | Sent before a voluntary exit, so the service can log it. The service starts the engine again in either case, unless the service itself is stopping. |
+| engine → service | `Stopping { reason: StopReason }` (`StopReason = Quit \| Fault`) | Sent before a voluntary exit, so the service can log it. The service starts the engine again in either case, unless the service itself is stopping. |
+
+## What does not travel on this pipe
+
+Log bundles never travel on the service pipe and the service never writes a bundle. The session engine reads `service.log` from the machine folder when it gathers its own part, and hands the finished zip to the user's own Mouser over the control pipe (`logs.collect_stream`, control-api-delta.md; owner decision OD-7).
+
+The service leaves `WaitingForSession` only on a `SERVICE_CONTROL_SESSIONCHANGE` after which `WTSGetActiveConsoleSessionId` returns a real session id. It never polls.
 
 ## Lifecycle
 
