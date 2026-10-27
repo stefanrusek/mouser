@@ -40,10 +40,8 @@ jobs:
         run: |
           export CARGO_LLVM_COV_TARGET_DIR=target/llvm-cov-ci-windows
           cargo llvm-cov report --text --ignore-filename-regex '(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\.rs)' --output-path cov.txt 2>&1 | tail -5
-          ls -la cov.txt
-          grep -n 'control.server.rs' cov.txt | head
-          awk '/^[^ ].*\.rs:$/{f=$0} /^ *[0-9]+\| *0\|/{print f" "$0}' cov.txt | head -40
-          awk '/server\.rs:$/{p=1;next} /^[^ ].*:$/{p=0} p && /^ *[0-9]+\| *0\|/' cov.txt | head
+          awk '/control.server\.rs:$/{p=1;next} /^[A-Za-z]:.*\.rs:$/{p=0} p' cov.txt | tr -d '\r' | sed -n 200,345p
+          grep -n '\^0' cov.txt | head -20
       - name: Read feature directory
         id: feature
         if: always()
