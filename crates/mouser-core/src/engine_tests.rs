@@ -32,6 +32,23 @@ async fn start_serves_the_control_api_in_process_and_shutdown_removes_the_socket
     assert!(!path.exists());
 }
 
+/// FR/US1: shutdown ends the control endpoint. By the time it returns no
+/// client gets in, on Windows too, where the endpoint is a pipe (not a file).
+#[tokio::test]
+async fn once_shut_down_the_control_endpoint_takes_no_client() {
+    use crate::control::client::ControlClient;
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let path = node.control_path.clone();
+    drop(
+        ControlClient::connect(&path)
+            .await
+            .expect("a client gets in while it runs"),
+    );
+    node.engine.shutdown().await;
+    assert!(ControlClient::connect(&path).await.is_err());
+}
+
 #[tokio::test]
 async fn a_configured_computer_name_replaces_the_operating_system_name() {
     let lab = Lab::new();

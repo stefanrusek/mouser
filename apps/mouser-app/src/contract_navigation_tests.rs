@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Listener, Manager};
 
 use crate::support_tests::{app_with, fixture, has_window};
-use crate::windows::{self, EVENT, LABEL, navigate};
+use crate::windows::{EVENT, LABEL, navigate};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn navigate_creates_main_at_the_route_when_it_does_not_exist() {
@@ -57,7 +57,8 @@ async fn no_call_ever_creates_a_second_normal_window() {
 #[cfg(target_os = "macos")]
 #[test]
 fn on_macos_the_dock_icon_is_regular_while_shown_and_accessory_while_hidden() {
+    use crate::windows::activation_policy;
     use tauri::ActivationPolicy::{Accessory, Regular};
-    assert!(matches!(windows::activation_policy(true), Regular));
-    assert!(matches!(windows::activation_policy(false), Accessory));
+    assert!(matches!(activation_policy(true), Regular));
+    assert!(matches!(activation_policy(false), Accessory));
 }
