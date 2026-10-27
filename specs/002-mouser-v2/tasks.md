@@ -527,11 +527,11 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 18: US5-cli — As a desk user, I want to control a Windows computer at its login screen, elevation prompts and administrator applications (P2)
 
-- [ ] T374 [P] [US5-cli] Write tests `apps/mouser-cli/tests/contract_cli_endpoint.rs`: the CLI connects to `\\.\pipe\mouser-service` when it exists and otherwise to the per-user pipe `\\.\pipe\mouser-<USERNAME>`, using `mouser_core::control::default_path()` (Windows-only cases behind `cfg(windows)`)
-- [ ] T375 [US5-cli] Use `mouser_core::control::default_path()` in `apps/mouser-cli/src/paths.rs`
-- [ ] T376 [P] [US5-cli] Write tests in `apps/mouser-cli/tests/contract_cli_logs_collect.rs` against an in-process engine started in mode `service`: `mouser logs collect --out DIR` sees mode `service` in `status`, calls `logs.collect_stream`, reassembles the chunks, checks `size` and `sha256`, writes the zip itself into DIR (or the user's Downloads folder without `--out`) with log-bundle.md's naming and collision rule, and prints the path and per-computer lines as for `logs.collect` (OD-7)
-- [ ] T377 [US5-cli] Implement the streamed path of `logs collect` in `apps/mouser-cli/src/logs.rs`
-- [ ] T378 [US5-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli` (including the Windows runner)
+- [X] T374 [P] [US5-cli] Write tests `apps/mouser-cli/tests/contract_cli_endpoint.rs`: the CLI connects to `\\.\pipe\mouser-service` when it exists and otherwise to the per-user pipe `\\.\pipe\mouser-<USERNAME>`, using `mouser_core::control::default_path()` (Windows-only cases behind `cfg(windows)`)
+- [X] T375 [US5-cli] Use `mouser_core::control::default_path()` in `apps/mouser-cli/src/paths.rs`
+- [X] T376 [P] [US5-cli] Write tests in `apps/mouser-cli/tests/contract_cli_logs_collect.rs` against an in-process engine started in mode `service`: `mouser logs collect --out DIR` sees mode `service` in `status`, calls `logs.collect_stream`, reassembles the chunks, checks `size` and `sha256`, writes the zip itself into DIR (or the user's Downloads folder without `--out`) with log-bundle.md's naming and collision rule, and prints the path and per-computer lines as for `logs.collect` (OD-7)
+- [X] T377 [US5-cli] Implement the streamed path of `logs collect` in `apps/mouser-cli/src/logs.rs`
+- [X] T378 [US5-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli` (including the Windows runner)
 - [ ] T379 [US5-cli] Commit: phase boundary "US5-cli" (5.3)
 
 ### Lane: platform-windows

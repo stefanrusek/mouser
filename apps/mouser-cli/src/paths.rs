@@ -20,3 +20,9 @@ pub fn dir() -> PathBuf {
     let exe = std::env::current_exe().expect("the executable has a path");
     Paths::resolve(&exe, OS, &Env::from_process()).dir
 }
+
+/// The control endpoint of the Mouser to talk to: the service's pipe when it
+/// exists (Windows), otherwise this user's socket or pipe.
+pub fn control_endpoint() -> PathBuf {
+    mouser_core::control::default_path()
+}

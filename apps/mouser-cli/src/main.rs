@@ -14,7 +14,6 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use mouser_core::ControlClient;
-use mouser_core::control::default_path;
 use mouser_proto::control::{Method, RpcError};
 use serde_json::Value;
 
@@ -76,7 +75,7 @@ pub struct Mouser {
 
 impl Mouser {
     async fn connect(json: bool) -> Result<Self, Failure> {
-        let client = ControlClient::connect(&default_path())
+        let client = ControlClient::connect(&paths::control_endpoint())
             .await
             .map_err(|_| Failure::NotRunning)?;
         Ok(Self { client, json })

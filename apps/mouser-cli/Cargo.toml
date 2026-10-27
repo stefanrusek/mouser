@@ -19,6 +19,11 @@ path = "src/main.rs"
 name = "contract_cli"
 path = "tests/contract_cli.rs"
 
+# Alone in its process: a test here may own the machine-wide service pipe.
+[[test]]
+name = "contract_cli_endpoint"
+path = "tests/contract_cli_endpoint.rs"
+
 [[test]]
 name = "e2e_steps"
 path = "tests/e2e_steps.rs"
