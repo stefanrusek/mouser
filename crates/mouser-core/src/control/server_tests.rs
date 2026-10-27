@@ -296,7 +296,7 @@ mod service_pipe {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Authorization::{
         ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
-        SDDL_REVISION_1, SE_KERNEL_OBJECT,
+        SDDL_REVISION_1, SE_FILE_OBJECT,
     };
     use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
 
@@ -315,7 +315,7 @@ mod service_pipe {
         let status = unsafe {
             GetNamedSecurityInfoW(
                 wide.as_ptr(),
-                SE_KERNEL_OBJECT,
+                SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
