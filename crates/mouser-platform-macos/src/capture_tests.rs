@@ -482,3 +482,11 @@ fn warping_to_a_point_on_no_display_is_an_error_not_a_panic() {
     let refused = crate::capture::SystemCursor.warp(10_000_000.0, 10_000_000.0);
     assert!(matches!(refused, Err(Error::Os(_))));
 }
+
+#[test]
+fn an_os_refused_warp_becomes_an_os_error_naming_the_code() {
+    assert_eq!(
+        crate::capture::warp_refused(1001),
+        Error::Os("CGWarpMouseCursorPosition failed: 1001".into())
+    );
+}

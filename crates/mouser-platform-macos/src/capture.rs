@@ -92,6 +92,11 @@ pub(crate) trait Cursor: Send + Sync {
     fn show(&self);
 }
 
+/// FR-002: the OS refusing a warp is an error the caller sees, not a panic.
+pub(crate) fn warp_refused(code: core_graphics::base::CGError) -> Error {
+    Error::Os(format!("CGWarpMouseCursorPosition failed: {code}"))
+}
+
 pub(crate) struct SystemCursor;
 
 impl Cursor for SystemCursor {
@@ -106,8 +111,7 @@ impl Cursor for SystemCursor {
         if !on_a_display {
             return Err(Error::Os(format!("({x}, {y}) is on no display")));
         }
-        CGDisplay::warp_mouse_cursor_position(at)
-            .map_err(|code| Error::Os(format!("CGWarpMouseCursorPosition failed: {code}")))
+        CGDisplay::warp_mouse_cursor_position(at).map_err(warp_refused)
     }
     fn associate(&self, on: bool) {
         CGDisplay::associate_mouse_and_mouse_cursor_position(on)

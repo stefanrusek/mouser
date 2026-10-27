@@ -7,11 +7,22 @@ use mouser_platform_macos::MacPlatform;
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGCursorIsVisible() -> bool;
+    fn _CGSDefaultConnection() -> i32;
+    fn CGSGetCursorScale(connection: i32, scale: *mut f32) -> i32;
 }
 
+/// `CGCursorIsVisible` reads the window server's shared state, but
+/// `CGDisplayShowCursor` is a one-way message that may still be queued when
+/// `stop()` returns. A request that waits for the window server's reply is
+/// answered only after every message this process sent before it, so the
+/// state read afterwards includes the show.
 fn pointer_hidden() -> bool {
-    // SAFETY: a plain C query with no arguments.
-    !unsafe { CGCursorIsVisible() }
+    let mut scale = 0.0;
+    // SAFETY: plain C calls; `scale` outlives the call.
+    unsafe {
+        assert_eq!(CGSGetCursorScale(_CGSDefaultConnection(), &mut scale), 0);
+        !CGCursorIsVisible()
+    }
 }
 
 #[test]
