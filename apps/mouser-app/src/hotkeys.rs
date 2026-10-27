@@ -1,7 +1,9 @@
-//! The global hotkey the operating system must see: `hotkeys.enable_disable`.
-//! (QuickJump, targeted paste and the panic key are detected by core in the
-//! captured input stream.) The registration itself is behind [`Shortcuts`] so
-//! the logic here runs without a live app.
+//! Global hotkeys: the accelerators in config (`hotkeys.*`) registered with
+//! the operating system. Core detects QuickJump and targeted paste in the
+//! captured input stream (which sees them before the system's hotkey
+//! dispatch); registering them as well keeps them from the application in
+//! front. The registration itself is behind [`Shortcuts`] so the logic here
+//! runs without a live app.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -18,6 +20,8 @@ use crate::tray::current_status;
 pub enum Hotkey {
     /// Pause crossing, or resume it (Story 2 sc. 12).
     EnableDisable,
+    QuickJump,
+    TargetedPaste,
 }
 
 impl Hotkey {
@@ -25,6 +29,8 @@ impl Hotkey {
     pub fn name(self) -> &'static str {
         match self {
             Self::EnableDisable => "enable_disable",
+            Self::QuickJump => "quickjump",
+            Self::TargetedPaste => "targeted_paste",
         }
     }
 }
@@ -46,21 +52,25 @@ pub struct Hotkeys {
     shortcuts: Box<dyn Shortcuts>,
     control: ControlHandle,
     config: Box<dyn Fn() -> Config + Send + Sync>,
+    forward: Press,
     registered: Mutex<Vec<Binding>>,
     refused: Mutex<Vec<(Hotkey, String)>>,
 }
 
 impl Hotkeys {
-    /// `config` reads the current configuration.
+    /// `config` reads the current configuration; `forward` receives the
+    /// hotkeys the engine acts on itself rather than through the control API.
     pub fn new(
         shortcuts: Box<dyn Shortcuts>,
         control: ControlHandle,
         config: Box<dyn Fn() -> Config + Send + Sync>,
+        forward: Press,
     ) -> Arc<Self> {
         Arc::new(Self {
             shortcuts,
             control,
             config,
+            forward,
             registered: Mutex::new(Vec::new()),
             refused: Mutex::new(Vec::new()),
         })
@@ -69,7 +79,11 @@ impl Hotkeys {
     /// Register the accelerators in config, unless they are already registered.
     pub fn sync(self: &Arc<Self>) {
         let hotkeys = (self.config)().hotkeys;
-        let wanted = vec![(hotkeys.enable_disable, Hotkey::EnableDisable)];
+        let wanted = vec![
+            (hotkeys.enable_disable, Hotkey::EnableDisable),
+            (hotkeys.quickjump, Hotkey::QuickJump),
+            (hotkeys.targeted_paste, Hotkey::TargetedPaste),
+        ];
         let mut registered = self.registered.lock().unwrap();
         if *registered == wanted {
             return;
@@ -119,6 +133,7 @@ impl Hotkeys {
                     .await
                     .expect("the engine can be paused or resumed");
             }
+            other => (self.forward)(other),
         }
     }
 }

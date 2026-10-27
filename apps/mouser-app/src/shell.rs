@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, Manager, RunEvent, Runtime, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -224,10 +224,19 @@ pub fn run() {
             )
             .build()?;
             overlay::create(&handle);
+            let forward = handle.clone();
             let hotkeys = Hotkeys::new(
                 Box::new(LiveShortcuts(handle.clone())),
                 control.clone(),
                 Box::new(move || mouser_core::config::load_or_create(&config_dir)),
+                // Core acts on QuickJump and targeted paste from the captured
+                // stream; the registration only keeps them from the
+                // application in front, so the press is only reported.
+                Arc::new(move |hotkey| {
+                    forward
+                        .emit("mouser://hotkey", hotkey.name())
+                        .expect("hotkey press can be announced");
+                }),
             );
             hotkeys.sync();
             app.manage(hotkeys);
