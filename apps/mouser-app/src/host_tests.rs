@@ -91,3 +91,31 @@ fn shutting_the_host_down_stops_the_engine_once_however_often_it_is_asked() {
         assert!(!path.exists());
     });
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_host_starts_the_engine_in_the_mode_it_is_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(crate::support_tests::free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let host = crate::host::Host::start(
+        std::sync::Arc::new(mouser_testkit::VirtualPlatform::new()),
+        dir.path().to_path_buf(),
+        crate::support_tests::control_path_in(&dir),
+        "Desk Mac".into(),
+        "1.2.3".into(),
+        mouser_proto::wire::ComputerMode::PortableElevated,
+        crate::host::Updates::default(),
+    )
+    .await;
+    let status = status_of(&host).await;
+    let own = status
+        .computers
+        .iter()
+        .find(|c| c.id == status.computer.id)
+        .unwrap();
+    assert_eq!(
+        own.mode,
+        Some(mouser_proto::wire::ComputerMode::PortableElevated)
+    );
+}

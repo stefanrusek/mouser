@@ -166,6 +166,7 @@ pub async fn start<R: Runtime>(
     control: &ControlHandle,
     tray: &TrayController,
 ) -> Receiver<Notification> {
+    mouser_core::faults::install(app.state::<Host>().log());
     let notes = control.notifications();
     let status = current_status(control).await;
     if windows::needs_setup(&status) {

@@ -5,10 +5,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use mouser_core::logging::Log;
 use mouser_core::release::{CheckSchedule, Installer};
 use mouser_core::{ControlHandle, Engine, EngineParams};
 use mouser_platform::Platform;
 use mouser_proto::control::Notification;
+use mouser_proto::wire::ComputerMode;
 use serde_json::Value;
 
 use crate::notify::{Notifier, Toasts};
@@ -16,6 +18,7 @@ use crate::notify::{Notifier, Toasts};
 /// The running engine and the platform it runs on.
 pub struct Host {
     control: ControlHandle,
+    log: Arc<Log>,
     // Kept alive for the life of the app. `Engine` is `Send` but not `Sync`,
     // and Tauri state must be both.
     engine: Mutex<Option<Engine>>,
@@ -44,6 +47,7 @@ impl Host {
         control_path: PathBuf,
         computer_name: String,
         version: String,
+        mode: ComputerMode,
         updates: Updates,
     ) -> Self {
         let mut params = EngineParams::new(
@@ -53,6 +57,7 @@ impl Host {
             computer_name,
             version,
         );
+        params.mode = mode;
         params.installer = updates.installer;
         params.check_schedule = updates.check_schedule;
         Self::start_with(params).await
@@ -66,6 +71,7 @@ impl Host {
         mouser_platform_windows::set_diagnostics(Some(crate::diagnostics::debug_to(engine.log())));
         Self {
             control: engine.control(),
+            log: engine.log(),
             engine: Mutex::new(Some(engine)),
             platform,
             transfers: Mutex::new(Vec::new()),
@@ -138,6 +144,11 @@ impl Host {
     /// In-process access to the control API.
     pub fn control(&self) -> ControlHandle {
         self.control.clone()
+    }
+
+    /// The engine's diagnostic log.
+    pub fn log(&self) -> Arc<Log> {
+        self.log.clone()
     }
 
     pub fn platform(&self) -> &Arc<dyn Platform> {

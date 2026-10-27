@@ -177,6 +177,7 @@ pub fn run_headless() {
             .into_string()
             .expect("computer name is valid UTF-8"),
         env!("CARGO_PKG_VERSION").to_string(),
+        crate::mode::select(&std::env::args().collect::<Vec<_>>(), false, false),
         stop_signal(),
     ));
 }
@@ -220,6 +221,9 @@ pub fn run() {
                     .expect("computer name is valid UTF-8"),
                 env!("CARGO_PKG_VERSION").to_string(),
             );
+            // Windows token elevation has no detector yet (needs a mouser-platform-windows export).
+            params.mode =
+                crate::mode::select(&std::env::args().collect::<Vec<_>>(), paths.portable, false);
             params.installer = Some(updater::installer(Arc::new(LiveApplier(
                 app.handle().clone(),
             ))));

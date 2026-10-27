@@ -150,6 +150,7 @@ async fn a_one_shot_rejection_is_kept_even_though_no_window_was_open() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_app_shows_setup_and_the_tray_then_follows_the_engine() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
     let f = fixture().await;
     let app = app_with(f.host);
     let handle_ = app.handle().clone();
@@ -365,4 +366,27 @@ async fn the_pump_shows_no_system_notification_when_notifications_are_off() {
     drop(sender);
     pump(app.handle().clone(), tray, dynamic, receiver).await;
     assert!(notifier.shown.lock().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn starting_the_app_installs_the_panic_hook_on_the_engines_log() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let f = fixture().await;
+    let dir = f._dir.path().to_path_buf();
+    let app = app_with(f.host);
+    let handle_ = app.handle().clone();
+    let control = app.state::<crate::host::Host>().control();
+    control
+        .call(Method::LoggingSet, Some(json!({"enabled": true})))
+        .await
+        .unwrap();
+    let (tray, _port, _notifier, _dynamic) = pump_parts();
+    start(&handle_, &control, &tray).await;
+    crate::support_tests::panic_on_thread("app-t231", "app went wrong");
+    let records = crate::support_tests::log_records(&dir);
+    let fault = records
+        .iter()
+        .find(|r| r["event"] == "fault" && r["fields"]["message"] == "app went wrong")
+        .unwrap_or_else(|| panic!("a fault record: {records:?}"));
+    assert_eq!(fault["fields"]["where"], "app-t231");
 }

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use mouser_core::engine_headless::FileSecrets;
 use mouser_core::{Engine, EngineParams};
 use mouser_platform::{Os, Platform};
+use mouser_proto::wire::ComputerMode;
 
 /// Whether the command line asks for headless mode.
 pub fn is_headless(args: &[String]) -> bool {
@@ -48,6 +49,7 @@ pub async fn run(
     control_path: PathBuf,
     computer_name: String,
     version: String,
+    mode: ComputerMode,
     shutdown: impl Future<Output = ()>,
 ) {
     let mut params = EngineParams::new(
@@ -57,8 +59,10 @@ pub async fn run(
         computer_name,
         version,
     );
+    params.mode = mode;
     params.secrets = Some(Box::new(FileSecrets::new(secrets_dir(&machine_dir))));
     let engine = Engine::start(params).await;
+    mouser_core::faults::install(engine.log());
     shutdown.await;
     engine.shutdown().await;
 }

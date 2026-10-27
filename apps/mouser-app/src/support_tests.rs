@@ -18,6 +18,33 @@ use crate::host::Host;
 use crate::notify::Notifier;
 use crate::tray::{TrayPort, TrayView};
 
+/// The panic hook is process-wide: tests that start the app or a headless
+/// engine (which install it) or panic on purpose take turns.
+static HOOKS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(crate) async fn one_at_a_time() -> tokio::sync::MutexGuard<'static, ()> {
+    HOOKS.lock().await
+}
+
+/// Every JSON record of the diagnostic log under `config_dir`.
+pub(crate) fn log_records(config_dir: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(config_dir.join("logs").join("mouser.log"))
+        .unwrap_or_default()
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("log lines are JSON"))
+        .collect()
+}
+
+/// Panic on a thread called `name` with `message` and wait for it to die.
+pub(crate) fn panic_on_thread(name: &str, message: &'static str) {
+    let died = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || panic!("{message}"))
+        .unwrap()
+        .join();
+    assert!(died.is_err());
+}
+
 pub struct Fixture {
     pub host: Host,
     pub platform: VirtualPlatform,
@@ -119,6 +146,7 @@ async fn fixture_with(
         control_path_in(&dir),
         "Desk Mac".into(),
         "1.2.3".into(),
+        mouser_proto::wire::ComputerMode::Installed,
         crate::host::Updates::default(),
     )
     .await;

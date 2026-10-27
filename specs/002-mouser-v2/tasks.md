@@ -341,8 +341,8 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: app tests pass: the panic hook is installed at start, every exit path runs `Host::shutdown()` once before the process ends, and `--cursor-guard <pid>` starts no window.
 
-- [ ] T231 [P] [US1-app] Write unit tests in `apps/mouser-app/src/app_tests.rs`: app start and headless start call `mouser_core::faults::install(log)` before the engine starts
-- [ ] T232 [US1-app] Install the panic hook at start in `apps/mouser-app/src/app.rs` and `apps/mouser-app/src/headless.rs`
+- [X] T231 [P] [US1-app] Write unit tests in `apps/mouser-app/src/app_tests.rs`: app start and headless start call `mouser_core::faults::install(log)` before the engine starts
+- [X] T232 [US1-app] Install the panic hook at start in `apps/mouser-app/src/app.rs` and `apps/mouser-app/src/headless.rs`
 - [X] T233 [P] [US1-app] Write unit tests in `apps/mouser-app/src/exit_tests.rs`: the `RunEvent::Exit` handler calls `Host::shutdown()` (covers `app.exit`, the updater restart and logoff/shutdown via `WM_ENDSESSION`) (research V4; Story 1 sc. 5)
 - [X] T234 [US1-app] Implement the `RunEvent::Exit` handling in `apps/mouser-app/src/exit.rs` and wire it in `apps/mouser-app/src/shell.rs` in place of the `ExitRequested`-only handler at lines 348–353
 - [X] T235 [P] [US1-app] Write unit tests in `apps/mouser-app/src/exit_tests.rs`: tray Quit calls `Host::shutdown()` *before* `app.exit(0)` (tauri#12310)
@@ -360,10 +360,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: app tests pass: the engine is started with the right `ComputerMode`.
 
-- [ ] T245 [P] [US2-app] Write unit tests in `apps/mouser-app/src/mode_tests.rs`: the app passes `EngineParams.mode` = `portable` when `MouserData/` is beside the executable, `portable_elevated` when portable and the process token is elevated (Windows), `headless` for `--headless`, `service` for `--headless --machine`, otherwise `installed`
-- [ ] T246 [US2-app] Implement mode selection in `apps/mouser-app/src/mode.rs` and pass it from `apps/mouser-app/src/host.rs` and `apps/mouser-app/src/headless.rs`
-- [ ] T247 [US2-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T248 [US2-app] Commit: phase boundary "US2-app" (5.3)
+- [X] T245 [P] [US2-app] Write unit tests in `apps/mouser-app/src/mode_tests.rs`: the app passes `EngineParams.mode` = `portable` when `MouserData/` is beside the executable, `portable_elevated` when portable and the process token is elevated (Windows), `headless` for `--headless`, `service` for `--headless --machine`, otherwise `installed`
+- [X] T246 [US2-app] Implement mode selection in `apps/mouser-app/src/mode.rs` and pass it from `apps/mouser-app/src/host.rs` and `apps/mouser-app/src/headless.rs`
+- [X] T247 [US2-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T248 [US2-app] Commit: phase boundary "US2-app" (5.3)
 
 #### Phase 11: US3-app — As a desk owner, I want one Mouser window where I can find everything (P2)
 
