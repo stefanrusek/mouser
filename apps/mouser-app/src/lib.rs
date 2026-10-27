@@ -23,6 +23,8 @@ pub mod windows;
 
 #[cfg(feature = "gui")]
 pub mod shell;
+#[cfg(feature = "gui")]
+pub mod tray_runtime;
 
 #[cfg(test)]
 mod app_tests;
@@ -30,6 +32,8 @@ mod app_tests;
 mod args_tests;
 #[cfg(test)]
 pub(crate) mod commands_tests;
+#[cfg(test)]
+mod contract_navigation_tests;
 #[cfg(test)]
 mod diagnostics_tests;
 #[cfg(test)]
@@ -57,9 +61,11 @@ mod quickjump_windows_tests;
 #[cfg(test)]
 mod support_tests;
 #[cfg(test)]
-mod tray_model_tests;
+mod tray_icons_tests;
 #[cfg(test)]
 mod tray_sas_tests;
+#[cfg(test)]
+mod tray_tests;
 #[cfg(test)]
 mod updater_tests;
 #[cfg(test)]

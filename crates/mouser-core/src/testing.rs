@@ -1251,3 +1251,59 @@ fn the_flaky_computer_is_the_wrapped_one_in_every_other_way() {
     assert!(!inner.is_capturing());
     assert_eq!(*knobs.grabs.guard(), [true, true]);
 }
+
+impl Lab {
+    /// A Windows computer running Mouser `version` as `mode`, with
+    /// diagnostic logging on.
+    pub async fn start_windows(
+        &self,
+        name: &str,
+        mode: mouser_proto::wire::ComputerMode,
+        version: &str,
+    ) -> TestNode {
+        self.start_as(name, mouser_platform::Os::Windows, mode, version)
+            .await
+    }
+
+    /// [`start_windows`](Self::start_windows) on another OS.
+    pub async fn start_as(
+        &self,
+        name: &str,
+        os: mouser_platform::Os,
+        mode: mouser_proto::wire::ComputerMode,
+        version: &str,
+    ) -> TestNode {
+        use mouser_proto::wire::ComputerMode;
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = mouser_proto::config::Config::default();
+        config.advanced.port = u32::from(free_port());
+        config.diagnostics.logging = true;
+        crate::config::save(dir.path(), &config);
+        let platform = VirtualPlatform::new();
+        platform.set_info(mouser_platform::PlatformInfo {
+            os,
+            version: "11".into(),
+            session: mouser_platform::SessionType::Native,
+            limitations: Vec::new(),
+        });
+        let version = version.to_string();
+        self.boot_with(name, platform, dir, move |params| {
+            params.mode = mode;
+            params.mouser_version = version;
+            params.portable = matches!(
+                mode,
+                ComputerMode::Portable | ComputerMode::PortableElevated
+            );
+        })
+        .await
+    }
+}
+
+/// The application in front, as `outranks_mouser` makes it.
+pub(crate) fn admin_app(name: &str, outranks_mouser: bool) -> mouser_platform::ForegroundApp {
+    mouser_platform::ForegroundApp {
+        name: name.into(),
+        admin: true,
+        outranks_mouser,
+    }
+}

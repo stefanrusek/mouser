@@ -9,7 +9,7 @@ use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets};
 use crate::host::Host;
 use crate::portable::{create_platform, engine_params, webview_data_dir};
 use crate::support_tests::{app_with, control_path_in, eventually, fixture, free_port, has_window};
-use crate::windows::{Which, show};
+use crate::windows::navigate;
 
 fn drive() -> (tempfile::TempDir, Paths) {
     let drive = tempfile::tempdir().unwrap();
@@ -157,16 +157,19 @@ fn windows_portable_run_installs_nothing_so_autostart_is_unsupported() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn windows_open_with_or_without_portable_state() {
+async fn the_window_opens_with_or_without_portable_state() {
     let f = fixture().await;
     let app = app_with(f.host);
     let handle = app.handle().clone();
-    show(&handle, Which::Health);
-    assert!(has_window(&handle, "health"));
+    navigate(&handle, "#health");
+    assert!(has_window(&handle, "main"));
+    let f = fixture().await;
+    let portable = app_with(f.host);
     let (_drive, paths) = drive();
-    app.manage(paths);
-    show(&handle, Which::Transfer);
-    eventually(|| has_window(&handle, "transfer")).await;
+    portable.manage(paths);
+    let handle = portable.handle().clone();
+    navigate(&handle, "#desk");
+    eventually(|| has_window(&handle, "main")).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

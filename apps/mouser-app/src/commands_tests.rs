@@ -9,7 +9,7 @@ use tauri::test::{
 };
 use tauri::webview::InvokeRequest;
 
-use crate::commands::{call, call_and_sync, folder_opener, open_settings, run_fix};
+use crate::commands::{FileManager, call, call_and_sync, open_settings, reveal, run_fix};
 use crate::hotkeys_tests::hotkeys_for;
 use crate::support_tests::{
     NoSettingsScreen, app_with, fixture, fixture_on, has_window, status_of,
@@ -105,10 +105,9 @@ async fn fixes_run_through_the_engine_open_the_join_prompt_or_the_arranger_and_t
         .unwrap_err()
         .contains("nope is not an open problem")
     );
-    assert!(!has_window(&handle, "join"));
+    assert!(!has_window(&handle, "main"));
     run_fix(&handle, &host, "x", FixAction::ApproveJoin).unwrap();
-    assert!(has_window(&handle, "join"));
-    assert!(!has_window(&handle, "arranger"));
+    assert!(has_window(&handle, "main"));
     assert_eq!(
         run_fix(&handle, &host, "x", FixAction::OpenUpdate),
         Err("The fix \"open_update\" is not available yet.".to_string())
@@ -128,20 +127,54 @@ async fn the_edge_fix_opens_the_arranger_on_the_edge_the_problem_names_and_asks_
         run_fix(&handle, &host, id, FixAction::OpenArrangerEdge),
         Err(format!("{id} is not an open problem"))
     );
-    assert!(has_window(&handle, "arranger"));
+    assert!(has_window(&handle, "main"));
     assert_eq!(host.take_edge(), Some(id.to_string()));
 }
 
+type Opened = Vec<(String, Vec<String>)>;
+
+#[derive(Default, Clone)]
+struct Recorder(std::sync::Arc<std::sync::Mutex<Opened>>);
+
+impl FileManager for Recorder {
+    fn open(&self, program: &str, args: &[String]) {
+        self.0
+            .lock()
+            .unwrap()
+            .push((program.to_string(), args.to_vec()));
+    }
+}
+
 #[test]
-fn the_log_folder_opens_with_each_systems_file_manager() {
-    for (os, program) in [
-        (mouser_platform::Os::MacOs, "open"),
-        (mouser_platform::Os::Windows, "explorer"),
-        (mouser_platform::Os::Linux, "xdg-open"),
+fn revealing_a_path_opens_each_systems_file_manager_at_it() {
+    for (os, path, program, args) in [
+        (
+            mouser_platform::Os::MacOs,
+            "/Users/me/Downloads/bundle.zip",
+            "open",
+            vec!["-R", "/Users/me/Downloads/bundle.zip"],
+        ),
+        (
+            mouser_platform::Os::Windows,
+            r"C:\Users\me\Downloads\bundle.zip",
+            "explorer",
+            vec![r"/select,C:\Users\me\Downloads\bundle.zip"],
+        ),
+        (
+            mouser_platform::Os::Linux,
+            "/home/me/Downloads/bundle.zip",
+            "xdg-open",
+            vec!["/home/me/Downloads"],
+        ),
     ] {
+        let recorder = Recorder::default();
+        reveal(os, path, &recorder);
         assert_eq!(
-            folder_opener(os, "/home/me/logs/mouser.log"),
-            (program, std::path::PathBuf::from("/home/me/logs"))
+            *recorder.0.lock().unwrap(),
+            vec![(
+                program.to_string(),
+                args.into_iter().map(String::from).collect()
+            )]
         );
     }
 }
@@ -177,12 +210,16 @@ async fn the_ui_reaches_all_the_commands_over_ipc() {
             crate::commands::transfers,
             crate::commands::take_arranger_edge,
             crate::commands::transfer_resolve,
-            crate::commands::hide_window
+            crate::commands::hide_window,
+            crate::commands::reveal_in_file_manager,
+            crate::commands::collect_logs
         ])
         .build(mock_context(noop_assets()))
         .unwrap();
     app.manage(hotkeys_for(f.host.control()).hotkeys);
     app.manage(f.host);
+    let recorder = Recorder::default();
+    app.manage::<Box<dyn FileManager>>(Box::new(recorder.clone()));
     let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .unwrap();
@@ -229,6 +266,14 @@ async fn the_ui_reaches_all_the_commands_over_ipc() {
     .unwrap();
 
     ipc("hide_window", json!({})).unwrap();
+
+    ipc("reveal_in_file_manager", json!({"path": "/tmp/bundle.zip"})).unwrap();
+    assert_eq!(recorder.0.lock().unwrap().len(), 1);
+
+    // `logs.collect {}` on this computer's engine: the bundle's path and one line per computer.
+    let bundle = ipc("collect_logs", json!({})).unwrap();
+    assert!(bundle["path"].as_str().unwrap().ends_with(".zip"));
+    assert_eq!(bundle["computers"][0]["name"], "Desk Mac");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -278,4 +323,21 @@ async fn a_settings_screen_that_cannot_open_says_why() {
         open_settings(&f.host, PermissionKind::Accessibility),
         Err("There is no settings screen on this computer.".to_string())
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn collecting_logs_before_the_engine_is_up_fails_loudly() {
+    let app = mock_builder()
+        .invoke_handler(tauri::generate_handler![crate::commands::collect_logs])
+        .build(mock_context(noop_assets()))
+        .unwrap();
+    let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap();
+    let err = get_ipc_response::<&tauri::WebviewWindow<MockRuntime>>(
+        &&window,
+        request("collect_logs", json!({})),
+    )
+    .unwrap_err();
+    assert!(err.as_str().unwrap().contains("state not managed"));
 }

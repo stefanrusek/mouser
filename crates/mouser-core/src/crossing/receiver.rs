@@ -85,6 +85,7 @@ impl Crossing {
         let moved = io.inject.motion_abs(desktop.0, desktop.1);
         self.tally(InputKind::Motion, Some(from), &moved);
         self.moved(from, self.me, ControlHow::Entered);
+        self.clear_elevated_app();
         self.receiving = Some(Receiving {
             from,
             os,

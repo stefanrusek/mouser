@@ -44,7 +44,7 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
         &notifier,
         note(Topic::JoinRequest, json!({})),
     );
-    assert!(has_window(&handle_, "join"));
+    assert!(has_window(&handle_, "main"));
 
     handle(&handle_, &tray, &notifier, problem_note(false));
     assert_eq!(notifier.shown.lock().unwrap().len(), 1);
@@ -56,7 +56,7 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
     handle(&handle_, &tray, &notifier, transfer_note("copying"));
     assert_eq!(notifier.shown.lock().unwrap().len(), 1);
     assert_eq!(port.views.lock().unwrap().len(), 1);
-    assert!(has_window(&handle_, "transfer"));
+    assert!(has_window(&handle_, "main"));
 
     eventually(|| *events.lock().unwrap() == 6).await;
 }
@@ -96,12 +96,12 @@ async fn transfer_progress_opens_the_window_once_and_a_question_brings_it_forwar
 
     handle(&handle_, &tray, &notifier, transfer_note("completed"));
     assert!(
-        !has_window(&handle_, "transfer"),
+        !has_window(&handle_, "main"),
         "a finished copy needs no window"
     );
 
     handle(&handle_, &tray, &notifier, transfer_note("pending"));
-    assert!(has_window(&handle_, "transfer"));
+    assert!(has_window(&handle_, "main"));
     handle(&handle_, &tray, &notifier, transfer_note("copying"));
     assert_eq!(handle_.webview_windows().len(), 1);
 
@@ -111,7 +111,7 @@ async fn transfer_progress_opens_the_window_once_and_a_question_brings_it_forwar
         &notifier,
         transfer_note("awaiting_overwrite_decision"),
     );
-    assert!(has_window(&handle_, "transfer"));
+    assert!(has_window(&handle_, "main"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -127,7 +127,7 @@ async fn a_rejected_or_failed_transfer_opens_the_window_and_is_kept_for_a_window
         );
         handle(&handle_, &tray, &notifier, transfer_note("copying"));
         handle(&handle_, &tray, &notifier, stopped.clone());
-        assert!(has_window(&handle_, "transfer"));
+        assert!(has_window(&handle_, "main"));
         // The window was created after the first notification; it still gets the last word.
         assert_eq!(
             handle_.state::<crate::host::Host>().transfers(),
@@ -142,9 +142,9 @@ async fn a_one_shot_rejection_is_kept_even_though_no_window_was_open() {
     let app = app_with(f.host);
     let handle_ = app.handle().clone();
     let (tray, _port, notifier, _dynamic) = pump_parts();
-    assert!(!has_window(&handle_, "transfer"));
+    assert!(!has_window(&handle_, "main"));
     handle(&handle_, &tray, &notifier, transfer_note("rejected"));
-    assert!(has_window(&handle_, "transfer"));
+    assert!(has_window(&handle_, "main"));
     assert_eq!(handle_.state::<crate::host::Host>().transfers().len(), 1);
 }
 
@@ -267,7 +267,7 @@ async fn a_landing_flashes_the_overlay_and_a_review_offer_is_a_notification() {
                 .to_string()
         )]
     );
-    assert!(has_window(&handle_, "arranger"));
+    assert!(has_window(&handle_, "main"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -389,4 +389,19 @@ async fn starting_the_app_installs_the_panic_hook_on_the_engines_log() {
         .find(|r| r["event"] == "fault" && r["fields"]["message"] == "app went wrong")
         .unwrap_or_else(|| panic!("a fault record: {records:?}"));
     assert_eq!(fault["fields"]["where"], "app-t231");
+}
+
+// v2 placeholder: T330
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_request_does_nothing_until_the_restart_sequence_exists() {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let notifier = FakeNotifier::default();
+    handle_event(
+        app.handle(),
+        &notifier,
+        mouser_core::EngineEvent::RestartElevated,
+    );
+    assert!(notifier.shown.lock().unwrap().is_empty());
+    assert!(app.handle().webview_windows().is_empty());
 }

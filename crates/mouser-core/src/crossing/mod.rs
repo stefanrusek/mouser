@@ -12,6 +12,7 @@ pub mod buttons;
 pub mod capture_lost;
 pub mod controller;
 pub mod corners;
+pub mod elevated;
 pub mod fullscreen;
 pub mod loss;
 pub mod modifiers;
@@ -34,6 +35,8 @@ mod capture_lost_tests;
 mod controller_tests;
 #[cfg(test)]
 mod corners_tests;
+#[cfg(test)]
+mod elevated_tests;
 #[cfg(test)]
 mod fullscreen_tests;
 #[cfg(test)]

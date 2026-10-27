@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { blocksCorners, findEdges, parseBlockedEdge, setCorners } from './arranger_edges.js';
 import { init } from './arranger.js';
-import { click, fakeApi, flush, loadPage } from './test_helpers.js';
+import { Window } from 'happy-dom';
+import { arrangerMarkup } from './sections/displays.js';
+import { click, fakeApi, flush } from './test_helpers.js';
+
+const arrangerPage = () => {
+  const win = new Window({ url: 'http://localhost/index.html' });
+  win.document.body.append(arrangerMarkup(win.document));
+  return win;
+};
 import { makeStatus } from './status_fixture.js';
 
 const id = (computer, key) => ({ computer, key });
@@ -34,11 +42,10 @@ const layoutOf = (displays, placements, extra = {}) => ({
 const TWO = (extra) => layoutOf([A, B], [place(A.display_id, 0, 0), place(B.display_id, 600, 0)], extra);
 
 async function start(layout = TWO(), status = makeStatus(), arrangerEdge = null) {
-  const win = loadPage('arranger.html');
+  const win = arrangerPage();
   const api = fakeApi({ status, 'layout.get': layout, 'layout.set': (params) => ({ ...layout, ...params }), arrangerEdge });
-  const focus = [];
-  await init({ doc: win.document, api, every: () => {}, onFocus: (handler) => focus.push(handler) });
-  return { win, doc: win.document, api, focus: focus[0] };
+  const page = await init({ doc: win.document, api });
+  return { win, doc: win.document, api, tick: page.tick };
 }
 const edges = (doc) => [...doc.querySelectorAll('.edge')];
 const sent = (api) => api.calls.filter(([m]) => m === 'layout.set').map(([, p]) => p);
@@ -131,13 +138,13 @@ test('the desk-wide full-screen toggle writes block_fullscreen through layout.se
 });
 
 test('a refused edge change shows the engine sentence', async () => {
-  const win = loadPage('arranger.html');
+  const win = arrangerPage();
   const api = fakeApi({
     status: makeStatus(),
     'layout.get': TWO(),
     'layout.set': new Error('Not allowed.'),
   });
-  await init({ doc: win.document, api, every: () => {}, onFocus: () => {} });
+  await init({ doc: win.document, api });
   click(win, edges(win.document)[0]);
   toggle(win, win.document.getElementById('block-corners'), false);
   await flush();
@@ -174,18 +181,18 @@ test('with no edge asked for, or an edge that is gone, no options open', async (
   assert.equal(openTitle(one.doc), null);
 });
 
-test('focusing an open arranger opens the edge the owner just asked for', async () => {
-  const { doc, api, focus } = await start(THREE);
+test('a tick of an open arranger opens the edge the owner just asked for', async () => {
+  const { doc, api, tick } = await start(THREE);
   api.takeArrangerEdge = async () => 'crossing_blocked:aa/1/bottom';
-  await focus();
+  await tick();
   assert.equal(openTitle(doc), 'Edge between Built-in and Above');
 });
 
 test('the open edge closes when its displays move apart', async () => {
-  const win = loadPage('arranger.html');
+  const win = arrangerPage();
   let layout = TWO();
   const api = fakeApi({ status: makeStatus(), 'layout.get': () => layout });
-  const page = await init({ doc: win.document, api, every: () => {}, onFocus: () => {} });
+  const page = await init({ doc: win.document, api });
   click(win, edges(win.document)[0]);
   layout = layoutOf([A, B], [place(A.display_id, 0, 0), place(B.display_id, 0, 340)]);
   await page.tick();

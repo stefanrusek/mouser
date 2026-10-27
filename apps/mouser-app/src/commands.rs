@@ -1,7 +1,7 @@
 //! The commands the UI windows call. Everything else the UI needs goes
 //! through `control`, which is the control API, method for method.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use mouser_core::ControlHandle;
@@ -14,7 +14,7 @@ use tauri::{AppHandle, Runtime, State, WebviewWindow};
 
 use crate::host::Host;
 use crate::hotkeys::Hotkeys;
-use crate::windows::{self, Which};
+use crate::windows;
 
 fn platform_kind(kind: PermissionKind) -> PlatformKind {
     match kind {
@@ -75,13 +75,13 @@ pub fn run_fix<R: Runtime>(
     match fix {
         FixAction::OpenSystemSettings(_) => host.control().fix(problem_id),
         FixAction::ApproveJoin => {
-            windows::show(app, Which::Join);
+            windows::navigate(app, windows::DESK);
             Ok(())
         }
         FixAction::OpenArrangerEdge => {
             // The id names the blocked edge; the arranger opens that one.
             host.ask_for_edge(problem_id.to_string());
-            windows::show(app, Which::Arranger);
+            windows::navigate(app, windows::DISPLAYS);
             host.control().fix(problem_id)
         }
         other => Err(format!("The fix \"{other}\" is not available yet.")),
@@ -132,18 +132,41 @@ pub fn take_arranger_edge(host: State<'_, Host>) -> Option<String> {
     host.take_edge()
 }
 
-/// The program that shows a folder in the system file manager, and the folder
-/// that holds `file` (the log file's folder).
-pub fn folder_opener(os: Os, file: &str) -> (&'static str, PathBuf) {
-    let program = match os {
-        Os::MacOs => "open",
-        Os::Windows => "explorer",
-        Os::Linux => "xdg-open",
-    };
-    let folder = Path::new(file)
-        .parent()
-        .expect("a log file is inside a folder");
-    (program, folder.to_path_buf())
+/// Starts the system file manager (the live one spawns a process).
+pub trait FileManager: Send + Sync {
+    fn open(&self, program: &str, args: &[String]);
+}
+
+/// Show `path` in the system file manager: Finder and Explorer select the
+/// file, `xdg-open` opens the folder that holds it.
+pub fn reveal(os: Os, path: &str, manager: &dyn FileManager) {
+    match os {
+        Os::MacOs => manager.open("open", &["-R".to_string(), path.to_string()]),
+        Os::Windows => manager.open("explorer", &[format!("/select,{path}")]),
+        Os::Linux => {
+            let folder = Path::new(path).parent().expect("a file is inside a folder");
+            manager.open("xdg-open", &[folder.display().to_string()]);
+        }
+    }
+}
+
+/// Show `path` (a log file or a bundle) in the system file manager.
+#[tauri::command]
+pub fn reveal_in_file_manager(manager: State<'_, Box<dyn FileManager>>, path: String) {
+    reveal(
+        crate::platform_select::current_os(),
+        &path,
+        manager.as_ref(),
+    );
+}
+
+/// Collect every desk computer's logs into one bundle on this computer:
+/// `logs.collect {}` on this app's engine, as `{path, computers}`.
+#[tauri::command]
+pub async fn collect_logs(host: State<'_, Host>) -> Result<Value, RpcError> {
+    host.control()
+        .call(Method::LogsCollect, Some(serde_json::json!({})))
+        .await
 }
 
 /// Answer an `awaiting_overwrite_decision` question of a dragged-file transfer.

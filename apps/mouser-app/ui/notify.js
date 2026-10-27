@@ -1,72 +1,32 @@
-// Problem banners: the plain-language message and at most one fix button.
+// Problem banners: keyed by (problem_id, computer), each carrying the name of
+// the computer it concerns. They appear only in Health, and as counts in Desk.
 
-import { button, el, errorText } from './dom.js';
+import { el } from './dom.js';
+import { renderFix } from './fixes.js';
 
-const FIX_LABELS = {
-  open_system_settings: 'Open settings',
-  approve_join: 'Review the request',
-  open_update: 'Update now',
-  cross_anyway_hint: 'Show me how',
-  open_arranger_edge: 'Change this edge',
-};
+export const problemKey = (problem) => JSON.stringify([problem.problem_id, problem.computer]);
 
-// "open_system_settings:accessibility" -> "Open settings".
-export function fixLabel(fix) {
-  return FIX_LABELS[fix.split(':')[0]];
+// `problems` with each (problem_id, computer) once, the first one kept.
+export function uniqueProblems(problems) {
+  const seen = new Set();
+  return problems.filter((problem) => {
+    const key = problemKey(problem);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
-// `onFix(problem)` runs the problem's fix; without it the problem has no button.
-export function renderProblem(doc, problem, onFix) {
-  const node = el(doc, 'div', { class: 'problem', role: 'alert' }, el(doc, 'p', {}, problem.message));
-  if (problem.fix && onFix) {
-    const failure = el(doc, 'p', { class: 'error' });
-    node.append(
-      button(doc, fixLabel(problem.fix), async () => {
-        failure.textContent = '';
-        try {
-          await onFix(problem);
-        } catch (error) {
-          failure.textContent = errorText(error);
-        }
-      }),
-      failure,
-    );
-  }
-  return node;
-}
-
-// Only a problem of this computer (`selfId`) can be fixed from here.
-export function renderProblems(container, problems, onFix, selfId) {
-  const doc = container.ownerDocument;
-  container.replaceChildren(
-    ...problems.map((problem) => renderProblem(doc, problem, problem.computer === selfId ? onFix : null)),
+// The banner for `problem` of the computer called `computerName`, with its fix as one action.
+export function renderBanner(doc, api, problem, computerName, navigate) {
+  const banner = el(
+    doc,
+    'div',
+    { class: 'problem', role: 'alert', 'data-computer': problem.computer },
+    el(doc, 'small', { class: 'where' }, computerName),
+    el(doc, 'p', { class: 'message' }, problem.message),
   );
-}
-
-// The open problems after `problem` was raised or cleared.
-export function applyProblem(problems, problem) {
-  const others = problems.filter((p) => p.problem_id !== problem.problem_id);
-  return problem.cleared_at ? others : [...others, problem];
-}
-
-// Keep `container` showing the open problems: start from `initial`, then feed notifications to `update`.
-export function trackProblems(container, api, initial, selfId) {
-  let problems = initial;
-  let self = selfId;
-  const draw = () => renderProblems(container, problems, (p) => api.fix(p.problem_id, p.fix), self);
-  draw();
-  return {
-    // `computerId` is this computer, as `status.computer.id` says.
-    set(next, computerId = self) {
-      problems = next;
-      self = computerId;
-      draw();
-    },
-    update(note) {
-      if (note.method === 'problem') {
-        problems = applyProblem(problems, note.params);
-        draw();
-      }
-    },
-  };
+  const fix = renderFix(doc, api, problem, navigate);
+  if (fix) banner.append(fix);
+  return banner;
 }

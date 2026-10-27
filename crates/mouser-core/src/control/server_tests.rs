@@ -86,6 +86,10 @@ async fn errors_carry_json_rpc_codes() {
     let response: Response =
         serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
     assert_eq!(response.error.unwrap().code, -32601);
+    // A subscription belongs to a connection: called in process it is not
+    // available.
+    let err = crate::testing::call_err(&node, Method::Subscribe, json!({})).await;
+    assert_eq!(err.code, -32601);
     // Bad params are "invalid params".
     let err = c
         .call(Method::DeskCreate, Some(json!({"name": 5})))
@@ -161,13 +165,28 @@ async fn a_closed_server_ends_the_notification_stream() {
 
 #[test]
 fn the_default_path_is_per_user() {
-    let path = crate::control::default_path();
+    // What `default_path` is while no service runs.
+    let path = crate::control::server::default_path_with(false, &|key| std::env::var(key).ok());
     if cfg!(windows) {
         let name = path.to_string_lossy().into_owned();
         assert!(name.starts_with(r"\\.\pipe\mouser-"), "{name}");
+        assert_ne!(name, crate::control::SERVICE_PIPE);
     } else {
         assert_eq!(path.file_name().unwrap(), "mouser.sock");
     }
+}
+
+#[test]
+fn the_default_path_is_the_service_pipe_when_it_exists() {
+    let path = crate::control::server::default_path_with(true, &|_| None);
+    assert_eq!(path, std::path::PathBuf::from(r"\\.\pipe\mouser-service"));
+    assert_eq!(crate::control::SERVICE_PIPE, r"\\.\pipe\mouser-service");
+}
+
+#[cfg(not(windows))]
+#[test]
+fn off_windows_there_is_no_service_pipe() {
+    assert!(!crate::control::server::service_pipe_exists());
 }
 
 #[cfg(windows)]
@@ -268,4 +287,112 @@ async fn a_panic_in_one_request_is_an_internal_error_and_the_server_keeps_servin
         -32603
     );
     assert_eq!(status(&node).await.computer.name, "Alpha");
+}
+
+#[cfg(windows)]
+mod service_pipe {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
+        SDDL_REVISION_1, SE_KERNEL_OBJECT,
+    };
+    use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
+
+    use super::*;
+    use crate::control::SERVICE_PIPE;
+    use mouser_proto::wire::ComputerMode;
+
+    /// The DACL of the pipe `name`, as SDDL.
+    fn dacl_of(name: &str) -> String {
+        let wide: Vec<u16> = std::ffi::OsStr::new(name)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: `wide` is NUL-terminated; the descriptor is freed below.
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                wide.as_ptr(),
+                SE_KERNEL_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        assert_eq!(status, 0, "the pipe's security is readable");
+        let mut text = std::ptr::null_mut();
+        // SAFETY: `descriptor` came from the call above.
+        let converted = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &mut text,
+                std::ptr::null_mut(),
+            )
+        };
+        assert_ne!(converted, 0);
+        // SAFETY: `text` is a NUL-terminated string allocated by the call.
+        let sddl = unsafe {
+            let len = (0..).take_while(|i| *text.add(*i) != 0).count();
+            String::from_utf16(std::slice::from_raw_parts(text, len)).unwrap()
+        };
+        // SAFETY: both were allocated by the calls above and are not used again.
+        unsafe {
+            LocalFree(text.cast());
+            LocalFree(descriptor);
+        }
+        sddl
+    }
+
+    #[tokio::test]
+    async fn an_engine_in_service_mode_serves_the_service_pipe_to_system_administrators_and_the_user()
+     {
+        let lab = Lab::new();
+        let node = lab
+            .start_as(
+                "Alpha",
+                mouser_platform::Os::Windows,
+                ComputerMode::Service,
+                "0.3.0",
+            )
+            .await;
+        // It serves the service pipe, and that is now the default path.
+        assert_eq!(
+            crate::control::default_path(),
+            std::path::PathBuf::from(SERVICE_PIPE)
+        );
+        let mut service = ControlClient::connect(std::path::Path::new(SERVICE_PIPE))
+            .await
+            .unwrap();
+        let value = service.call(Method::Status, None).await.unwrap();
+        assert_eq!(value["computer"]["name"], "Alpha");
+        // Only SYSTEM, Administrators and the interactive user may open it.
+        let dacl = dacl_of(SERVICE_PIPE);
+        for ace in ["(A;;GA;;;SY)", "(A;;GA;;;BA)", "(A;;GA;;;IU)"] {
+            assert!(dacl.contains(ace), "{dacl}");
+        }
+        assert_eq!(dacl.matches("(A;").count(), 3, "{dacl}");
+        // Nobody else can take the name over: it is the first instance.
+        let again = tokio::net::windows::named_pipe::ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(SERVICE_PIPE);
+        assert!(again.is_err());
+        node.engine.shutdown().await;
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn off_windows_the_default_path_is_always_the_users() {
+    let env = |key: &str| std::env::var(key).ok();
+    assert_eq!(
+        crate::control::default_path(),
+        crate::control::server::default_path_with(false, &env)
+    );
 }

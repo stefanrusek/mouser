@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mouser</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="window.css">
+  <link rel="stylesheet" href="arranger.css">
+</head>
+<body>
+<div class="shell">
+  <aside id="sidebar">
+    <input id="search" type="search" placeholder="Search" aria-label="Search Mouser" autocomplete="off">
+    <ul id="results" class="results" hidden></ul>
+    <nav id="nav" aria-label="Sections"></nav>
+  </aside>
+  <div class="content">
+    <header><h1 id="title"></h1></header>
+    <p id="error" class="error" role="alert"></p>
+    <div id="sections"></div>
+  </div>
+</div>
+<script type="module">
+  import { boot } from './boot.js';
+  import { init } from './nav.js';
+  import { REGISTRY } from './sections/registry.js';
+  boot((deps) => init({ ...deps, sections: REGISTRY }));
+</script>
+</body>
+</html>

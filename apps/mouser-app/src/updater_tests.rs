@@ -86,7 +86,7 @@ async fn the_version_line_comes_right_after_the_summary() {
 
 #[test]
 fn the_update_line_installs_the_update() {
-    assert_eq!(action(UPDATE_ID), Action::Update);
+    assert_eq!(action(UPDATE_ID), Some(Action::Update));
 }
 
 #[tokio::test(flavor = "multi_thread")]

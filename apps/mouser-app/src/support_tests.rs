@@ -202,6 +202,7 @@ impl TrayPort for FakeTray {
 #[derive(Default, Clone)]
 pub struct FakeNotifier {
     pub shown: Arc<Mutex<Vec<(String, String)>>>,
+    pub opened: Arc<Mutex<Vec<String>>>,
 }
 
 impl Notifier for FakeNotifier {
@@ -210,6 +211,10 @@ impl Notifier for FakeNotifier {
             .lock()
             .unwrap()
             .push((title.to_string(), body.to_string()));
+    }
+
+    fn open(&self, route: &str) {
+        self.opened.lock().unwrap().push(route.to_string());
     }
 }
 

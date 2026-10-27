@@ -4,9 +4,6 @@
 
 use std::sync::Arc;
 
-use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
@@ -15,50 +12,11 @@ use tauri_plugin_updater::UpdaterExt;
 use crate::host::Host;
 use crate::hotkeys::{Hotkey, Hotkeys, Press, Shortcuts};
 use crate::notify::Notifier;
-use crate::tray::{self, TrayController, TrayPort, TrayView};
+use crate::tray::{self, TrayController};
 use crate::updater::{self, Applier};
 use crate::{app, commands, host, overlay, platform_select, portable};
 
-struct LiveTray<R: Runtime> {
-    app: AppHandle<R>,
-    icon: TrayIcon<R>,
-}
-
-impl<R: Runtime> TrayPort for LiveTray<R> {
-    fn apply(&self, view: &TrayView) {
-        let items: Vec<MenuItem<R>> = view
-            .entries
-            .iter()
-            .map(|e| {
-                MenuItem::with_id(
-                    &self.app,
-                    e.id.unwrap_or("summary"),
-                    &e.label,
-                    e.id.is_some(),
-                    None::<&str>,
-                )
-                .expect("menu item can be created")
-            })
-            .collect();
-        let refs: Vec<&dyn tauri::menu::IsMenuItem<R>> = items.iter().map(|i| i as _).collect();
-        let menu = Menu::with_items(&self.app, &refs).expect("menu can be created");
-        let image = Image::from_bytes(view.icon.png()).expect("tray icon is a PNG");
-        self.icon
-            .set_icon(Some(image))
-            .expect("tray icon can be set");
-        self.icon
-            .set_icon_as_template(view.icon.is_template())
-            .expect("tray template flag can be set");
-        self.icon
-            .set_tooltip(Some(&view.summary))
-            .expect("tray tooltip can be set");
-        self.icon
-            .set_menu(Some(menu))
-            .expect("tray menu can be set");
-    }
-}
-
-struct LiveNotifier<R: Runtime>(AppHandle<R>);
+pub(crate) struct LiveNotifier<R: Runtime>(pub(crate) AppHandle<R>);
 
 impl<R: Runtime> Notifier for LiveNotifier<R> {
     fn show(&self, title: &str, body: &str) {
@@ -69,6 +27,12 @@ impl<R: Runtime> Notifier for LiveNotifier<R> {
             .body(body)
             .show()
             .expect("system notification can be shown");
+    }
+
+    // Desktop notifications cannot report a click, so a notification about
+    // something to look at brings the window there when it is shown.
+    fn open(&self, route: &str) {
+        crate::windows::navigate(&self.0, route);
     }
 }
 
@@ -131,16 +95,18 @@ impl<R: Runtime> Applier for LiveApplier<R> {
     }
 }
 
-/// Show the folder that holds `path` in the system file manager.
-#[tauri::command]
-fn open_folder(path: String) {
-    let (program, folder) = commands::folder_opener(platform_select::current_os(), &path);
-    let mut opener = std::process::Command::new(program)
-        .arg(folder)
-        .spawn()
-        .unwrap_or_else(|e| panic!("{program} can open the folder: {e}"));
-    // Reap the opener when it is done (explorer exits with 1 even on success).
-    std::thread::spawn(move || opener.wait());
+/// Starts the system file manager as a child process.
+struct Spawner;
+
+impl commands::FileManager for Spawner {
+    fn open(&self, program: &str, args: &[String]) {
+        let mut opener = std::process::Command::new(program)
+            .args(args)
+            .spawn()
+            .unwrap_or_else(|e| panic!("{program} can open the file manager: {e}"));
+        // Reap the opener when it is done (explorer exits with 1 even on success).
+        std::thread::spawn(move || opener.wait());
+    }
 }
 
 /// Resolves when the system asks Mouser to stop: Ctrl-C or SIGTERM.
@@ -190,6 +156,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             host::on_second_launch(app);
         }))
+        .on_window_event(crate::windows::hide_on_close)
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -199,7 +166,8 @@ pub fn run() {
             commands::fix,
             commands::transfers,
             commands::take_arranger_edge,
-            open_folder,
+            commands::reveal_in_file_manager,
+            commands::collect_logs,
             commands::transfer_resolve,
             commands::hide_window,
             portable::is_portable,
@@ -247,6 +215,7 @@ pub fn run() {
                     }
                 }),
             ));
+            app.manage::<Box<dyn commands::FileManager>>(Box::new(Spawner));
             let handle = app.handle().clone();
             // The first-run window is not created from the config: a portable
             // run must give it its data folder first.
@@ -274,44 +243,9 @@ pub fn run() {
             let events = control.events();
             let appearance = tray::system_appearance(&handle);
             let menu_control = control.clone();
-            let icon = TrayIconBuilder::with_id("mouser")
-                .show_menu_on_left_click(true)
-                .on_menu_event(move |app, event| match tray::action(event.id.as_ref()) {
-                    tray::Action::Open => tray::open(app, &menu_control),
-                    action @ (tray::Action::Pause | tray::Action::Resume) => {
-                        let control = menu_control.clone();
-                        tauri::async_runtime::spawn(async move {
-                            tray::run_pause(&control, action).await;
-                        });
-                    }
-                    tray::Action::Arrange => {
-                        crate::windows::show(app, crate::windows::Which::Arranger)
-                    }
-                    tray::Action::Health => {
-                        crate::windows::show(app, crate::windows::Which::Health)
-                    }
-                    tray::Action::Update => {
-                        let control = menu_control.clone();
-                        tauri::async_runtime::spawn(async move {
-                            updater::apply(&control).await;
-                        });
-                    }
-                    tray::Action::SendCad => {
-                        let (control, app) = (menu_control.clone(), app.clone());
-                        tauri::async_runtime::spawn(async move {
-                            let result = crate::tray_sas::send(&control).await;
-                            let live = LiveNotifier(app);
-                            crate::tray_sas::report(
-                                result,
-                                crate::notify::gated(&control, &live).await,
-                            );
-                        });
-                    }
-                    tray::Action::Quit => crate::exit::quit(app, || app.exit(0)),
-                })
-                .build(app)?;
+            let icon = crate::tray_runtime::build(app, menu_control)?;
             let controller = Arc::new(TrayController::new(
-                Box::new(LiveTray {
+                Box::new(crate::tray_runtime::LiveTray {
                     app: handle.clone(),
                     icon,
                 }),

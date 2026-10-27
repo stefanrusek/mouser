@@ -6,6 +6,7 @@ import { Window } from 'happy-dom';
 export function loadPage(name) {
   const html = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
   const win = new Window({
+    url: `http://localhost/${name}`,
     settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true },
   });
   win.document.documentElement.innerHTML = html.replace(/^<!doctype html>/i, '');
@@ -20,11 +21,13 @@ export function fakeApi(answers = {}) {
   const listeners = [];
   const landings = [];
   const quickJumps = [];
+  const navigations = [];
   const record = (name, args) => calls.push([name, ...args]);
   return {
     calls,
     emitLanding: (landing) => landings.forEach((handler) => handler(landing)),
     emitQuickJump: () => quickJumps.forEach((handler) => handler()),
+    emitNavigate: (route) => navigations.forEach((handler) => handler({ route })),
     emit: (method, params) => listeners.forEach((handler) => handler({ jsonrpc: '2.0', method, params })),
     call: async (method, params) => {
       calls.push([method, params]);
@@ -44,7 +47,6 @@ export function fakeApi(answers = {}) {
     },
     transfers: async () => answers.transfers ?? [],
     takeArrangerEdge: async () => answers.arrangerEdge ?? null,
-    openFolder: async (path) => record('open_folder', [path]),
     portable: async () => answers.portable ?? false,
     hideWindow: async () => record('hide_window', []),
     allowLoginScreen: async () => {
@@ -53,6 +55,16 @@ export function fakeApi(answers = {}) {
     },
     onLanding: async (handler) => {
       landings.push(handler);
+    },
+    onNavigate: async (handler) => {
+      navigations.push(handler);
+    },
+    revealInFileManager: async (path) => record('reveal_in_file_manager', [path]),
+    collectLogs: async () => {
+      record('collect_logs', []);
+      const answer = answers.collect_logs;
+      if (answer instanceof Error) throw answer;
+      return answer;
     },
     onQuickJump: async (handler) => {
       quickJumps.push(handler);
@@ -66,3 +78,18 @@ export function fakeApi(answers = {}) {
 export function click(win, node) {
   node.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 }
+
+// Mount a section module (`create({doc, api, navigate})`) over a fake api and give it `status`.
+export async function mount(module, { answers = {}, status = null } = {}) {
+  const win = new Window({ url: 'http://localhost/index.html' });
+  const api = fakeApi(answers);
+  const navigated = [];
+  const section = module.create({ doc: win.document, api, navigate: (route) => navigated.push(route) });
+  win.document.body.append(section.element);
+  if (status) section.update(status);
+  await flush();
+  const emit = (method, params) => section.note({ jsonrpc: '2.0', method, params });
+  return { win, doc: win.document, api, section, navigated, root: section.element, emit };
+}
+
+export const labelled = (root, text) => [...root.querySelectorAll('button')].find((b) => b.textContent === text);

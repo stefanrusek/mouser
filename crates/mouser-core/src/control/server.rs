@@ -11,6 +11,8 @@ use mouser_proto::control::{
     JoinDecideParams, LoggingSetParams, LogsCollectParams, Method, RemoveMemberParams, Request,
     Response, RpcError, SetOrigin, SettingOrigin, SubscribeParams, Topic,
 };
+#[cfg(windows)]
+use mouser_proto::wire::ComputerMode;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -152,6 +154,7 @@ async fn dispatch(
             json(ctx.logs_collect(p).await?)
         }
         Method::LogsCollectStream => json(ctx.logs_collect_stream(chunks).await?),
+        Method::ElevationRestart => ctx.elevation_restart(parse(params)?),
         Method::UpdateCheck => json(ctx.update_check().await?),
         Method::UpdateApply => json(ctx.update_apply().await?),
         _ => Err(unknown(format!("{name} is not available yet"))),
@@ -247,33 +250,92 @@ pub(crate) fn pipe_name(path: &Path) -> PathBuf {
     PathBuf::from(format!(r"\\.\pipe\mouser-{flat}"))
 }
 
+/// Who may open the service's pipe: SYSTEM, Administrators and the
+/// interactive user, each with full access; nobody else.
+#[cfg(windows)]
+const SERVICE_PIPE_SDDL: &str = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;IU)";
+
 #[cfg(windows)]
 struct Listener {
     name: PathBuf,
+    /// The pipe is the service's: it gets [`SERVICE_PIPE_SDDL`].
+    service: bool,
     next: tokio::net::windows::named_pipe::NamedPipeServer,
 }
 
 #[cfg(windows)]
 impl Listener {
-    fn instance(name: &Path, first: bool) -> tokio::net::windows::named_pipe::NamedPipeServer {
-        tokio::net::windows::named_pipe::ServerOptions::new()
+    fn instance(
+        name: &Path,
+        first: bool,
+        service: bool,
+    ) -> tokio::net::windows::named_pipe::NamedPipeServer {
+        let mut options = tokio::net::windows::named_pipe::ServerOptions::new();
+        options
             .first_pipe_instance(first)
-            .reject_remote_clients(true)
-            .create(name)
-            .expect("control pipe creates")
+            .reject_remote_clients(true);
+        let pipe = if service {
+            Self::create_for_service(&mut options, name)
+        } else {
+            options.create(name)
+        };
+        pipe.expect("control pipe creates")
     }
 
-    fn bind(path: &Path) -> Self {
+    fn create_for_service(
+        options: &mut tokio::net::windows::named_pipe::ServerOptions,
+        name: &Path,
+    ) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeServer> {
+        use windows_sys::Win32::Foundation::LocalFree;
+        use windows_sys::Win32::Security::Authorization::{
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+        };
+        use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+        let sddl: Vec<u16> = SERVICE_PIPE_SDDL.encode_utf16().chain(Some(0)).collect();
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: `sddl` is NUL-terminated; the descriptor it yields is freed
+        // below, after the pipe has copied it.
+        let converted = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                std::ptr::null_mut(),
+            )
+        };
+        assert_ne!(
+            converted, 0,
+            "the service pipe's security descriptor parses"
+        );
+        let mut attributes = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor,
+            bInheritHandle: 0,
+        };
+        // SAFETY: `attributes` points at a valid descriptor for the call.
+        let pipe = unsafe {
+            options.create_with_security_attributes_raw(name, (&raw mut attributes).cast())
+        };
+        // SAFETY: allocated by the conversion above and not used again.
+        unsafe { LocalFree(descriptor) };
+        pipe
+    }
+
+    fn bind(path: &Path, service: bool) -> Self {
         let name = pipe_name(path);
         Self {
-            next: Self::instance(&name, true),
+            next: Self::instance(&name, true, service),
             name,
+            service,
         }
     }
 
     async fn accept(&mut self) -> Box<dyn Duplex> {
         self.next.connect().await.expect("control pipe accepts");
-        let connected = std::mem::replace(&mut self.next, Self::instance(&self.name, false));
+        let connected = std::mem::replace(
+            &mut self.next,
+            Self::instance(&self.name, false, self.service),
+        );
         Box::new(connected)
     }
 }
@@ -281,6 +343,13 @@ impl Listener {
 /// Bind the control endpoint (before returning, so clients can connect at
 /// once) and serve clients until the engine shuts down.
 pub(crate) fn serve(ctx: &Arc<Ctx>, path: &Path) {
+    // The service's engine serves its pipe, for every user's Mouser.
+    #[cfg(windows)]
+    let mut listener = match ctx.mode {
+        ComputerMode::Service => Listener::bind(Path::new(super::SERVICE_PIPE), true),
+        _ => Listener::bind(path, false),
+    };
+    #[cfg(unix)]
     let mut listener = Listener::bind(path);
     let owner = ctx.clone();
     ctx.spawn(async move {
@@ -299,6 +368,31 @@ pub(crate) fn cleanup(path: &Path) {
 
 #[cfg(windows)]
 pub(crate) fn cleanup(_path: &Path) {}
+
+/// Whether the service's pipe exists.
+#[cfg(windows)]
+pub(crate) fn service_pipe_exists() -> bool {
+    Path::new(super::SERVICE_PIPE).exists()
+}
+
+/// Only Windows has a service pipe.
+#[cfg(unix)]
+pub(crate) fn service_pipe_exists() -> bool {
+    false
+}
+
+/// The service's pipe when `service_pipe_exists`, otherwise the endpoint of
+/// this user.
+pub(crate) fn default_path_with(
+    service_pipe_exists: bool,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> PathBuf {
+    if service_pipe_exists {
+        PathBuf::from(super::SERVICE_PIPE)
+    } else {
+        default_path_from(env)
+    }
+}
 
 /// The per-OS control endpoint of this user (contracts/control-api.md).
 #[cfg(target_os = "macos")]

@@ -39,7 +39,7 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring"]
 libc = "=0.2.191"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 mouser-testkit = { path = "../mouser-testkit" }
@@ -116,4 +116,8 @@ harness = false
 
 [[test]]
 name = "acc_v2_us4"
+harness = false
+
+[[test]]
+name = "acc_v2_us5"
 harness = false

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EVENT, LANDING_EVENT, QUICKJUMP_EVENT, makeApi } from './api.js';
+import { EVENT, LANDING_EVENT, NAVIGATE_EVENT, QUICKJUMP_EVENT, makeApi } from './api.js';
 import { boot } from './boot.js';
 import { button, errorText, guarded } from './dom.js';
-import { loadPage } from './test_helpers.js';
+import { Window } from 'happy-dom';
 
 function fakeTauri() {
   const invoked = [];
@@ -25,7 +25,8 @@ test('calls go through the control command, other commands by name', async () =>
   await api.fix('join:aa', 'approve_join');
   await api.transfers();
   await api.takeArrangerEdge();
-  await api.openFolder('/logs/mouser.log');
+  await api.revealInFileManager('/logs/bundle.zip');
+  await api.collectLogs();
   await api.transferResolve('ab12', true);
   await api.portable();
   await api.hideWindow();
@@ -37,7 +38,8 @@ test('calls go through the control command, other commands by name', async () =>
     ['fix', { problemId: 'join:aa', fix: 'approve_join' }],
     ['transfers', undefined],
     ['take_arranger_edge', undefined],
-    ['open_folder', { path: '/logs/mouser.log' }],
+    ['reveal_in_file_manager', { path: '/logs/bundle.zip' }],
+    ['collect_logs', undefined],
     ['transfer_resolve', { transferId: 'ab12', overwrite: true }],
     ['is_portable', undefined],
     ['hide_window', undefined],
@@ -59,6 +61,15 @@ test('landings arrive as the bare payload', async () => {
   await makeApi(tauri).onLanding((landing) => seen.push(landing));
   tauri.listeners[LANDING_EVENT]({ payload: { x: 60, y: 60 } });
   assert.deepEqual(seen, [{ x: 60, y: 60 }]);
+});
+
+test('navigation requests arrive as the bare payload', async () => {
+  const tauri = fakeTauri();
+  const seen = [];
+  await makeApi(tauri).onNavigate((request) => seen.push(request));
+  tauri.listeners[NAVIGATE_EVENT]({ payload: { route: '#displays' } });
+  assert.deepEqual(seen, [{ route: '#displays' }]);
+  assert.equal(NAVIGATE_EVENT, 'mouser://navigate');
 });
 
 test('the end of QuickJump arrives without a payload', async () => {
@@ -94,8 +105,8 @@ test('error text prefers the engine message', () => {
 });
 
 test('buttons and guarded actions', async () => {
-  const win = loadPage('join_prompt.html');
-  const target = win.document.getElementById('error');
+  const win = new Window();
+  const target = win.document.createElement('p');
   let clicked = 0;
   const node = button(win.document, 'Go', () => clicked++);
   node.click();

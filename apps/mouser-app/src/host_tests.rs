@@ -1,8 +1,11 @@
 use mouser_platform::{Os, Platform};
-use mouser_proto::control::Method;
+use mouser_proto::control::{Method, Notification, Topic};
+use tauri::Manager;
+
+use crate::host::Host;
 
 use crate::host::on_second_launch;
-use crate::support_tests::{app_with, eventually, fixture, has_window, status_of};
+use crate::support_tests::{app_with, fixture, has_window, status_of};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_host_runs_an_engine_on_the_given_platform_and_exposes_the_control_api() {
@@ -50,14 +53,80 @@ async fn the_edge_asked_for_is_handed_over_once() {
     assert_eq!(f.host.take_edge(), None);
 }
 
+/// The route the one window was opened at.
+fn opened_at(app: &tauri::AppHandle<tauri::test::MockRuntime>) -> String {
+    let window = app.get_webview_window("main").expect("main exists");
+    window
+        .url()
+        .unwrap()
+        .fragment()
+        .unwrap_or_default()
+        .to_string()
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_launch_brings_up_the_first_ones_window() {
+async fn a_second_launch_brings_up_the_desk() {
     let f = fixture().await;
     let app = app_with(f.host);
     let handle = app.handle().clone();
     assert!(!has_window(&handle, "main"));
     on_second_launch(&handle);
-    eventually(|| has_window(&handle, "main")).await;
+    assert_eq!(opened_at(&handle), "desk");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_join_request_and_a_transfer_question_open_the_desk() {
+    use crate::app::handle as handle_note;
+    use crate::support_tests::{FakeNotifier, FakeTray};
+    use crate::tray::{Appearance, TrayController};
+    for (topic, params) in [
+        (Topic::JoinRequest, serde_json::json!({})),
+        (
+            Topic::Transfer,
+            serde_json::json!({"transfer_id": "ab", "state": "awaiting_overwrite_decision"}),
+        ),
+    ] {
+        let f = fixture().await;
+        let app = app_with(f.host);
+        let handle = app.handle().clone();
+        let tray = TrayController::new(Box::new(FakeTray::default()), Os::MacOs, Appearance::Light);
+        let note = Notification {
+            jsonrpc: "2.0".into(),
+            method: topic,
+            params,
+        };
+        handle_note(&handle, &tray, &FakeNotifier::default(), note);
+        assert_eq!(opened_at(&handle), "desk");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_review_offer_and_the_crossing_blocked_fix_open_the_displays() {
+    use mouser_proto::control::FixAction;
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let handle = app.handle().clone();
+    crate::app::handle_event(
+        &handle,
+        &crate::support_tests::FakeNotifier::default(),
+        mouser_core::EngineEvent::ReviewOffered {
+            computer: mouser_proto::ids::ComputerId([2; 16]),
+            name: "Studio".into(),
+        },
+    );
+    assert_eq!(opened_at(&handle), "displays");
+
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let handle = app.handle().clone();
+    let host = handle.state::<Host>();
+    let _ = crate::commands::run_fix(
+        &handle,
+        &host,
+        "crossing_blocked:aa/1/right",
+        FixAction::OpenArrangerEdge,
+    );
+    assert_eq!(opened_at(&handle), "displays");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -117,5 +186,34 @@ async fn the_host_starts_the_engine_in_the_mode_it_is_given() {
     assert_eq!(
         own.mode,
         Some(mouser_proto::wire::ComputerMode::PortableElevated)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_toast_names_the_computer_from_the_latest_status() {
+    use mouser_proto::control::{Problem, ProblemKind};
+    let f = fixture().await;
+    let status = status_of(&f.host).await;
+    f.host.remember_names(&status);
+    let problem = Problem {
+        problem_id: "peer_offline:x".into(),
+        kind: ProblemKind::PeerOffline,
+        computer: status.computer.id,
+        message: "Offline.".into(),
+        app: None,
+        fix: None,
+        raised_at: "2026-10-21T00:00:00Z".into(),
+        cleared_at: None,
+    };
+    let note = Notification {
+        jsonrpc: "2.0".into(),
+        method: Topic::Problem,
+        params: serde_json::to_value(problem).unwrap(),
+    };
+    let notifier = crate::support_tests::FakeNotifier::default();
+    f.host.toast(&note, &notifier);
+    assert_eq!(
+        notifier.shown.lock().unwrap()[0].0,
+        "Mouser needs your attention on Desk Mac"
     );
 }

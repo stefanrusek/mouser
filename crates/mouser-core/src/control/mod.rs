@@ -3,6 +3,7 @@
 
 pub mod client;
 pub mod config_api;
+pub mod elevation;
 pub mod layout;
 pub mod logs;
 pub mod logs_stream;
@@ -13,6 +14,8 @@ pub mod update;
 
 #[cfg(test)]
 mod config_api_tests;
+#[cfg(test)]
+mod elevation_tests;
 #[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
@@ -105,7 +108,14 @@ impl ControlHandle {
     }
 }
 
-/// The per-OS control socket (Unix) or pipe (Windows) path for this user.
+/// The pipe the engine of `MouserService` serves, for every user's Mouser
+/// on the computer to find (Windows).
+pub const SERVICE_PIPE: &str = r"\\.\pipe\mouser-service";
+
+/// The control endpoint to use: the service's pipe when it exists (Windows),
+/// otherwise the per-OS socket or pipe of this user.
 pub fn default_path() -> std::path::PathBuf {
-    server::default_path_from(|key| std::env::var(key).ok())
+    server::default_path_with(server::service_pipe_exists(), &|key| {
+        std::env::var(key).ok()
+    })
 }

@@ -12,6 +12,8 @@ mod auth_tests;
 #[cfg(test)]
 mod close_reason_tests;
 #[cfg(test)]
+mod elevation_tests;
+#[cfg(test)]
 pub(crate) mod fault_tests;
 #[cfg(test)]
 mod handshake_tests;
@@ -19,8 +21,6 @@ mod handshake_tests;
 mod liveness_tests;
 #[cfg(test)]
 mod redial_tests;
-#[cfg(test)]
-mod v2_placeholder_tests;
 
 use crate::lock::LockExt;
 use std::net::SocketAddr;
@@ -530,8 +530,7 @@ impl Ctx {
                 landing_highlight,
                 command_as_control,
             } => self.on_desk_settings(peer, epoch, author, landing_highlight, command_as_control),
-            // v2: replaced in T226
-            ControlMessage::RestartElevated => Ok(()),
+            ControlMessage::RestartElevated => self.on_restart_elevated(),
             other => Err(format!("unexpected message {other:?}")),
         }
     }

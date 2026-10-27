@@ -62,7 +62,7 @@ async fn the_tray_menu_carries_the_line_before_quit() {
     let ids: Vec<_> = with.entries.iter().map(|e| e.id).collect();
     let at = ids.iter().position(|id| *id == Some(SEND_CAD_ID)).unwrap();
     assert_eq!(ids[at + 1], Some(crate::tray::QUIT_ID));
-    assert_eq!(action(SEND_CAD_ID), Action::SendCad);
+    assert_eq!(action(SEND_CAD_ID), Some(Action::SendCad));
 }
 
 #[tokio::test(flavor = "multi_thread")]

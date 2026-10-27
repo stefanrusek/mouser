@@ -11,11 +11,14 @@
       {
         "label": "main",
         "create": false,
-        "title": "Welcome to Mouser",
-        "url": "first_run.html",
+        "title": "Mouser",
+        "url": "index.html",
         "visible": false,
-        "width": 560,
-        "height": 640
+        "resizable": true,
+        "width": 960,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 520
       }
     ],
     "security": { "csp": null }

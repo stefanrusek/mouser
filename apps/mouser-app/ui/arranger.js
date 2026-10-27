@@ -16,6 +16,12 @@ const MM_PER_96DPI_PX = 25.4 / 96;
 
 const keyOf = (displayId) => JSON.stringify(displayId);
 
+// A tile narrower or lower than this (in pixels) cannot hold its names.
+const MIN_TILE_PX = [110, 48];
+const LEADER_PX = 14;
+
+const fullName = (display) => `${display.computer_name}: ${display.name}`;
+
 // A display's size on the desk: its physical size, else its logical pixels at 96 dpi.
 export function deskSize(display) {
   const [w, h] = display.physical_size_mm ?? [
@@ -111,15 +117,16 @@ function layoutParams(layout, edits = {}) {
   return { placements, edge_options, equalize_dimensions, block_fullscreen, ...edits };
 }
 
-export async function init({ doc, api, every, onFocus }) {
-  const errorLine = doc.getElementById('error');
-  const refusal = doc.getElementById('refusal');
-  const canvas = doc.getElementById('canvas');
-  const details = doc.getElementById('details');
+export async function init({ doc, api, root = doc, onLayout = () => {} }) {
+  const errorLine = root.querySelector('#error');
+  const refusal = root.querySelector('#refusal');
+  const canvas = root.querySelector('#canvas');
+  const details = root.querySelector('#details');
   const state = { layout: null, view: null, selected: null, undo: null, drag: null };
 
   const edges = mountEdges({
     doc,
+    root,
     canvas,
     change: guarded(errorLine, (edits) => save(layoutParams(state.layout, edits))),
     named: (displayId) => state.layout.displays.find((d) => keyOf(d.display_id) === keyOf(displayId)).name,
@@ -156,6 +163,14 @@ export async function init({ doc, api, every, onFocus }) {
     showDetails(display);
   }
 
+  // The names of a tile too small to hold them, beside it with a line leading to it.
+  function externalLabel(display, tile) {
+    const label = el(doc, 'div', { class: 'external-label', title: fullName(display) }, el(doc, 'span', { class: 'leader' }), fullName(display));
+    label.style.left = `${Number.parseFloat(tile.style.left) + Number.parseFloat(tile.style.width) + LEADER_PX}px`;
+    label.style.top = tile.style.top;
+    return label;
+  }
+
   function renderTile(display) {
     const rect = rectOf(display);
     const { scale, minX, minY, pad } = state.view;
@@ -163,19 +178,24 @@ export async function init({ doc, api, every, onFocus }) {
     const tile = el(
       doc,
       'div',
-      { class: 'tile', tabindex: '0', 'data-key': key },
+      {
+        class: 'tile',
+        tabindex: '0',
+        'data-key': key,
+        'aria-label': fullName(display),
+        title: fullName(display),
+      },
       el(doc, 'strong', {}, display.computer_name),
       el(doc, 'span', {}, display.name),
     );
-    if (display.needs_review) {
-      tile.classList.add('review');
-      tile.append(el(doc, 'em', {}, 'Review placement'));
-    }
+    if (display.needs_review) tile.classList.add('review');
     if (key === state.selected) tile.classList.add('selected');
     tile.style.left = `${(rect.x - minX + pad) * scale}px`;
     tile.style.top = `${(rect.y - minY + pad) * scale}px`;
     tile.style.width = `${rect.w * scale}px`;
     tile.style.height = `${rect.h * scale}px`;
+    const small = rect.w * scale < MIN_TILE_PX[0] || rect.h * scale < MIN_TILE_PX[1];
+    tile.classList.toggle('small', small);
     const hover = () => showDetails(display);
     tile.addEventListener('mouseenter', hover);
     tile.addEventListener('focus', hover);
@@ -192,33 +212,17 @@ export async function init({ doc, api, every, onFocus }) {
         }),
       };
     });
-    return tile;
-  }
-
-  function renderReview(flagged) {
-    const list = doc.getElementById('review');
-    show(list, flagged.length > 0);
-    list.replaceChildren(
-      ...flagged.map((display) =>
-        el(
-          doc,
-          'li',
-          {},
-          el(doc, 'span', { class: 'what' }, `${display.computer_name}: ${display.name}`),
-          button(doc, 'Review placement', () => select(display)),
-        ),
-      ),
-    );
+    return small ? [tile, externalLabel(display, tile)] : [tile];
   }
 
   function render() {
+    onLayout(state.layout);
     const displays = includedDisplays();
-    show(doc.getElementById('empty'), displays.length === 0);
+    show(root.querySelector('#empty'), displays.length === 0);
     show(canvas, displays.length > 0);
-    show(doc.getElementById('undo-bar'), state.undo !== null);
-    renderReview(displays.filter((d) => d.needs_review));
-    doc.getElementById('equalize').checked = state.layout.equalize_dimensions;
-    doc.getElementById('block-fullscreen').checked = state.layout.block_fullscreen;
+    show(root.querySelector('#undo-bar'), state.undo !== null);
+    root.querySelector('#equalize').checked = state.layout.equalize_dimensions;
+    root.querySelector('#block-fullscreen').checked = state.layout.block_fullscreen;
     if (displays.length === 0) {
       canvas.replaceChildren();
       showDetails(null);
@@ -227,7 +231,7 @@ export async function init({ doc, api, every, onFocus }) {
     state.view = fitView(displays.map(rectOf));
     canvas.style.width = `${state.view.width}px`;
     canvas.style.height = `${state.view.height}px`;
-    canvas.replaceChildren(...displays.map(renderTile));
+    canvas.replaceChildren(...displays.flatMap(renderTile));
     edges.draw(
       displays.map((d) => ({ display_id: d.display_id, ...rectOf(d) })),
       state.view,
@@ -264,11 +268,11 @@ export async function init({ doc, api, every, onFocus }) {
       }),
     );
     state.undo = { before, display };
-    doc.getElementById('undo-text').textContent = `${display.name} was removed.`;
+    root.querySelector('#undo-text').textContent = `${display.name} was removed.`;
     render();
   });
 
-  doc.getElementById('undo').addEventListener(
+  root.querySelector('#undo').addEventListener(
     'click',
     guarded(errorLine, async () => {
       const { before, display } = state.undo;
@@ -277,12 +281,12 @@ export async function init({ doc, api, every, onFocus }) {
     }),
   );
 
-  doc.getElementById('equalize').addEventListener(
+  root.querySelector('#equalize').addEventListener(
     'change',
     guarded(errorLine, (event) => save(layoutParams(state.layout, { equalize_dimensions: event.target.checked }))),
   );
 
-  doc.getElementById('block-fullscreen').addEventListener(
+  root.querySelector('#block-fullscreen').addEventListener(
     'change',
     guarded(errorLine, (event) => save(layoutParams(state.layout, { block_fullscreen: event.target.checked }))),
   );
@@ -336,7 +340,6 @@ export async function init({ doc, api, every, onFocus }) {
     drop(drag.display, Math.round(dx / scale), Math.round(dy / scale));
   });
 
-  const tick = guarded(errorLine, () => (state.drag ? undefined : load()), { clear: false });
   // The fix of a "crossing blocked" notice asks for one edge; the layout is current before it is opened.
   const openAskedEdge = async () => {
     const problemId = await api.takeArrangerEdge();
@@ -344,17 +347,15 @@ export async function init({ doc, api, every, onFocus }) {
     await load();
     edges.open(parseBlockedEdge(problemId));
   };
-  await api.onNotification((note) => {
-    if (note.method === 'status') tick();
-  });
-  every(3000, tick);
-  onFocus(async () => {
-    await tick();
-    await guarded(errorLine, openAskedEdge, { clear: false })();
-  });
-  await guarded(errorLine, async () => {
-    await load();
-    await openAskedEdge();
-  })();
+  const tick = guarded(
+    errorLine,
+    async () => {
+      if (state.drag) return;
+      await load();
+      await openAskedEdge();
+    },
+    { clear: false },
+  );
+  await tick();
   return { tick };
 }

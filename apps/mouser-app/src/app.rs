@@ -14,7 +14,7 @@ use crate::notify::{self, Notifier};
 use crate::overlay;
 use crate::quickjump_windows;
 use crate::tray::{TrayController, current_status};
-use crate::windows::{self, Which};
+use crate::windows;
 
 /// The event every UI window listens to; the payload is the notification.
 pub const EVENT: &str = "mouser://notification";
@@ -32,10 +32,13 @@ pub fn handle<R: Runtime>(
     }
     app.emit(EVENT, &note).expect("UI windows can be notified");
     match note.method {
-        Topic::Status => tray.update_status(
-            serde_json::from_value(note.params.clone()).expect("status matches its schema"),
-        ),
-        Topic::JoinRequest => windows::show(app, Which::Join),
+        Topic::Status => {
+            let status: mouser_proto::control::Status =
+                serde_json::from_value(note.params.clone()).expect("status matches its schema");
+            app.state::<Host>().remember_names(&status);
+            tray.update_status(status);
+        }
+        Topic::JoinRequest => windows::navigate(app, windows::DESK),
         // v2 placeholder: T322 (the app lane wires config updates)
         Topic::Config => {}
         Topic::Problem => app.state::<Host>().toast(&note, notifier),
@@ -45,8 +48,8 @@ pub fn handle<R: Runtime>(
                 .as_str()
                 .expect("a transfer notification has a state");
             let asks = matches!(state, "awaiting_overwrite_decision" | "rejected" | "failed");
-            if asks || (state != "completed" && !windows::is_open(app, Which::Transfer)) {
-                windows::show(app, Which::Transfer);
+            if asks || (state != "completed" && !windows::is_shown(app)) {
+                windows::navigate(app, windows::DESK);
             }
         }
     }
@@ -102,7 +105,7 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
                     "{name} joined your desk. Open Mouser to review where its displays are placed."
                 ),
             );
-            windows::show(app, Which::Arranger);
+            windows::navigate(app, windows::DISPLAYS);
         }
         EngineEvent::QuickJumpShow { letters } => {
             let app = app.clone();
@@ -119,6 +122,8 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
         EngineEvent::QuickJumpHide => quickjump_windows::hide(app),
         // v2 placeholder: none (no Phase 9 task owns it; core logs the fault, nothing to show)
         EngineEvent::Fault { .. } => {}
+        // v2 placeholder: T330 (the US5 app lane runs the restart sequence)
+        EngineEvent::RestartElevated => {}
     }
 }
 
@@ -170,8 +175,9 @@ pub async fn start<R: Runtime>(
     let notes = control.notifications();
     let status = current_status(control).await;
     if windows::needs_setup(&status) {
-        windows::show(app, Which::FirstRun);
+        windows::navigate(app, windows::WELCOME);
     }
+    app.state::<Host>().remember_names(&status);
     tray.update_status(status);
     notes
 }

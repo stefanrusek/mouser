@@ -132,6 +132,8 @@ pub struct Setup {
     pub release_pubkey: Option<String>,
     /// Run from a removable drive: `MouserData/` beside the executable.
     pub portable: bool,
+    /// How this computer runs, when the scenario says (default: installed).
+    pub mode: Option<mouser_proto::wire::ComputerMode>,
     /// When to look for releases by itself (default: only on request).
     pub check_schedule: Option<mouser_core::release::CheckSchedule>,
 }
@@ -148,6 +150,7 @@ impl Default for Setup {
             installer: None,
             release_pubkey: None,
             portable: false,
+            mode: None,
             check_schedule: None,
         }
     }
@@ -364,6 +367,9 @@ impl Node {
             let exe = drive.path().join("mouser");
             let paths = mouser_core::paths::Paths::resolve(&exe, self.platform.info().os, &env);
             params = params.with_paths(&paths);
+        }
+        if let Some(mode) = self.setup.mode {
+            params.mode = mode;
         }
         params.protocol_version = self.setup.protocol_version;
         params.discovery = Some(Arc::new(discovery));

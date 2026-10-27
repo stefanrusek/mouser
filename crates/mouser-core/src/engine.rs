@@ -135,6 +135,9 @@ pub enum EngineEvent {
     /// QuickJump ended (a letter was chosen, or it was cancelled): remove the
     /// letters.
     QuickJumpHide,
+    /// Restart this computer's Mouser as administrator (portable Windows,
+    /// not elevated): the app runs the elevated restart sequence.
+    RestartElevated,
     /// A unit of work faulted and was recovered from (`where` names it).
     Fault { r#where: String },
 }
@@ -755,6 +758,7 @@ async fn reconcile_loop(ctx: Arc<Ctx>, mut config_text: String) {
             ctx.check_liveness();
             ctx.try_start_input();
             ctx.sync_secure_input();
+            ctx.hand_back_elevated();
             if ctx.sync_permission_problems() {
                 ctx.notify_status();
             }

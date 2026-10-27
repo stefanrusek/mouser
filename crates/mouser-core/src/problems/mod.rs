@@ -2,6 +2,7 @@
 //! `problem_id` (kind + subject), announced to subscribers.
 
 pub mod blocked;
+pub mod elevated_app;
 pub mod limitations;
 pub mod notify;
 pub mod peer_status;
@@ -103,6 +104,20 @@ impl Problems {
         message: String,
         fix: Option<FixAction>,
     ) -> bool {
+        self.raise_in(kind, subject, computer, message, None, fix)
+    }
+
+    /// [`raise`](Self::raise) for a problem about the program `app` (its
+    /// name only, FR-003).
+    pub fn raise_in(
+        &self,
+        kind: ProblemKind,
+        subject: &str,
+        computer: ComputerId,
+        message: String,
+        app: Option<String>,
+        fix: Option<FixAction>,
+    ) -> bool {
         let problem_id = format!("{}:{subject}", kind_name(kind));
         let mut all = self.all.guard();
         if all
@@ -116,7 +131,7 @@ impl Problems {
             kind,
             computer,
             message,
-            app: None,
+            app,
             fix,
             raised_at: now(),
             cleared_at: None,
@@ -162,6 +177,8 @@ impl Problems {
 
 #[cfg(test)]
 mod blocked_tests;
+#[cfg(test)]
+mod elevated_app_tests;
 #[cfg(test)]
 mod limitations_tests;
 #[cfg(test)]

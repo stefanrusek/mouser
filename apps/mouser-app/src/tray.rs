@@ -4,9 +4,11 @@
 use std::sync::Mutex;
 
 use mouser_core::ControlHandle;
-use mouser_core::control::status::tray_summary;
 use mouser_platform::Os;
-use mouser_proto::control::{EngineState, Method, Status, UpdateResult};
+use mouser_proto::control::{
+    ConnectionState, EngineState, Method, Status, TrayConnection, UpdateResult,
+};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime, Theme};
 
 use crate::{tray_sas, updater, windows};
@@ -33,31 +35,85 @@ pub enum Variant {
 pub struct Icon {
     pub variant: Variant,
     pub paused: bool,
+    pub connection: TrayConnection,
 }
 
 impl Icon {
     /// macOS always uses the template image; other systems follow `appearance`.
-    pub fn choose(os: Os, appearance: Appearance, paused: bool) -> Self {
+    pub fn choose(
+        os: Os,
+        appearance: Appearance,
+        paused: bool,
+        connection: TrayConnection,
+    ) -> Self {
         let variant = match (os, appearance) {
             (Os::MacOs, _) => Variant::Template,
             (_, Appearance::Light) => Variant::Light,
             (_, Appearance::Dark) => Variant::Dark,
         };
-        Self { variant, paused }
+        Self {
+            variant,
+            paused,
+            connection,
+        }
     }
 
     pub fn is_template(self) -> bool {
         self.variant == Variant::Template
     }
 
+    /// The PNG `icons/tray-<theme>-<state>-<connection>.png`.
     pub fn png(self) -> &'static [u8] {
-        match (self.variant, self.paused) {
-            (Variant::Template, false) => include_bytes!("../icons/tray-template-active.png"),
-            (Variant::Template, true) => include_bytes!("../icons/tray-template-paused.png"),
-            (Variant::Light, false) => include_bytes!("../icons/tray-light-active.png"),
-            (Variant::Light, true) => include_bytes!("../icons/tray-light-paused.png"),
-            (Variant::Dark, false) => include_bytes!("../icons/tray-dark-active.png"),
-            (Variant::Dark, true) => include_bytes!("../icons/tray-dark-paused.png"),
+        use TrayConnection::{Alone, Connected, Disconnected};
+        match (self.variant, self.paused, self.connection) {
+            (Variant::Template, false, Connected) => {
+                include_bytes!("../icons/tray-template-active-connected.png")
+            }
+            (Variant::Template, false, Disconnected) => {
+                include_bytes!("../icons/tray-template-active-disconnected.png")
+            }
+            (Variant::Template, false, Alone) => {
+                include_bytes!("../icons/tray-template-active-alone.png")
+            }
+            (Variant::Template, true, Connected) => {
+                include_bytes!("../icons/tray-template-paused-connected.png")
+            }
+            (Variant::Template, true, Disconnected) => {
+                include_bytes!("../icons/tray-template-paused-disconnected.png")
+            }
+            (Variant::Template, true, Alone) => {
+                include_bytes!("../icons/tray-template-paused-alone.png")
+            }
+            (Variant::Light, false, Connected) => {
+                include_bytes!("../icons/tray-light-active-connected.png")
+            }
+            (Variant::Light, false, Disconnected) => {
+                include_bytes!("../icons/tray-light-active-disconnected.png")
+            }
+            (Variant::Light, false, Alone) => {
+                include_bytes!("../icons/tray-light-active-alone.png")
+            }
+            (Variant::Light, true, Connected) => {
+                include_bytes!("../icons/tray-light-paused-connected.png")
+            }
+            (Variant::Light, true, Disconnected) => {
+                include_bytes!("../icons/tray-light-paused-disconnected.png")
+            }
+            (Variant::Light, true, Alone) => include_bytes!("../icons/tray-light-paused-alone.png"),
+            (Variant::Dark, false, Connected) => {
+                include_bytes!("../icons/tray-dark-active-connected.png")
+            }
+            (Variant::Dark, false, Disconnected) => {
+                include_bytes!("../icons/tray-dark-active-disconnected.png")
+            }
+            (Variant::Dark, false, Alone) => include_bytes!("../icons/tray-dark-active-alone.png"),
+            (Variant::Dark, true, Connected) => {
+                include_bytes!("../icons/tray-dark-paused-connected.png")
+            }
+            (Variant::Dark, true, Disconnected) => {
+                include_bytes!("../icons/tray-dark-paused-disconnected.png")
+            }
+            (Variant::Dark, true, Alone) => include_bytes!("../icons/tray-dark-paused-alone.png"),
         }
     }
 }
@@ -82,6 +138,8 @@ pub struct Entry {
 pub struct TrayView {
     pub icon: Icon,
     pub summary: String,
+    /// The hover text: names the active or paused state and the connection.
+    pub tooltip: String,
     pub entries: Vec<Entry>,
 }
 
@@ -100,14 +158,39 @@ pub fn view(
     appearance: Appearance,
     update: Option<&UpdateResult>,
 ) -> TrayView {
-    let summary = tray_summary(status);
+    let summary = status.tray_summary;
     let paused = summary.state == EngineState::Paused;
+    let summary_connection = summary.connection;
     let words = if paused { "paused" } else { "active" };
     let summary = format!(
         "Mouser is {words}: {}, {}",
         count(summary.computers, "computer"),
         count(summary.displays, "display")
     );
+    let state_words = if paused { "paused" } else { "active" };
+    let tooltip = match summary_connection {
+        TrayConnection::Connected => format!("Mouser is {state_words} · connected"),
+        TrayConnection::Alone => {
+            format!("Mouser is {state_words} · no other computers on this desk")
+        }
+        TrayConnection::Disconnected => {
+            let names: Vec<&str> = status
+                .computers
+                .iter()
+                .filter(|c| {
+                    !matches!(
+                        c.connection,
+                        ConnectionState::SelfComputer | ConnectionState::Connected
+                    )
+                })
+                .map(|c| c.name.as_str())
+                .collect();
+            format!(
+                "Mouser is {state_words} · not connected to {}",
+                names.join(", ")
+            )
+        }
+    };
     let version = update.map(|update| {
         let (id, label) = updater::line(update);
         Entry { id, label }
@@ -149,9 +232,10 @@ pub fn view(
     let quit = entries.len() - 1;
     entries.splice(quit..quit, tray_sas::entry(status));
     TrayView {
-        icon: Icon::choose(os, appearance, paused),
+        icon: Icon::choose(os, appearance, paused, summary_connection),
         entries,
         summary,
+        tooltip,
     }
 }
 
@@ -253,8 +337,9 @@ pub enum Action {
     Quit,
 }
 
-pub fn action(id: &str) -> Action {
-    match id {
+/// The action of menu line `id`; a line this tray does not have does nothing.
+pub fn action(id: &str) -> Option<Action> {
+    Some(match id {
         OPEN_ID => Action::Open,
         PAUSE_ID => Action::Pause,
         RESUME_ID => Action::Resume,
@@ -263,7 +348,28 @@ pub fn action(id: &str) -> Action {
         UPDATE_ID => Action::Update,
         tray_sas::SEND_CAD_ID => Action::SendCad,
         QUIT_ID => Action::Quit,
-        other => panic!("the tray has no menu line \"{other}\""),
+        _ => return None,
+    })
+}
+
+/// Do what menu line `id` says. Installing an update, sending Ctrl-Alt-Del and
+/// quitting need the live shell, so they are handed to `rest`.
+pub fn handle_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    control: &ControlHandle,
+    id: &str,
+    rest: &mut dyn FnMut(Action),
+) {
+    match action(id) {
+        None => {}
+        Some(Action::Open) => open(app, control),
+        Some(Action::Arrange) => windows::navigate(app, windows::DISPLAYS),
+        Some(Action::Health) => windows::navigate(app, windows::HEALTH),
+        Some(action @ (Action::Pause | Action::Resume)) => {
+            let control = control.clone();
+            tauri::async_runtime::spawn(async move { run_pause(&control, action).await });
+        }
+        Some(action @ (Action::Update | Action::SendCad | Action::Quit)) => rest(action),
     }
 }
 
@@ -293,4 +399,27 @@ pub async fn run_pause(control: &ControlHandle, action: Action) {
         .call(method, None)
         .await
         .expect("the engine can be paused or resumed");
+}
+
+/// Pause if Mouser is active and resume if it is paused.
+pub async fn toggle_pause(control: &ControlHandle) {
+    let action = match current_status(control).await.state {
+        EngineState::Active => Action::Pause,
+        EngineState::Paused => Action::Resume,
+    };
+    run_pause(control, action).await;
+}
+
+/// A click on the icon: the left button released toggles pause once per
+/// click (the menu opens on the right button, not the left).
+pub fn handle_tray_event(control: &ControlHandle, event: &TrayIconEvent) {
+    if let TrayIconEvent::Click {
+        button: MouseButton::Left,
+        button_state: MouseButtonState::Up,
+        ..
+    } = event
+    {
+        let control = control.clone();
+        tauri::async_runtime::spawn(async move { toggle_pause(&control).await });
+    }
 }

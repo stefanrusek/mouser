@@ -53,9 +53,9 @@ export function parseBlockedEdge(problemId) {
 
 // Wire the edge handles on `canvas` and the options panel. `change(edits)`
 // sends a layout change; `named(display_id)` is the display's label.
-export function mountEdges({ doc, canvas, change, named }) {
-  const panel = doc.getElementById('edge-options');
-  const corners = doc.getElementById('block-corners');
+export function mountEdges({ doc, root, canvas, change, named }) {
+  const panel = root.querySelector('#edge-options');
+  const corners = root.querySelector('#block-corners');
   const state = { selected: null, edges: [], options: [] };
   const identity = (edge) => keyOf([edge.first, edge.second]);
 
@@ -63,7 +63,7 @@ export function mountEdges({ doc, canvas, change, named }) {
     const edge = state.edges.find((e) => identity(e) === state.selected);
     show(panel, Boolean(edge));
     if (!edge) return;
-    doc.getElementById('edge-title').textContent = `Edge between ${named(edge.first.display_id)} and ${named(edge.second.display_id)}`;
+    root.querySelector('#edge-title').textContent = `Edge between ${named(edge.first.display_id)} and ${named(edge.second.display_id)}`;
     corners.checked = blocksCorners(state.options, edge.first);
     for (const handle of canvas.querySelectorAll('.edge')) {
       handle.classList.toggle('selected', handle.getAttribute('data-edge') === state.selected);

@@ -13,7 +13,7 @@ use mouser_proto::control::Notification;
 use mouser_proto::wire::ComputerMode;
 use serde_json::Value;
 
-use crate::notify::{Notifier, Toasts};
+use crate::notify::{Names, Notifier, Toasts};
 
 /// The running engine and the platform it runs on.
 pub struct Host {
@@ -29,6 +29,8 @@ pub struct Host {
     arranger_edge: Mutex<Option<String>>,
     /// Which problems were shown as system notifications, and when.
     toasts: Mutex<Toasts>,
+    /// Each computer's name, from the latest status, for notifications.
+    names: Mutex<Names>,
 }
 
 /// How this host takes part in updates. The default takes no part: no
@@ -77,6 +79,7 @@ impl Host {
             transfers: Mutex::new(Vec::new()),
             arranger_edge: Mutex::new(None),
             toasts: Mutex::new(Toasts::default()),
+            names: Mutex::new(Names::new()),
         }
     }
 
@@ -96,10 +99,20 @@ impl Host {
     /// Show the problem in `note` through `notifier` if it needs the owner
     /// and was not shown lately.
     pub fn toast(&self, note: &Notification, notifier: &dyn Notifier) {
+        let names = self.names.lock().unwrap();
         self.toasts
             .lock()
             .unwrap()
-            .bridge(note, Instant::now(), notifier);
+            .bridge(note, Instant::now(), &names, notifier);
+    }
+
+    /// Keep the computers' names in `status` for the notifications about them.
+    pub fn remember_names(&self, status: &mouser_proto::control::Status) {
+        *self.names.lock().unwrap() = status
+            .computers
+            .iter()
+            .map(|c| (c.id, c.name.clone()))
+            .collect();
     }
 
     /// The latest notification of every transfer so far.
@@ -156,12 +169,7 @@ impl Host {
     }
 }
 
-/// A second launch of Mouser opens the window the first one would.
+/// A second launch of Mouser brings the first one's window to the desk.
 pub fn on_second_launch<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    use tauri::Manager;
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let control = app.state::<Host>().control();
-        crate::windows::open_home(&app, &control).await;
-    });
+    crate::windows::navigate(app, crate::windows::DESK);
 }

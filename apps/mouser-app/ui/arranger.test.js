@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deskSize, detailLines, fitView, init, snapGroup, snapPlacement } from './arranger.js';
-import { click, fakeApi, flush, loadPage } from './test_helpers.js';
+import { Window } from 'happy-dom';
+import { arrangerMarkup } from './sections/displays.js';
+import { click, fakeApi, flush } from './test_helpers.js';
 import { makeStatus } from './status_fixture.js';
 
 const id = (computer, key) => ({ computer, key });
@@ -35,7 +37,8 @@ const TWO = () => layoutOf([A, B], [place(A.display_id, 0, 0), place(B.display_i
 const sent = (api) => api.calls.filter(([m]) => m === 'layout.set').map(([, p]) => p);
 
 async function start(layout = TWO(), answers = {}) {
-  const win = loadPage('arranger.html');
+  const win = new Window({ url: 'http://localhost/index.html' });
+  win.document.body.append(arrangerMarkup(win.document));
   const api = fakeApi({
     status: makeStatus(),
     'layout.get': layout,
@@ -44,15 +47,8 @@ async function start(layout = TWO(), answers = {}) {
     }),
     ...answers,
   });
-  const timers = [];
-  const focus = [];
-  const page = await init({
-    doc: win.document,
-    api,
-    every: (ms, tick) => timers.push([ms, tick]),
-    onFocus: (handler) => focus.push(handler),
-  });
-  return { win, doc: win.document, api, page, timers, focus };
+  const page = await init({ doc: win.document, api });
+  return { win, doc: win.document, api, page };
 }
 
 const tiles = (doc) => [...doc.querySelectorAll('.tile')];
@@ -298,43 +294,35 @@ test('Equalize display dimensions toggles the setting through layout.set', async
   assert.equal(sent(api)[1].equalize_dimensions, false);
 });
 
-test('displays that need review are highlighted and offer Review placement', async () => {
+test('displays that need review are highlighted, and with no displays a hint shows', async () => {
   const flagged = display('bb', '1', 'Studio Display', { needs_review: true });
-  const { win, doc } = await start(layoutOf([A, flagged], [place(A.display_id, 0, 0), place(flagged.display_id, 600, 0)]));
+  const { doc } = await start(layoutOf([A, flagged], [place(A.display_id, 0, 0), place(flagged.display_id, 600, 0)]));
   assert.ok(tileOf(doc, 'Studio Display').classList.contains('review'));
   assert.ok(!tileOf(doc, 'Built-in').classList.contains('review'));
-  assert.match(tileOf(doc, 'Studio Display').textContent, /Review placement/);
-  const review = doc.getElementById('review');
-  assert.ok(!review.hidden);
-  assert.match(review.textContent, /Studio Display/);
-  click(win, named(review, 'Review placement'));
-  assert.match(text(doc, 'details'), /Studio Display/);
-  assert.ok(tileOf(doc, 'Studio Display').classList.contains('selected'));
-});
-
-test('with nothing to review the review list is hidden; with no displays a hint shows', async () => {
-  const { doc } = await start();
-  assert.ok(doc.getElementById('review').hidden);
   assert.ok(doc.getElementById('empty').hidden);
   const none = await start(layoutOf([], []));
   assert.ok(!none.doc.getElementById('empty').hidden);
   assert.equal(tiles(none.doc).length, 0);
 });
 
-test('the arrangement refreshes on status changes, on focus and on a timer, but not mid-drag', async () => {
-  const { win, doc, api, timers, focus } = await start();
-  assert.equal(timers[0][0], 3000);
-  await timers[0][1]();
-  await focus[0]();
-  api.emit('status', {});
-  api.emit('problem', { problem_id: 'p', message: 'm', fix: null, cleared_at: null });
-  await flush();
-  assert.equal(api.calls.filter(([m]) => m === 'layout.get').length, 4);
+test('every layout the arranger shows is passed on to whoever listens', async () => {
+  const win = new Window({ url: 'http://localhost/index.html' });
+  win.document.body.append(arrangerMarkup(win.document));
+  const seen = [];
+  const api = fakeApi({ 'layout.get': TWO() });
+  await init({ doc: win.document, api, onLayout: (layout) => seen.push(layout.displays.length) });
+  assert.deepEqual(seen, [2]);
+});
+
+test('a tick reloads the arrangement, but not mid-drag', async () => {
+  const { win, doc, api, page } = await start();
+  await page.tick();
+  assert.equal(api.calls.filter(([m]) => m === 'layout.get').length, 2);
   const b = tileOf(doc, 'Studio Display');
   pointer(win, b, 'pointerdown', 0, 0);
   pointer(win, doc, 'pointermove', 40, 0);
-  await timers[0][1]();
-  assert.equal(api.calls.filter(([m]) => m === 'layout.get').length, 4);
+  await page.tick();
+  assert.equal(api.calls.filter(([m]) => m === 'layout.get').length, 2);
   pointer(win, doc, 'pointerup', 40, 0);
   await flush();
 });
