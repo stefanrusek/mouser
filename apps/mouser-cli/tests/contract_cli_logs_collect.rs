@@ -96,6 +96,8 @@ async fn collect_exits_2_when_the_engine_is_not_running() {
     lab.shutdown().await;
 }
 
+/// A computer running the installed service, in a lab of its own
+/// ([`Lab::alone`]).
 async fn service_node(lab: &Lab, name: &str) -> crate::support::Node {
     lab.add_tuned(
         name,
@@ -108,7 +110,7 @@ async fn service_node(lab: &Lab, name: &str) -> crate::support::Node {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn against_the_service_the_cli_streams_the_bundle_and_writes_it_into_out() {
-    let lab = Lab::new();
+    let lab = Lab::alone();
     let alpha = service_node(&lab, "Alpha").await;
     let out = tempfile::tempdir().unwrap();
     let dir = out.path().to_str().unwrap();
@@ -151,7 +153,7 @@ async fn against_the_service_the_cli_streams_the_bundle_and_writes_it_into_out()
 
 #[tokio::test(flavor = "multi_thread")]
 async fn against_the_service_without_out_the_bundle_goes_to_the_users_downloads_folder() {
-    let lab = Lab::new();
+    let lab = Lab::alone();
     let alpha = service_node(&lab, "Alpha").await;
     let text = alpha.mouser(&["logs", "collect"]).await;
     assert_eq!(text.code, 0, "{}", text.stderr);

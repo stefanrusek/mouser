@@ -3,7 +3,7 @@
 //! computer's connection, missing permissions and problems.
 
 use crate::support::Lab;
-use mouser_proto::control::Status;
+use mouser_proto::control::{Method, Status};
 use mouser_proto::wire::ComputerMode;
 use mouser_testkit::VirtualPlatform;
 
@@ -47,7 +47,9 @@ async fn status_json_validates_against_the_schema() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn status_text_names_desk_connections_permissions_and_problems() {
-    let lab = Lab::new();
+    // Beta is the installed service, and the CLI talks to the service while
+    // it runs (Windows): once Beta runs, Alpha is asked directly.
+    let lab = Lab::alone();
     let alpha = lab
         .add_tuned(
             "Alpha",
@@ -111,33 +113,38 @@ async fn status_text_names_desk_connections_permissions_and_problems() {
         "{text}"
     );
 
-    let request = alpha.pending_request().await;
-    alpha.mouser(&["approve", &request.to_string()]).await;
+    // Beta's join is pending, so Alpha has the request.
+    let pending = alpha.call(Method::JoinPending).await;
+    let request = pending[0]["request_id"].as_u64().unwrap();
+    alpha
+        .call_with(
+            Method::JoinDecide,
+            serde_json::json!({"request_id": request, "approve": true}),
+        )
+        .await;
     join.wait_with_output().await.unwrap();
-    alpha
-        .wait_status("Beta connected", |s| s.computers.len() == 2)
+    beta.wait_status("Alpha connected", |s| s.computers.len() == 2)
         .await;
-    let desk_id = alpha.status().await.desk.unwrap().id;
+    let desk_id = beta.status().await.desk.unwrap().id;
 
-    alpha
-        .wait_status("Beta's mode reported", |s| {
-            s.computers.iter().all(|c| c.mode.is_some())
-        })
-        .await;
-    let text = alpha.mouser(&["status"]).await.stdout;
+    beta.wait_status("Alpha's mode reported", |s| {
+        s.computers.iter().all(|c| c.mode.is_some())
+    })
+    .await;
+    let text = beta.mouser(&["status"]).await.stdout;
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], "Alpha: active");
+    assert_eq!(lines[0], "Beta: active");
     assert_eq!(lines[1], format!("Desk: Home office [{desk_id}]"));
     assert_eq!(lines[2], "Connection: connected");
     assert_eq!(lines[3], "Computers:");
     let version = "0.3.0";
     assert_eq!(
         lines[4],
-        format!("  Alpha: this computer, version {version}, installed")
+        format!("  Beta: this computer, version {version}, service")
     );
-    assert!(lines[5].starts_with("  Beta: connected, "), "{text}");
+    assert!(lines[5].starts_with("  Alpha: connected, "), "{text}");
     assert!(
-        lines[5].contains(&format!(", version {version}, service, ")),
+        lines[5].contains(&format!(", version {version}, installed, ")),
         "{text}"
     );
     assert!(
@@ -146,9 +153,9 @@ async fn status_text_names_desk_connections_permissions_and_problems() {
     );
     assert!(lines.iter().any(|l| l.starts_with("Problems")), "{text}");
 
-    alpha.mouser(&["pause"]).await;
-    let paused = alpha.mouser(&["status"]).await.stdout;
-    assert!(paused.starts_with("Alpha: paused\n"));
+    beta.mouser(&["pause"]).await;
+    let paused = beta.mouser(&["status"]).await.stdout;
+    assert!(paused.starts_with("Beta: paused\n"));
     lab.shutdown().await;
 }
 
