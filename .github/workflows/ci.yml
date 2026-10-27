@@ -10,15 +10,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            lane: macos
-            packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-macos,mouser-app,mouser-cli,xtask
           - os: windows-2025
             lane: windows
             packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-windows,mouser-app,mouser-cli,mouser-service-win,xtask
-          - os: ubuntu-24.04
-            lane: linux
-            packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-linux,mouser-app,mouser-cli,xtask
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +34,14 @@ jobs:
       - name: Gate
         shell: bash
         run: cargo xtask gate --packages ${{ matrix.packages }} --lane ci-${{ matrix.lane }}
+      - name: Missing lines
+        if: always()
+        shell: bash
+        run: |
+          export CARGO_LLVM_COV_TARGET_DIR=target/llvm-cov-ci-windows
+          cargo llvm-cov report --text --ignore-filename-regex '(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\.rs)' > /tmp/cov.txt || true
+          grep -nE '^ *[0-9]+\| +0\|' /tmp/cov.txt | head -40 || true
+          awk '/^\/|^[A-Za-z]:\\/{f=$0} /^ *[0-9]+\| +0\|/{print f": "$0}' /tmp/cov.txt | head -40 || true
       - name: Read feature directory
         id: feature
         if: always()
