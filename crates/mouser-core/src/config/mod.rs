@@ -15,6 +15,9 @@ const PLACEHOLDER_RELEASE_URL: &str = "https://api.github.com/repos/<owner>/mous
 /// File name inside the config directory.
 pub const FILE: &str = "config.toml";
 
+/// The keys that take only `true` or `false`, and say so in those words.
+const BOOLEAN_KEYS: [&str; 2] = ["crossing.landing_highlight", "keyboard.command_as_control"];
+
 /// The hotkeys the engine parses out of a valid config: the panic gesture,
 /// the targeted-paste chord and the QuickJump chord.
 pub type Hotkeys = (PanicSpec, Chord, Chord);
@@ -88,7 +91,13 @@ pub fn with_value(
     }
     let (section, name) = key.split_once('.').expect("a leaf key has a section");
     tree[section][name] = value;
-    let next: Config = serde_json::from_value(tree).map_err(|e| rejected(key, e))?;
+    let next: Config = serde_json::from_value(tree).map_err(|e| {
+        if BOOLEAN_KEYS.contains(&key) {
+            rejected(key, "must be true or false")
+        } else {
+            rejected(key, e)
+        }
+    })?;
     let hotkeys = validate(&next)?;
     Ok((next, hotkeys))
 }
@@ -173,8 +182,11 @@ fn dir_from(env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
     }
 }
 
+pub(crate) mod changes;
 pub(crate) mod watch;
 
+#[cfg(test)]
+mod changes_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

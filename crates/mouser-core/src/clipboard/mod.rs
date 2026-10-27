@@ -29,10 +29,13 @@ use std::time::Duration;
 
 use mouser_platform::{ClipRep, Clipboard};
 use mouser_proto::ids::ComputerId;
-use mouser_proto::wire::{ClipboardKind, ControlMessage, TransferId, TransferItem};
+use mouser_proto::wire::{
+    ClipboardKind, ClipboardPayload, ControlMessage, TransferId, TransferItem,
+};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::engine::{Ctx, Phase};
+use crate::logging::events;
 use apply::{Fetching, Remote};
 use files::Inbox;
 use watch::{Served, Watcher};
@@ -206,7 +209,41 @@ impl Clip {
     }
 }
 
+/// What an offer carries, by kind and size: bytes, or the number of items
+/// for files. Never what it holds (FR-003).
+fn offered(message: &ControlMessage) -> Option<Vec<(ClipboardKind, u64)>> {
+    let ControlMessage::ClipboardOffer {
+        representations,
+        file_manifest,
+        ..
+    } = message
+    else {
+        return None;
+    };
+    Some(
+        representations
+            .iter()
+            .map(|rep| {
+                let size = match (&rep.kind, &rep.payload) {
+                    (ClipboardKind::Files, _) => file_manifest.len() as u64,
+                    (_, ClipboardPayload::Inline(bytes)) => bytes.len() as u64,
+                    (_, ClipboardPayload::Reference { size }) => *size,
+                };
+                (rep.kind, size)
+            })
+            .collect(),
+    )
+}
+
 impl Ctx {
+    /// Say in the log that `message`, if it is an offer, went to `peer`.
+    fn log_sent(&self, peer: ComputerId, message: &ControlMessage) {
+        if let Some(reps) = offered(message) {
+            self.log
+                .write(events::clipboard_sent(peer, self.me(), peer, &reps));
+        }
+    }
+
     /// A clipboard or transfer message from `peer`.
     pub(crate) fn clipboard_message(
         &self,
@@ -220,6 +257,10 @@ impl Ctx {
         // Nothing is shared with or by a paused computer.
         if self.sharing_off(&core, peer) {
             return Ok(());
+        }
+        if let Some(reps) = offered(&message) {
+            self.log
+                .write(events::clipboard_received(peer, peer, self.me(), &reps));
         }
         // No clipboard task means this platform shares no clipboard.
         let _ = self.clip.send(Command::Message(peer, message));
@@ -237,15 +278,17 @@ impl Ctx {
                         .get(&peer)
                         .filter(|_| !self.sharing_off(&core, peer))
                     {
+                        self.log_sent(peer, &message);
                         entry.send(message);
                     }
                 }
                 Out::All(message) => {
-                    for entry in core
+                    for (peer, entry) in core
                         .peers
-                        .values()
-                        .filter(|p| p.phase == Phase::Authed && !p.paused && !core.paused)
+                        .iter()
+                        .filter(|(_, p)| p.phase == Phase::Authed && !p.paused && !core.paused)
                     {
+                        self.log_sent(*peer, &message);
                         entry.send(message.clone());
                     }
                 }

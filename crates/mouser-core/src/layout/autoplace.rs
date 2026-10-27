@@ -215,6 +215,7 @@ pub fn review_candidates(old: &Layout, new: &Layout) -> Vec<ComputerId> {
 use mouser_proto::wire::ControlMessage;
 
 use crate::engine::{Core, Ctx, EngineEvent, Phase};
+use crate::logging::events::{self, LayoutChange};
 
 impl Ctx {
     /// Bring the layout in line with the displays every member reported:
@@ -327,6 +328,13 @@ impl Ctx {
         state.author = me;
         let state = state.clone();
         self.layout_changed(core, &old, &state);
+        for computer in &stale {
+            self.log.write(events::layout_changed(
+                me,
+                *computer,
+                LayoutChange::AutoPlaced,
+            ));
+        }
         for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {
             peer.send(ControlMessage::DeskState(state.clone()));
         }

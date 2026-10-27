@@ -14,6 +14,7 @@ use super::motion;
 use super::state::{Control, Leave, Pressed, Remote};
 use crate::layout::edges::{self, Step};
 use crate::layout::equalize;
+use crate::logging::events::{ControlHow, InputKind, PointerHidden, PointerShown};
 
 /// How control comes back to this computer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +59,7 @@ impl Crossing {
     /// with `Panic` to do the same.
     fn panic_desk(&mut self) {
         let controlled = self.session.remote();
-        self.return_local(Return::Panic, None);
+        self.return_local(Return::Panic, ControlHow::Panic, None);
         self.end_receiving();
         for (computer, wire) in &self.map.wires {
             if Some(*computer) != controlled {
@@ -71,7 +72,7 @@ impl Crossing {
     /// sent here is released and control that is elsewhere comes back here.
     pub fn on_panic(&mut self, from: ComputerId) {
         self.on_release_all(from);
-        self.return_local(Return::Release, None);
+        self.return_local(Return::Release, ControlHow::Panic, None);
     }
 
     /// The pointer pushes past the edge of one of this computer's displays.
@@ -101,7 +102,7 @@ impl Crossing {
                     && self.may_cross(here, wanted, true, now) =>
             {
                 self.release_current();
-                self.begin(to, at, (mx, my), abs);
+                self.begin(to, at, (mx, my), abs, ControlHow::Crossing);
             }
             Step::Cross { .. } => {}
             _ => self.bumps.release(),
@@ -139,7 +140,14 @@ impl Crossing {
     /// Hand control to display `to`, entering at desk point `at`. Nothing
     /// happens when the computer is no longer on the map or the system
     /// refuses the grab.
-    pub(crate) fn begin(&mut self, to: usize, at: (f64, f64), speed: (f64, f64), back: (f64, f64)) {
+    pub(crate) fn begin(
+        &mut self,
+        to: usize,
+        at: (f64, f64),
+        speed: (f64, f64),
+        back: (f64, f64),
+        how: ControlHow,
+    ) {
         let target = &self.map.placed[to];
         let display = target.display.display_id.clone();
         let (x, y) = edges::to_local(target, at);
@@ -149,10 +157,14 @@ impl Crossing {
         // Where input cannot be grabbed (Wayland, `Unsupported`) the
         // platform's capture is driven by the screen edge instead; a grab the
         // system refuses means the pointer stays here.
-        let io = self.io.as_mut().expect("input is running");
-        if let Err(Error::Os(_)) = io.capture.set_grabbed(true) {
+        let reason = match how {
+            ControlHow::Quickjump => PointerHidden::Quickjump,
+            _ => PointerHidden::CrossingOut,
+        };
+        if let Err(Error::Os(_)) = self.grab(reason) {
             return;
         }
+        let from = self.session.remote().unwrap_or(self.me);
         // This computer's own devices take over: whoever was driving it stops
         // being obeyed (what it held is released here).
         self.end_receiving();
@@ -168,19 +180,21 @@ impl Crossing {
         });
         self.hand_off_drag(display.computer);
         self.panic.reset();
+        let computer = display.computer;
         self.session.control = Control::Remote(Remote {
-            computer: display.computer,
+            computer,
             display,
             at,
             speed,
             back,
         });
+        self.moved(from, computer, how);
         self.dirty.notify_one();
     }
 
     /// Give control back to this computer. `at` is where the pointer lands in
     /// desktop coordinates; without it, where it left from.
-    pub fn return_local(&mut self, how: Return, at: Option<(f64, f64)>) {
+    pub fn return_local(&mut self, how: Return, why: ControlHow, at: Option<(f64, f64)>) {
         let Control::Remote(r) = std::mem::replace(&mut self.session.control, Control::Local)
         else {
             return;
@@ -201,10 +215,16 @@ impl Crossing {
         }
         self.session.sent = Pressed::default();
         let (x, y) = at.unwrap_or(r.back);
-        let io = self.io.as_mut().expect("input is running");
+        self.moved(r.computer, self.me, why);
         // A refusal leaves nothing more to do: control is back regardless.
-        let _ = io.capture.set_grabbed(false);
-        let _ = io.capture.warp(x, y);
+        self.ungrab(if how == Return::Quit {
+            PointerShown::Quit
+        } else {
+            PointerShown::Returned
+        });
+        let io = self.io.as_mut().expect("input is running");
+        let warped = io.capture.warp(x, y);
+        self.tally(InputKind::Warp, None, &warped);
         self.dirty.notify_one();
     }
 
@@ -270,7 +290,7 @@ impl Crossing {
         let computer = self.session.remote().expect("pointer is remote");
         match self.map.wires.get(&computer) {
             Some(wire) => wire.send(msg),
-            None => self.return_local(Return::Lost, None),
+            None => self.return_local(Return::Lost, ControlHow::LinkLost, None),
         }
     }
 
@@ -306,13 +326,14 @@ impl Crossing {
                     let (ox, oy) = target.display.origin_local;
                     self.return_local(
                         Return::Release,
+                        ControlHow::Crossing,
                         Some((f64::from(ox) + x, f64::from(oy) + y)),
                     );
                 } else if owner == computer {
                     self.point_at(to, at);
                 } else {
                     self.release_current();
-                    self.begin(to, at, speed, back);
+                    self.begin(to, at, speed, back, ControlHow::Crossing);
                 }
             }
         }
@@ -331,7 +352,7 @@ impl Crossing {
         let computer = r.computer;
         match self.map.wires.get(&computer) {
             Some(wire) => wire.datagram(&datagram),
-            None => self.return_local(Return::Lost, None),
+            None => self.return_local(Return::Lost, ControlHow::LinkLost, None),
         }
     }
 }

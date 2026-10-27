@@ -10,11 +10,11 @@ use crate::lock::LockExt;
 use std::sync::{Arc, MutexGuard};
 
 use mouser_proto::config::{Config, DESK_SHARED_KEYS};
-use mouser_proto::control::RpcError;
+use mouser_proto::control::{RpcError, SettingOrigin};
 use mouser_proto::wire::ControlMessage;
 use serde_json::Value;
 
-use crate::config;
+use crate::config::{self, changes};
 use crate::control::invalid;
 use crate::crossing::buttons::Buttons45;
 use crate::crossing::panic::PanicDetector;
@@ -35,12 +35,17 @@ impl Ctx {
 
     /// `config.set`: change one key, or refuse with `key: reason` and keep
     /// the previous value.
-    pub(crate) fn set_config(self: &Arc<Self>, key: &str, value: Value) -> Result<(), RpcError> {
+    pub(crate) fn set_config(
+        self: &Arc<Self>,
+        key: &str,
+        value: Value,
+        origin: SettingOrigin,
+    ) -> Result<(), RpcError> {
         let core = self.core.guard();
         let (next, hotkeys) =
             config::with_value(&core.config, key, value).map_err(|e| invalid(e.to_string()))?;
         let shared = DESK_SHARED_KEYS.contains(&key);
-        self.apply_config(core, next, hotkeys, shared, true);
+        self.apply_config(core, next, hotkeys, shared, true, origin);
         Ok(())
     }
 
@@ -54,8 +59,10 @@ impl Ctx {
         (panic, targeted_paste, quickjump): config::Hotkeys,
         shared: bool,
         save: bool,
+        origin: SettingOrigin,
     ) {
         let name_changed = next.general.computer_name != core.config.general.computer_name;
+        let changes = changes::diff(&core.config, &next, origin, None);
         core.config = next;
         if save {
             config::save(&self.config_dir, &core.config);
@@ -81,6 +88,7 @@ impl Ctx {
             self.share_config(&mut core);
         }
         drop(core);
+        self.publish_changes(changes);
         if name_changed {
             self.announce();
         }
@@ -112,9 +120,18 @@ impl Ctx {
     /// settings become this computer's.
     pub(crate) fn adopt_shared_config(&self, core: &mut Core) {
         let state = &core.state.desk.as_ref().expect("on a desk").state;
-        core.config.crossing.block_fullscreen = state.layout.block_fullscreen;
-        core.config.crossing.equalize_dimensions = state.layout.equalize_dimensions;
-        core.config.advanced.allowlist = state.allowlist.clone();
+        let (author, layout, allowlist) =
+            (state.author, state.layout.clone(), state.allowlist.clone());
+        let before = core.config.clone();
+        core.config.crossing.block_fullscreen = layout.block_fullscreen;
+        core.config.crossing.equalize_dimensions = layout.equalize_dimensions;
+        core.config.advanced.allowlist = allowlist;
         config::save(&self.config_dir, &core.config);
+        self.publish_changes(changes::diff(
+            &before,
+            &core.config,
+            SettingOrigin::DeskMate,
+            Some(author),
+        ));
     }
 }

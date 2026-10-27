@@ -142,3 +142,102 @@ async fn set_off_a_desk_is_refused() {
     let error = call_err(&node, Method::LayoutSet, layout_of(&node).await).await;
     assert_eq!(error.message, "This computer is not on a desk");
 }
+
+mod logged {
+    //! `layout.changed` (Story 2 scenario 7): what the desk owner did in the
+    //! arranger, written by the computer the layout was set on.
+
+    use mouser_proto::control::{Empty, LoggingSetResult, Method};
+    use serde_json::{Value, json};
+
+    use crate::testing::*;
+
+    async fn logging_on(nodes: &[TestNode]) {
+        for node in nodes {
+            let _: LoggingSetResult =
+                call(node, Method::LoggingSet, json!({"enabled": true})).await;
+        }
+    }
+
+    fn changes(node: &TestNode) -> Vec<Value> {
+        log_events(node, "layout.changed")
+            .into_iter()
+            .map(|r| r["fields"].clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn moving_a_computer_is_logged_by_the_computer_that_did_it() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+        logging_on(&nodes).await;
+        let (a, b) = (&nodes[0], &nodes[1]);
+        let mut layout = layout_of(a).await;
+        let beta = b.engine.computer_id().to_string();
+        // Beta goes below Alpha instead of beside it.
+        let alpha_at = a
+            .engine
+            .layout()
+            .placements
+            .into_iter()
+            .find(|p| p.display_id.computer == a.engine.computer_id())
+            .unwrap();
+        for p in layout["placements"].as_array_mut().unwrap() {
+            if p["display_id"]["computer"] == beta.as_str() {
+                p["x"] = json!(alpha_at.x);
+                p["y"] = json!(alpha_at.y + 296);
+            }
+        }
+        let _: Empty = call(a, Method::LayoutSet, layout.clone()).await;
+        let record = logged(a, "layout.changed", |r| r["fields"]["change"] == "moved").await;
+        assert_eq!(record["level"], "info");
+        assert_eq!(
+            record["fields"],
+            json!({"by": a.engine.computer_id().to_string(), "computer": beta, "change": "moved"})
+        );
+        // The same layout again, with another shared setting, moves nobody.
+        layout["equalize_dimensions"] = json!(true);
+        let _: Empty = call(a, Method::LayoutSet, layout).await;
+        assert_eq!(changes(a).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn removing_and_including_a_display_is_logged_for_its_computer() {
+        let lab = Lab::new();
+        let nodes = docked_desk(&lab).await;
+        logging_on(&nodes).await;
+        let b = &nodes[1];
+        let beta = b.engine.computer_id().to_string();
+        let full = layout_of(b).await;
+        let mut removal = full.clone();
+        removal["placements"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|p| p["display_id"]["key"] != "b2");
+        removal["displays"] =
+            json!([{"display_id": {"computer": beta, "key": "b2"}, "included": false}]);
+        let _: Empty = call(b, Method::LayoutSet, removal).await;
+        logged(b, "layout.changed", |r| {
+            r["fields"]["change"] == "display_removed"
+        })
+        .await;
+        let mut undo = full;
+        undo["displays"] =
+            json!([{"display_id": {"computer": beta, "key": "b2"}, "included": true}]);
+        let _: Empty = call(b, Method::LayoutSet, undo).await;
+        let record = logged(b, "layout.changed", |r| {
+            r["fields"]["change"] == "display_included"
+        })
+        .await;
+        assert_eq!(
+            record["fields"],
+            json!({"by": beta, "computer": beta, "change": "display_included"})
+        );
+        // Taking the display out moved nobody, and putting it back placed it.
+        assert!(
+            changes(b).iter().all(|c| c["change"] != "moved"),
+            "{:?}",
+            changes(b)
+        );
+    }
+}

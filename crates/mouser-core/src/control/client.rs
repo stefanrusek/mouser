@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 
 use mouser_proto::control::{
-    Method, Notification, Request, Response, RpcError, SubscribeParams, Topic,
+    LogsChunk, Method, Notification, Request, Response, RpcError, SubscribeParams, Topic,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -20,6 +20,9 @@ pub struct ControlClient {
     buf: Vec<u8>,
     next_id: u64,
     notifications: VecDeque<Notification>,
+    /// `logs.chunk` notifications, which are not on a topic, in the order
+    /// they arrived.
+    chunks: Vec<LogsChunk>,
 }
 
 #[cfg(unix)]
@@ -54,6 +57,7 @@ impl ControlClient {
             buf: Vec::new(),
             next_id: 0,
             notifications: VecDeque::new(),
+            chunks: Vec::new(),
         })
     }
 
@@ -95,8 +99,7 @@ impl ControlClient {
                 .expect("server answers before closing");
             let value: Value = serde_json::from_str(&line).expect("server sends JSON");
             if value.get("id").is_none() {
-                self.notifications
-                    .push_back(serde_json::from_value(value).expect("notification"));
+                self.keep(value);
                 continue;
             }
             let response: Response = serde_json::from_value(value).expect("response");
@@ -135,8 +138,25 @@ impl ControlClient {
                 return Some(note);
             }
             let line = self.next_line().await?;
-            self.notifications
-                .push_back(serde_json::from_str(&line).expect("notification"));
+            self.keep(serde_json::from_str(&line).expect("server sends JSON"));
         }
+    }
+
+    /// Keep a notification until it is asked for: a chunk of a log bundle
+    /// apart, the rest in order.
+    fn keep(&mut self, value: Value) {
+        if value["method"] == LogsChunk::METHOD {
+            self.chunks
+                .push(serde_json::from_value(value["params"].clone()).expect("a log chunk"));
+        } else {
+            self.notifications
+                .push_back(serde_json::from_value(value).expect("notification"));
+        }
+    }
+
+    /// The chunks of a log bundle received so far (`logs.collect_stream`
+    /// sends them before it answers), which are forgotten.
+    pub fn take_chunks(&mut self) -> Vec<LogsChunk> {
+        std::mem::take(&mut self.chunks)
     }
 }

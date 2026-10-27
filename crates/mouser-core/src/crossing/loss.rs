@@ -17,6 +17,7 @@
 
 use super::controller::Return;
 use super::{Crossing, edges, state};
+use crate::logging::events::ControlHow;
 
 impl Crossing {
     /// Return control and stop receiving for every computer the current map
@@ -39,6 +40,7 @@ impl Crossing {
                 } else {
                     Return::Lost
                 },
+                ControlHow::LinkLost,
                 None,
             );
         }

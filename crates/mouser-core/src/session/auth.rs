@@ -6,7 +6,6 @@
 use crate::lock::LockExt;
 use hmac::{Hmac, KeyInit, Mac};
 use mouser_proto::ids::{ComputerId, DeskId};
-use mouser_proto::log::LogLevel;
 use quinn::Connection;
 use sha2::Sha256;
 
@@ -52,6 +51,8 @@ use std::sync::Arc;
 use mouser_proto::wire::ControlMessage;
 
 use crate::engine::{Core, Ctx, Phase};
+use crate::logging::events;
+use crate::session::close_reason::CloseReason;
 
 impl Ctx {
     /// Send our `DeskAuth` proof to `peer` (we are on a desk and so is it).
@@ -84,12 +85,15 @@ impl Ctx {
         };
         let entry = core.peers.get_mut(&peer).expect("peer registered");
         if !verify(&key, &export(&entry.conn), &desk, &peer, &hmac) {
-            entry.conn.close(0u32.into(), b"not a member of this desk");
+            entry.close_for(CloseReason::NotMember);
             return Ok(());
         }
         entry.phase = Phase::Authed;
-        self.log
-            .record(LogLevel::Info, "peer.connected", Some(peer), None);
+        self.log.write(events::peer_connected(
+            peer,
+            &entry.hello.mouser_version,
+            entry.hello.os,
+        ));
         self.mark_present(&mut core, peer);
         let state = core.state.desk.as_ref().expect("on a desk").state.clone();
         let displays = self.local_displays(&core);

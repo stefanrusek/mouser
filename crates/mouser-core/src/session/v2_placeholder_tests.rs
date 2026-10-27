@@ -23,12 +23,6 @@ async fn ignored(msg: ControlMessage) {
     assert_eq!(connected(&nodes[1]).await, 1);
 }
 
-// v2: replaced in T159
-#[tokio::test]
-async fn an_inbound_logs_request_is_ignored_and_the_link_stays_up() {
-    ignored(ControlMessage::LogsRequest { request: [7; 16] }).await;
-}
-
 // v2: replaced in T205
 #[tokio::test]
 async fn an_inbound_desk_settings_is_ignored_and_the_link_stays_up() {

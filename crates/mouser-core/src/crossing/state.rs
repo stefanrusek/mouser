@@ -6,6 +6,9 @@ use mouser_platform::LocalInput;
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::DisplayId;
 
+use super::Crossing;
+use crate::logging::events::{self, ControlHow};
+
 /// Keys (HID usages) and mouse buttons that are down.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Pressed {
@@ -113,5 +116,19 @@ fn set<T: Ord>(set: &mut BTreeSet<T>, item: T, down: bool) {
         set.insert(item);
     } else {
         set.remove(&item);
+    }
+}
+
+impl Crossing {
+    /// Control moved from `from` to `to`: the runs of refusals are over, and
+    /// the move is logged, with the application in front when control
+    /// arrived on this computer.
+    pub(super) fn moved(&mut self, from: ComputerId, to: ComputerId, how: ControlHow) {
+        self.end_refusal_runs();
+        let app = (to == self.me)
+            .then(|| self.platform.foreground_app())
+            .flatten();
+        self.log
+            .write(events::control_changed(from, to, how, app.as_ref()));
     }
 }

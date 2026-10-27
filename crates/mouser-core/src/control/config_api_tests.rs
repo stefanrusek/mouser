@@ -324,3 +324,65 @@ async fn a_status_notification_reports_the_change() {
     let status = recv_topic(&mut notes, Topic::Status).await;
     assert_eq!(status["computer"]["name"], "Renamed");
 }
+
+#[tokio::test]
+async fn config_set_records_the_origin_it_was_given_and_cli_by_default() {
+    let lab = Lab::new();
+    let node = lab.start_logged("Alpha").await;
+    let _: Empty = call(
+        &node,
+        Method::ConfigSet,
+        json!({"key": "mouse.buttons_4_5", "value": "back_forward", "origin": "app"}),
+    )
+    .await;
+    let _: Empty = call(
+        &node,
+        Method::ConfigSet,
+        json!({"key": "general.notifications", "value": false}),
+    )
+    .await;
+    let _: Empty = call(
+        &node,
+        Method::ConfigSet,
+        json!({"key": "general.start_at_login", "value": false, "origin": "cli"}),
+    )
+    .await;
+    for (key, origin) in [
+        ("mouse.buttons_4_5", "app"),
+        ("general.notifications", "cli"),
+        ("general.start_at_login", "cli"),
+    ] {
+        let record = logged(&node, "setting.changed", |r| r["fields"]["key"] == key).await;
+        assert_eq!(record["fields"]["origin"], origin, "{key}");
+    }
+}
+
+#[tokio::test]
+async fn the_logging_checkbox_is_a_change_made_in_the_app() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let _: mouser_proto::control::LoggingSetResult =
+        call(&node, Method::LoggingSet, json!({"enabled": true})).await;
+    let record = logged(&node, "setting.changed", |r| {
+        r["fields"]["key"] == "diagnostics.logging"
+    })
+    .await;
+    assert_eq!(record["fields"]["origin"], "app");
+}
+
+#[tokio::test]
+async fn the_two_new_boolean_keys_refuse_anything_else_in_plain_words() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    for key in ["crossing.landing_highlight", "keyboard.command_as_control"] {
+        let err = call_err(
+            &node,
+            Method::ConfigSet,
+            json!({"key": key, "value": "yes"}),
+        )
+        .await;
+        assert_eq!(err.code, -32602);
+        assert_eq!(err.message, format!("{key}: must be true or false"));
+        assert_eq!(get(&node, key).await, json!(true));
+    }
+}

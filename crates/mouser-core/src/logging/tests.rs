@@ -1,16 +1,19 @@
 use mouser_proto::control::Method;
 use mouser_proto::ids::ComputerId;
 use mouser_proto::log::LogLevel;
+use mouser_proto::model::Os;
 use serde_json::{Value, json};
 
+use super::events::{self, LinkLossReason};
+use super::events_tests::validator as schema;
 use super::*;
 use crate::testing::*;
 
 const ME: ComputerId = ComputerId([7; 16]);
 
-fn schema() -> jsonschema::Validator {
-    let text = include_str!("../../../../specs/001-mouser-v1/contracts/log-record.schema.json");
-    jsonschema::validator_for(&serde_json::from_str::<Value>(text).unwrap()).unwrap()
+/// A record that is not the one under test.
+fn some_event() -> events::Event {
+    events::peer_connected(ComputerId([9; 16]), "0.3.0", Os::Linux)
 }
 
 fn lines(path: &std::path::Path) -> Vec<Value> {
@@ -25,7 +28,7 @@ fn lines(path: &std::path::Path) -> Vec<Value> {
 fn nothing_is_written_while_logging_is_off() {
     let dir = tempfile::tempdir().unwrap();
     let log = Log::new(dir.path(), ME, "Alpha".into(), false, 1);
-    log.record(LogLevel::Info, "peer.connected", None, None);
+    log.write(some_event());
     assert!(!log.enabled());
     assert!(!log.path().exists());
     assert_eq!(log.path(), dir.path().join("logs").join("mouser.log"));
@@ -36,20 +39,36 @@ fn records_are_json_lines_that_validate_against_the_schema() {
     let dir = tempfile::tempdir().unwrap();
     let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
     let peer = ComputerId([9; 16]);
-    let fields = json!({"why": "test"}).as_object().cloned();
-    log.record(LogLevel::Warn, "peer.disconnected", Some(peer), fields);
-    log.record(LogLevel::Debug, "problem.raised", None, None);
+    log.write(events::peer_disconnected(peer, LinkLossReason::PeerQuit));
+    log.write(events::wire_unknown(peer, 40));
     let written = lines(&log.path());
-    assert_eq!(written.len(), 2);
+    // The header comes first.
+    assert_eq!(written.len(), 3);
     let schema = schema();
     for record in &written {
         assert!(schema.is_valid(record), "{record}");
     }
-    assert_eq!(written[0]["level"], "warn");
-    assert_eq!(written[0]["computer"]["name"], "Alpha");
-    assert_eq!(written[0]["peer"], peer.to_string());
-    assert_eq!(written[0]["fields"]["why"], "test");
-    assert_eq!(written[1]["event"], "problem.raised");
+    assert_eq!(written[1]["level"], "info");
+    assert_eq!(written[1]["computer"]["name"], "Alpha");
+    assert_eq!(written[1]["peer"], peer.to_string());
+    assert_eq!(written[1]["fields"]["reason"], "peer_quit");
+    assert_eq!(written[2]["event"], "wire.unknown");
+    assert_eq!(written[2]["level"], "warn");
+}
+
+#[test]
+fn a_platform_backends_diagnostics_are_written_as_debug_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
+    let fields = json!({"outcome": "missed", "hook": "mouse"})
+        .as_object()
+        .cloned();
+    log.record(LogLevel::Debug, "capture.probe", None, fields);
+    let last = lines(&log.path()).pop().unwrap();
+    assert_eq!(last["level"], "debug");
+    assert_eq!(last["event"], "capture.probe");
+    assert_eq!(last["fields"]["outcome"], "missed");
+    assert!(schema().is_valid(&last));
 }
 
 #[test]
@@ -58,9 +77,9 @@ fn turning_logging_on_and_off_is_recorded_and_the_name_follows_the_config() {
     let log = Log::new(dir.path(), ME, "Alpha".into(), false, 1);
     log.apply(true, 1, "Desk Mac");
     log.apply(true, 1, "Desk Mac");
-    log.record(LogLevel::Info, "peer.connected", None, None);
+    log.write(some_event());
     log.apply(false, 1, "Desk Mac");
-    log.record(LogLevel::Info, "peer.connected", None, None);
+    log.write(some_event());
     let written = lines(&log.path());
     let events: Vec<_> = written
         .iter()
@@ -68,27 +87,14 @@ fn turning_logging_on_and_off_is_recorded_and_the_name_follows_the_config() {
         .collect();
     assert_eq!(
         events,
-        ["logging.enabled", "peer.connected", "logging.disabled"]
+        [
+            "log.header",
+            "logging.enabled",
+            "peer.connected",
+            "logging.disabled"
+        ]
     );
     assert_eq!(written[0]["computer"]["name"], "Desk Mac");
-}
-
-#[test]
-fn a_full_file_rotates_and_the_old_one_is_replaced() {
-    let dir = tempfile::tempdir().unwrap();
-    let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
-    log.set_max_bytes(400);
-    for _ in 0..12 {
-        log.record(LogLevel::Info, "peer.connected", None, None);
-    }
-    let rotated = log.path().with_extension("log.1");
-    assert!(rotated.exists());
-    let size = |p: &std::path::Path| std::fs::metadata(p).unwrap().len();
-    assert!(size(&log.path()) <= 400, "{}", size(&log.path()));
-    assert!(size(&rotated) <= 400);
-    // Every line in both files is whole.
-    assert!(!lines(&log.path()).is_empty());
-    assert!(!lines(&rotated).is_empty());
 }
 
 #[test]
@@ -119,7 +125,8 @@ async fn logging_set_returns_the_path_and_starts_writing() {
     .await;
     assert_eq!(config, json!(true));
     let written = lines(&path);
-    assert_eq!(written[0]["event"], "logging.enabled");
+    assert_eq!(written[0]["event"], "log.header");
+    assert_eq!(written[1]["event"], "logging.enabled");
     let schema = schema();
     assert!(written.iter().all(|r| schema.is_valid(r)));
     let off: LoggingSetResult = call(&node, Method::LoggingSet, json!({"enabled": false})).await;
@@ -186,12 +193,12 @@ fn a_log_that_cannot_be_opened_drops_every_record() {
     // A file where the log directory belongs.
     std::fs::write(dir.path().join("logs"), b"in the way").unwrap();
     let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
-    log.record(LogLevel::Info, "peer.connected", None, None);
+    log.write(some_event());
     assert!(log.enabled());
     // Turning logging on later is no different.
     let off = Log::new(dir.path(), ME, "Alpha".into(), false, 1);
     off.apply(true, 1, "Alpha");
-    off.record(LogLevel::Info, "peer.connected", None, None);
+    off.write(some_event());
     assert!(off.enabled());
     assert!(!log.path().exists());
 }
@@ -199,20 +206,24 @@ fn a_log_that_cannot_be_opened_drops_every_record() {
 #[test]
 fn a_record_that_cannot_rotate_the_file_is_dropped_and_logging_recovers() {
     let dir = tempfile::tempdir().unwrap();
-    let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
-    log.record(LogLevel::Info, "peer.connected", None, None);
-    log.set_max_bytes(10);
+    // 100 KB per record and 200 KB for the header: the fourth record passes
+    // half of 1 MiB.
+    let log = Log::new(dir.path(), ME, "A".repeat(100_000), true, 1);
     // The previous file cannot be replaced: a directory is in its place.
     let rotated = dir.path().join("logs").join("mouser.log.1");
     std::fs::create_dir(&rotated).unwrap();
     std::fs::write(rotated.join("keep"), b"x").unwrap();
-    log.record(LogLevel::Info, "peer.disconnected", None, None);
-    assert_eq!(lines(&log.path()).len(), 1, "the record was dropped");
+    for _ in 0..3 {
+        log.write(some_event());
+    }
+    log.write(some_event());
+    assert_eq!(lines(&log.path()).len(), 4, "the fourth record was dropped");
     // Once it can rotate, the next record is written.
     std::fs::remove_dir_all(&rotated).unwrap();
-    log.record(LogLevel::Info, "problem.raised", None, None);
+    log.write(events::wire_unknown(ComputerId([9; 16]), 41));
     assert!(rotated.is_file());
     let written = lines(&log.path());
-    assert_eq!(written.len(), 1);
-    assert_eq!(written[0]["event"], "problem.raised");
+    assert_eq!(written.len(), 2);
+    assert_eq!(written[0]["event"], "log.header");
+    assert_eq!(written[1]["event"], "wire.unknown");
 }

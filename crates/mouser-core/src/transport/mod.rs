@@ -294,7 +294,10 @@ impl Transport {
 
     /// Stop accepting and close every connection.
     pub fn close(&self) {
-        self.endpoint.close(0u32.into(), b"shutdown");
+        self.endpoint.close(
+            0u32.into(),
+            crate::session::close_reason::CloseReason::Quit.bytes(),
+        );
     }
 
     /// Wait until every connection has been closed.
@@ -322,6 +325,13 @@ pub fn peer_id(conn: &Connection) -> ComputerId {
 pub struct FrameWriter(SendStream);
 
 impl FrameWriter {
+    /// Write bytes that are not a frame (for tests of how a link treats
+    /// what it cannot decode).
+    #[cfg(test)]
+    pub(crate) async fn send_raw(&mut self, bytes: &[u8]) {
+        self.0.write_all(bytes).await.expect("the stream is open");
+    }
+
     pub async fn send<T: Serialize>(&mut self, msg: &T) -> Result<(), quinn::WriteError> {
         self.0.write_all(&encode_frame(msg)).await
     }
@@ -339,9 +349,24 @@ pub struct FrameReader {
     buf: Vec<u8>,
     /// The connection the frames arrive on, closed when one is undecodable.
     conn: Connection,
+    /// A frame could not be decoded and the connection was closed for it.
+    malformed: bool,
+    /// Told the index of each message variant that was skipped.
+    unknown: Option<Box<dyn Fn(u32) + Send>>,
 }
 
 impl FrameReader {
+    /// Call `skipped` with the variant index of every frame skipped because
+    /// this build does not know the message.
+    pub fn on_unknown(&mut self, skipped: impl Fn(u32) + Send + 'static) {
+        self.unknown = Some(Box::new(skipped));
+    }
+
+    /// The connection was closed because a frame could not be decoded.
+    pub fn undecodable(&self) -> bool {
+        self.malformed
+    }
+
     /// The next message; `None` once the stream ended, the connection was
     /// lost, or a frame could not be decoded (the connection is then closed
     /// with reason `protocol`). A frame of a message this version does not
@@ -354,13 +379,20 @@ impl FrameReader {
                     return Some(msg);
                 }
                 Err(FrameError::Incomplete) => {}
-                Err(FrameError::UnknownVariant(_)) => {
+                Err(FrameError::UnknownVariant(variant)) => {
+                    if let Some(skipped) = &self.unknown {
+                        skipped(variant);
+                    }
                     let prefix: [u8; 4] = self.buf[..4].try_into().expect("a whole frame is held");
                     self.buf.drain(..4 + u32::from_be_bytes(prefix) as usize);
                     continue;
                 }
                 Err(FrameError::Malformed) => {
-                    self.conn.close(0u32.into(), b"protocol");
+                    self.malformed = true;
+                    self.conn.close(
+                        0u32.into(),
+                        crate::session::close_reason::CloseReason::Protocol.bytes(),
+                    );
                     return None;
                 }
             }
@@ -387,6 +419,8 @@ impl Link {
                 recv,
                 buf: Vec::new(),
                 conn: conn.clone(),
+                malformed: false,
+                unknown: None,
             },
             conn,
         }

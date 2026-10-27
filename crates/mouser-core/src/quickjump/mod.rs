@@ -20,6 +20,7 @@ use crate::crossing::state::Control;
 use crate::crossing::{Crossing, supported};
 use crate::engine::EngineEvent;
 use crate::layout::edges::{self, Placed};
+use crate::logging::events::{ControlHow, InputKind, PointerHidden};
 
 /// The keys a display can be named by, in the order they are handed out.
 const SYMBOLS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -126,12 +127,15 @@ impl Crossing {
             let (ox, oy) = target.display.origin_local;
             let desktop = (f64::from(ox) + x, f64::from(oy) + y);
             match self.session.control {
-                Control::Remote(_) => self.return_local(Return::Release, Some(desktop)),
+                Control::Remote(_) => {
+                    self.return_local(Return::Release, ControlHow::Quickjump, Some(desktop))
+                }
                 Control::Local => {
                     self.pointer = desktop;
                     // A refused warp is skipped.
                     let io = self.io.as_mut().expect("input is running");
-                    let _ = io.capture.warp(desktop.0, desktop.1);
+                    let warped = io.capture.warp(desktop.0, desktop.1);
+                    self.tally(InputKind::Warp, None, &warped);
                 }
             }
         } else if self.session.remote() == Some(owner) {
@@ -145,15 +149,14 @@ impl Crossing {
                 Control::Local => (edges::mm_per_px(self.pointer_display()), self.pointer),
             };
             self.release_current();
-            self.begin(to, at, speed, back);
+            self.begin(to, at, speed, back, ControlHow::Quickjump);
         }
     }
 
     /// Input can be grabbed here (it cannot where the platform lists the
     /// limitation, such as on Wayland).
     fn can_grab(&mut self) -> bool {
-        let io = self.io.as_mut().expect("input is running");
-        supported(io.capture.set_grabbed(true)).is_some()
+        supported(self.grab(PointerHidden::Quickjump)).is_some()
     }
 
     /// The display of this computer the pointer is on (the first one when

@@ -134,3 +134,21 @@ fn the_message_names_the_other_computer_both_versions_and_which_to_update() {
     assert!(!mine_is_older);
     assert!(text.contains("Update Studio iMac"), "{text}");
 }
+
+#[tokio::test]
+async fn peer_connected_carries_the_version_and_os_of_the_peer() {
+    use crate::testing::*;
+    use mouser_platform::Platform;
+    let lab = Lab::new();
+    let nodes = logged_desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let id = b.engine.computer_id().to_string();
+    let record = logged(a, "peer.connected", |r| r["peer"] == id.as_str()).await;
+    assert_eq!(
+        record["fields"],
+        serde_json::json!({
+            "version": "0.1.0",
+            "os": crate::platform_os(b.platform.info().os),
+        })
+    );
+}

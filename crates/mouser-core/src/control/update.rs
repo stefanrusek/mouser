@@ -9,12 +9,12 @@ use std::time::Duration;
 
 use mouser_proto::control::{RpcError, UpdateResult};
 use mouser_proto::ids::ComputerId;
-use mouser_proto::log::LogLevel;
 use mouser_proto::wire::ControlMessage;
 use tokio::io::AsyncReadExt;
 use tokio::sync::oneshot;
 
 use crate::engine::Ctx;
+use crate::logging::events;
 use crate::release::serve::{FOLDER, stream_id};
 use crate::release::{Bundle, CheckSchedule, Held, Offered, Version, fetch, minisign};
 
@@ -86,14 +86,8 @@ impl Ctx {
         else {
             return Ok(());
         };
-        self.log.record(
-            LogLevel::Info,
-            "update.available",
-            None,
-            serde_json::json!({"version": held.manifest.version})
-                .as_object()
-                .cloned(),
-        );
+        self.log
+            .write(events::update_available(None, &held.manifest.version));
         let mut core = self.core.guard();
         core.release.offered = Some(Offered {
             from: self.me(),
@@ -114,12 +108,7 @@ impl Ctx {
         let ctx = self.clone();
         self.spawn(async move {
             if let Err(message) = ctx.apply_release().await {
-                ctx.log.record(
-                    LogLevel::Warn,
-                    "update.failed",
-                    None,
-                    serde_json::json!({"message": message}).as_object().cloned(),
-                );
+                ctx.log.write(events::update_failed(&message));
             }
         });
     }
@@ -266,12 +255,7 @@ pub(crate) async fn check_loop(ctx: Arc<Ctx>, schedule: CheckSchedule) {
             core.config.updates.automatic && core.is_fetcher(ctx.me())
         };
         if due && let Err(message) = ctx.check_release().await {
-            ctx.log.record(
-                LogLevel::Warn,
-                "update.check_failed",
-                None,
-                serde_json::json!({"message": message}).as_object().cloned(),
-            );
+            ctx.log.write(events::update_check_failed(&message));
         }
     }
 }

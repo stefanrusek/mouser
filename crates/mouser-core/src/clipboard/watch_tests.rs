@@ -197,3 +197,43 @@ async fn a_copy_is_offered_to_the_desk_and_the_receivers_write_is_not_echoed() {
     assert_eq!(alpha.change_count(), 1);
     assert_eq!(a.platform.clipboard_contents(), text("hello"));
 }
+
+const MARKER: &str = "MOUSER-MARKER-7f3a";
+
+#[tokio::test]
+async fn each_offer_sent_is_logged_with_kinds_and_sizes_and_never_content() {
+    let lab = Lab::new();
+    let nodes = logged_desk_of(&lab, &["Alpha", "Beta", "Gamma"]).await;
+    let (a, b, g) = (&nodes[0], &nodes[1], &nodes[2]);
+    let folder = tempfile::tempdir().unwrap();
+    let file = folder.path().join(format!("{MARKER}.txt"));
+    std::fs::write(&file, b"contents").unwrap();
+    a.platform.set_local_clipboard(vec![
+        ClipRep::Text(format!("typed {MARKER}")),
+        ClipRep::Html(format!("<p>{MARKER}</p>")),
+        ClipRep::Png(vec![1, 2, 3]),
+        ClipRep::Files(vec![file]),
+    ]);
+    // One record for every computer the offer went to.
+    for to in [b, g] {
+        let id = to.engine.computer_id().to_string();
+        let record = logged(a, "clipboard.sent", |r| r["peer"] == id.as_str()).await;
+        assert_eq!(record["level"], "info");
+        assert_eq!(
+            record["fields"],
+            serde_json::json!({
+                "from": a.engine.computer_id().to_string(),
+                "to": id,
+                "reps": [
+                    {"kind": "text", "size": 5 + 1 + MARKER.len()},
+                    {"kind": "html", "size": 7 + MARKER.len()},
+                    {"kind": "png", "size": 3},
+                    {"kind": "files", "size": 1}
+                ]
+            })
+        );
+    }
+    let text = std::fs::read_to_string(a.engine.log().path()).unwrap();
+    assert!(!text.contains(MARKER), "content or a file name was logged");
+    assert!(!text.contains("contents"));
+}

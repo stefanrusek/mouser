@@ -11,7 +11,10 @@
 use crate::lock::LockExt;
 use std::sync::Arc;
 
+use std::collections::BTreeSet;
+
 use mouser_proto::control::RpcError;
+use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, Layout};
 use mouser_proto::wire::ControlMessage;
 use serde::Deserialize;
@@ -22,6 +25,7 @@ use crate::control::invalid;
 use crate::engine::{Core, Ctx, Phase};
 use crate::layout::remove::{self, Inclusion};
 use crate::layout::validate::validate;
+use crate::logging::events::{self, LayoutChange};
 
 /// The params of `layout.set`.
 #[derive(Debug, Deserialize)]
@@ -30,6 +34,38 @@ pub struct LayoutSetParams {
     pub layout: Layout,
     #[serde(default)]
     pub displays: Vec<Inclusion>,
+}
+
+/// What the desk owner did: computers whose displays were placed elsewhere,
+/// and displays of `me` taken out of the layout or put back, once each.
+fn changes(
+    me: ComputerId,
+    old: &Layout,
+    new: &Layout,
+    removed_before: &BTreeSet<String>,
+    removed_after: &BTreeSet<String>,
+) -> Vec<(ComputerId, LayoutChange)> {
+    let mut found = Vec::new();
+    let mut note = |computer, change| {
+        if !found.contains(&(computer, change)) {
+            found.push((computer, change));
+        }
+    };
+    for placement in &new.placements {
+        let moved = old.placements.iter().any(|p| {
+            p.display_id == placement.display_id && (p.x, p.y) != (placement.x, placement.y)
+        });
+        if moved {
+            note(placement.display_id.computer, LayoutChange::Moved);
+        }
+    }
+    if removed_after.difference(removed_before).next().is_some() {
+        note(me, LayoutChange::DisplayRemoved);
+    }
+    if removed_before.difference(removed_after).next().is_some() {
+        note(me, LayoutChange::DisplayIncluded);
+    }
+    found
 }
 
 impl Ctx {
@@ -72,7 +108,7 @@ impl Ctx {
         // that has it.
         let removal = !removed.is_subset(&core.state.removed);
         let displays_changed = removed != core.state.removed;
-        core.state.removed = removed;
+        let removed_before = std::mem::replace(&mut core.state.removed, removed.clone());
         core.state.displays = known;
         core.config.crossing.equalize_dimensions = params.layout.equalize_dimensions;
         core.config.crossing.block_fullscreen = params.layout.block_fullscreen;
@@ -83,6 +119,9 @@ impl Ctx {
         desk.state.author = me;
         let state = desk.state.clone();
         self.layout_changed(&mut core, &old, &state);
+        for (computer, change) in changes(me, &old, &state.layout, &removed_before, &removed) {
+            self.log.write(events::layout_changed(me, computer, change));
+        }
         // The owner placed or moved these displays: nothing is left to review.
         for placement in &state.layout.placements {
             if !old.placements.contains(placement) {

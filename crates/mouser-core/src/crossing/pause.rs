@@ -20,6 +20,7 @@ use super::Crossing;
 use super::controller::Return;
 use crate::clipboard::Command;
 use crate::engine::{Core, Ctx, Phase};
+use crate::logging::events::ControlHow;
 use crate::release::Version;
 
 /// The first Mouser that decodes `Paused`. An older peer treats an unknown
@@ -30,7 +31,7 @@ impl Crossing {
     pub fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
         if paused {
-            self.return_local(Return::Release, None);
+            self.return_local(Return::Release, ControlHow::Pause, None);
             self.end_receiving();
             if self.jump.take().is_some() {
                 self.hide_letters();

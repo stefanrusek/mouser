@@ -11,12 +11,11 @@ use crate::lock::LockExt;
 use std::sync::Arc;
 
 use mouser_proto::config::{Config, DESK_SHARED_KEYS};
-use mouser_proto::control::ProblemKind;
-use mouser_proto::log::LogLevel;
-use serde_json::{Map, Value};
+use mouser_proto::control::{ProblemKind, SettingOrigin};
 
 use super::{FILE, validate};
 use crate::engine::Ctx;
+use crate::logging::events;
 
 /// The subject of the problem raised while the file is being ignored.
 const SUBJECT: &str = "config_invalid";
@@ -25,10 +24,7 @@ impl Ctx {
     /// The file is not used: say so in the diagnostic log and as a problem
     /// that stays open until a valid file is read.
     pub(crate) fn reject_config(&self, reason: &str) {
-        let mut fields = Map::new();
-        fields.insert("reason".into(), Value::String(reason.into()));
-        self.log
-            .record(LogLevel::Warn, "config.rejected", None, Some(fields));
+        self.log.write(events::config_rejected(reason));
         self.problems
             .clear(ProblemKind::PlatformLimitation, SUBJECT);
         self.problems.raise(
@@ -80,6 +76,6 @@ impl Ctx {
             let (section, name) = key.split_once('.').expect("a key has a section");
             old[section][name] != new[section][name]
         });
-        self.apply_config(core, next, hotkeys, shared, false);
+        self.apply_config(core, next, hotkeys, shared, false, SettingOrigin::File);
     }
 }

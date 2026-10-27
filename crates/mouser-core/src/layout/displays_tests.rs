@@ -1,6 +1,8 @@
 use super::displays::*;
+use crate::logging::events::DisplayChange;
 use mouser_platform::LocalDisplay;
 use mouser_proto::ids::ComputerId;
+use mouser_proto::model::Display;
 
 #[test]
 fn local_displays_map_to_wire_displays() {
@@ -30,6 +32,64 @@ fn local_displays_map_to_wire_displays() {
     assert!(d.included);
     let removed = std::collections::BTreeSet::from(["d1".to_string()]);
     assert!(!to_wire(ComputerId([4; 16]), &[local], &removed)[0].included);
+}
+
+fn display(key: &str, name: &str, origin: (i32, i32), logical: (f32, f32)) -> Display {
+    to_wire(
+        ComputerId([4; 16]),
+        &[LocalDisplay {
+            key: key.into(),
+            name: name.into(),
+            pixel_size: (1920, 1080),
+            logical_size: (f64::from(logical.0), f64::from(logical.1)),
+            scale: 1.0,
+            physical_size_mm: None,
+            origin: (f64::from(origin.0), f64::from(origin.1)),
+        }],
+        &Default::default(),
+    )
+    .remove(0)
+}
+
+#[test]
+fn a_display_added_removed_rearranged_or_resized_is_a_change_of_that_display() {
+    let main = display("d1", "Main", (0, 0), (1920.0, 1080.0));
+    let side = display("d2", "Side", (1920, 0), (1920.0, 1080.0));
+    assert_eq!(
+        changes(std::slice::from_ref(&main), std::slice::from_ref(&main)),
+        []
+    );
+    assert_eq!(
+        changes(std::slice::from_ref(&main), &[main.clone(), side.clone()]),
+        [("Side".to_string(), DisplayChange::Added)]
+    );
+    assert_eq!(
+        changes(&[main.clone(), side.clone()], std::slice::from_ref(&main)),
+        [("Side".to_string(), DisplayChange::Removed)]
+    );
+    let moved = display("d2", "Side", (0, 1080), (1920.0, 1080.0));
+    assert_eq!(
+        changes(&[main.clone(), side.clone()], &[main.clone(), moved]),
+        [("Side".to_string(), DisplayChange::Rearranged)]
+    );
+    let smaller = display("d2", "Side", (1920, 0), (1280.0, 720.0));
+    assert_eq!(
+        changes(&[main.clone(), side.clone()], &[main.clone(), smaller]),
+        [("Side".to_string(), DisplayChange::Resized)]
+    );
+    // Moved and resized at once is both.
+    let both = display("d2", "Side", (0, 0), (1280.0, 720.0));
+    assert_eq!(
+        changes(std::slice::from_ref(&side), &[both]),
+        [
+            ("Side".to_string(), DisplayChange::Rearranged),
+            ("Side".to_string(), DisplayChange::Resized)
+        ]
+    );
+    // Taking a display out of the layout is not a change of the display.
+    let mut excluded = side.clone();
+    excluded.included = false;
+    assert_eq!(changes(&[side], &[excluded]), []);
 }
 
 mod on_the_wire {
@@ -136,5 +196,72 @@ mod on_the_wire {
             .await;
         }
         assert!(nodes[1].engine.layout().placements.is_empty());
+    }
+
+    mod logged {
+        //! `display.changed` (Story 2 scenario 7): written by the computer
+        //! the display changed on and by every desk-mate told of it.
+
+        use mouser_platform::Platform;
+        use serde_json::json;
+
+        use crate::testing::*;
+
+        async fn desk() -> (Lab, Vec<TestNode>) {
+            let lab = Lab::new();
+            let nodes = logged_desk_of(&lab, &["Alpha", "Beta"]).await;
+            (lab, nodes)
+        }
+
+        async fn changed(node: &TestNode, computer: &TestNode, display: &str, how: &str) {
+            let id = computer.engine.computer_id().to_string();
+            let record = logged(node, "display.changed", |r| {
+                r["fields"]["display"] == display && r["fields"]["change"] == how
+            })
+            .await;
+            assert_eq!(record["level"], "info");
+            assert_eq!(
+                record["fields"],
+                json!({"computer": id, "display": display, "change": how})
+            );
+        }
+
+        #[tokio::test]
+        async fn displays_known_at_the_start_are_not_changes() {
+            let (_lab, nodes) = desk().await;
+            for node in &nodes {
+                assert!(log_events(node, "display.changed").is_empty());
+            }
+        }
+
+        #[tokio::test]
+        async fn a_display_added_rearranged_resized_and_removed_is_logged_on_both_computers() {
+            let (_lab, nodes) = desk().await;
+            let (a, b) = (&nodes[0], &nodes[1]);
+            let original = b.platform.displays().unwrap();
+            let with = |extra: mouser_platform::LocalDisplay| {
+                let mut all = original.clone();
+                all.push(extra);
+                all
+            };
+            b.platform.set_displays(with(screen("side", (1920.0, 0.0))));
+            changed(b, b, "side", "added").await;
+            changed(a, b, "side", "added").await;
+
+            b.platform
+                .set_displays(with(screen("side", (1920.0, 1080.0))));
+            changed(b, b, "side", "rearranged").await;
+            changed(a, b, "side", "rearranged").await;
+
+            let mut smaller = screen("side", (1920.0, 1080.0));
+            smaller.logical_size = (1280.0, 720.0);
+            b.platform.set_displays(with(smaller));
+            changed(b, b, "side", "resized").await;
+            changed(a, b, "side", "resized").await;
+
+            b.platform.set_displays(original);
+            changed(b, b, "side", "removed").await;
+            changed(a, b, "side", "removed").await;
+        }
     }
 }

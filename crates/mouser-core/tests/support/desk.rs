@@ -132,6 +132,8 @@ pub struct Setup {
     pub release_pubkey: Option<String>,
     /// Run from a removable drive: `MouserData/` beside the executable.
     pub portable: bool,
+    /// When to look for releases by itself (default: only on request).
+    pub check_schedule: Option<mouser_core::release::CheckSchedule>,
 }
 
 impl Default for Setup {
@@ -146,6 +148,7 @@ impl Default for Setup {
             installer: None,
             release_pubkey: None,
             portable: false,
+            check_schedule: None,
         }
     }
 }
@@ -293,6 +296,11 @@ impl Node {
         }
     }
 
+    /// The diagnostic log of this computer's engine.
+    pub fn log(&self) -> std::sync::Arc<mouser_core::logging::Log> {
+        self.engine.as_ref().expect("node is running").log()
+    }
+
     /// The control API in-process, as the app's user interface uses it.
     pub fn control(&self) -> mouser_core::ControlHandle {
         self.engine.as_ref().expect("node is running").control()
@@ -360,6 +368,7 @@ impl Node {
         params.protocol_version = self.setup.protocol_version;
         params.discovery = Some(Arc::new(discovery));
         params.installer = self.setup.installer.clone();
+        params.check_schedule = self.setup.check_schedule;
         if let Some(key) = &self.setup.release_pubkey {
             params.release_pubkey = key.clone();
         }
@@ -380,6 +389,7 @@ impl Node {
             .expect("control socket");
         stream
             .subscribe(vec![
+                Topic::Config,
                 Topic::Problem,
                 Topic::JoinRequest,
                 Topic::Status,

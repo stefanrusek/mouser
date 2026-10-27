@@ -64,7 +64,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
     let name = ctx.display_name_in(&core);
     let mut computers = vec![StatusComputer {
         os_version: None,
-        mode: None,
+        mode: Some(ctx.mode),
         id: ctx.me(),
         name: name.clone(),
         os: crate::platform_os(info.os),

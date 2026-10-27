@@ -2,6 +2,7 @@
 //! driver that moves messages between the wire and the engine.
 
 pub mod auth;
+pub mod close_reason;
 pub mod handshake;
 pub mod liveness;
 pub mod redial;
@@ -9,7 +10,9 @@ pub mod redial;
 #[cfg(test)]
 mod auth_tests;
 #[cfg(test)]
-mod fault_tests;
+mod close_reason_tests;
+#[cfg(test)]
+pub(crate) mod fault_tests;
 #[cfg(test)]
 mod handshake_tests;
 #[cfg(test)]
@@ -26,15 +29,16 @@ use std::time::{Duration, Instant};
 
 use mouser_proto::control::{FixAction, ProblemKind};
 use mouser_proto::ids::{ComputerId, DeskId};
-use mouser_proto::log::LogLevel;
 use mouser_proto::wire::ControlMessage;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::discovery::Found;
 use crate::engine::{Ctx, Outgoing, Peer, Phase};
-use crate::faults::{Faulted, run_unit};
+use crate::faults::{self, Faulted, RecoveryAction, run_unit};
+use crate::logging::events;
 use crate::transport::{FrameReader, FrameWriter, Link, Transport};
+use close_reason::{CloseReason, LinkLossReason};
 use handshake::{PeerHello, exchange, incompatibility};
 
 /// The longest one attempt to reach a computer may take (research R2: a
@@ -53,7 +57,7 @@ async fn write_loop(
         let _ = writer.send(&msg).await;
     }
     writer.finish().await;
-    conn.close(0u32.into(), b"done");
+    conn.close(0u32.into(), CloseReason::Done.bytes());
 }
 
 /// Removes the peer when its link ends, also when the reader task panics.
@@ -100,39 +104,48 @@ async fn read_loop(
             // The peer broke the protocol: this link ends, the desk heals
             // by the usual re-dial.
             Ok(Err(_violation)) => {
-                conn.close(0u32.into(), b"protocol");
+                ctx.close_link(peer, link_id, &conn, CloseReason::Protocol);
                 break;
             }
             Err(Faulted) => {
-                ctx.fault_link(&conn);
+                ctx.fault_link("read_loop", peer, link_id, &conn);
                 break;
             }
         }
     }
+    // A frame that could not be decoded closed the connection (the reader
+    // says so); the link was lost for that.
+    if reader.undecodable() {
+        ctx.note_closing(peer, link_id, CloseReason::Protocol.loss());
+    }
 }
 
 /// Applies the motion datagrams of `peer` until the connection ends.
-async fn motion_loop(ctx: Arc<Ctx>, peer: ComputerId, conn: quinn::Connection) {
+async fn motion_loop(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, conn: quinn::Connection) {
     while let Ok(bytes) = conn.read_datagram().await {
         let handled = run_unit(&ctx.events, "motion_loop", || {
             let motion = postcard::from_bytes(&bytes).expect("well-formed datagram");
             ctx.crossing.guard().on_motion(peer, motion);
         });
         if handled.is_err() {
-            ctx.fault_link(&conn);
+            ctx.fault_link("motion_loop", peer, link_id, &conn);
             break;
         }
     }
 }
 
 /// Receives the files that desk-mates stream to us until the connection ends.
-async fn file_loop(ctx: Arc<Ctx>, conn: quinn::Connection) {
+async fn file_loop(ctx: Arc<Ctx>, peer: ComputerId, conn: quinn::Connection) {
     while let Ok(mut stream) = conn.accept_uni().await {
         // A stream cut short by a lost connection is a transfer that did not finish.
         let Ok((id, index)) = crate::transfer::streams::read_header(&mut stream).await else {
             continue;
         };
         let Some(stream) = ctx.deliver_release(&id, stream) else {
+            continue;
+        };
+        // For the logs stream the "index" is the length of its header.
+        let Some(stream) = ctx.deliver_logs(&id.0, peer, index, stream) else {
             continue;
         };
         if ctx.transfer_ids.contains(&id) {
@@ -169,9 +182,42 @@ impl Ctx {
     /// A unit of work on this link faulted: control comes back here, nothing
     /// stays held, and the link is closed with reason `fault` so that the
     /// redial brings it back.
-    fn fault_link(&self, conn: &quinn::Connection) {
+    fn fault_link(
+        &self,
+        at: &'static str,
+        peer: ComputerId,
+        link_id: u64,
+        conn: &quinn::Connection,
+    ) {
         self.crossing.guard().recover_after_fault();
-        conn.close(0u32.into(), b"fault");
+        self.close_link(peer, link_id, conn, CloseReason::Fault);
+        faults::recovered(&self.log, at, RecoveryAction::ClosedLink);
+    }
+
+    /// The link `link_id` to `peer` was lost for `reason`, which this
+    /// computer knows better than the connection's error says.
+    pub(crate) fn note_closing(&self, peer: ComputerId, link_id: u64, reason: LinkLossReason) {
+        if let Some(entry) = self
+            .core
+            .guard()
+            .peers
+            .get_mut(&peer)
+            .filter(|p| p.link_id == link_id)
+        {
+            entry.closing = Some(reason);
+        }
+    }
+
+    /// Close the connection of the link `link_id` to `peer` for `why`.
+    fn close_link(
+        &self,
+        peer: ComputerId,
+        link_id: u64,
+        conn: &quinn::Connection,
+        why: CloseReason,
+    ) {
+        self.note_closing(peer, link_id, why.loss());
+        conn.close(0u32.into(), why.bytes());
     }
 
     /// Dial `addr` and exchange `Hello`s; `None` if unreachable, not the
@@ -250,7 +296,7 @@ impl Ctx {
             conn,
             peer,
             writer,
-            reader,
+            mut reader,
         } = link;
         let (out, out_rx) = mpsc::unbounded_channel();
         self.spawn(write_loop(writer, out_rx, conn.clone()));
@@ -278,6 +324,7 @@ impl Ctx {
                 conn: conn.clone(),
                 out,
                 dialed,
+                closing: None,
                 phase,
                 displays: Vec::new(),
                 status: None,
@@ -285,7 +332,11 @@ impl Ctx {
                 last_seen: crate::problems::now(),
             };
             if let Some(old) = core.peers.insert(peer, entry) {
-                old.conn.close(0u32.into(), b"replaced");
+                old.conn.close(0u32.into(), CloseReason::Replaced.bytes());
+                self.log.write(events::peer_disconnected(
+                    peer,
+                    CloseReason::Replaced.loss(),
+                ));
                 // The old connection's session is over: whatever it held
                 // down is released and control comes back here, and until
                 // the new connection proves membership the computer is
@@ -309,9 +360,11 @@ impl Ctx {
         if compatible {
             self.problems
                 .clear(ProblemKind::IncompatibleVersion, &peer.to_string());
+            let log = self.log.clone();
+            reader.on_unknown(move |variant| log.write(events::wire_unknown(peer, variant)));
             self.spawn(read_loop(self.clone(), peer, link_id, conn.clone(), reader));
-            self.spawn(motion_loop(self.clone(), peer, conn.clone()));
-            self.spawn(file_loop(self.clone(), conn.clone()));
+            self.spawn(motion_loop(self.clone(), peer, link_id, conn.clone()));
+            self.spawn(file_loop(self.clone(), peer, conn.clone()));
         } else {
             let (text, mine_is_older) = incompatible_text;
             self.problems.raise(
@@ -346,8 +399,14 @@ impl Ctx {
                 return;
             }
             let gone = core.peers.remove(&peer).expect("checked above");
-            self.log
-                .record(LogLevel::Info, "peer.disconnected", Some(peer), None);
+            // A link the peer finished may end before its close arrives: the
+            // peer then left.
+            let reason = gone.closing.unwrap_or_else(|| {
+                gone.conn
+                    .close_reason()
+                    .map_or(LinkLossReason::PeerLeft, |error| LinkLossReason::of(&error))
+            });
+            self.log.write(events::peer_disconnected(peer, reason));
             if gone.phase != Phase::Departed && core.is_member(peer) {
                 core.mark_absent(peer, gone.last_seen, Instant::now());
             }
@@ -361,6 +420,7 @@ impl Ctx {
         self.problems
             .clear(ProblemKind::SecureInput, &peer.to_string());
         self.drop_release_waiters(peer);
+        self.drop_logs_waiters(peer);
         // No clipboard task means this platform shares no clipboard.
         let _ = self.clip.send(crate::clipboard::Command::PeerGone(peer));
         // Likewise for dragged files.
@@ -457,8 +517,7 @@ impl Ctx {
             ControlMessage::QuickJumpHide => self.input(peer, |c| c.on_quickjump_hide()),
             ControlMessage::ReleaseAll { .. } => self.input(peer, |c| c.on_release_all(peer)),
             ControlMessage::Panic => self.input(peer, |c| c.on_panic(peer)),
-            // v2: replaced in T159
-            ControlMessage::LogsRequest { .. } => Ok(()),
+            ControlMessage::LogsRequest { request } => self.on_logs_request(peer, request),
             // v2: replaced in T205
             ControlMessage::DeskSettings { .. } => Ok(()),
             // v2: replaced in T226

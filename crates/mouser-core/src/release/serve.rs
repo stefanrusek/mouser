@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mouser_proto::ids::ComputerId;
-use mouser_proto::log::LogLevel;
 use mouser_proto::release::ReleaseManifest;
 use mouser_proto::wire::{ControlMessage, TransferId};
 use sha2::{Digest, Sha256};
 
 use super::{Offered, Version};
 use crate::engine::{Core, Ctx, Phase};
+use crate::logging::events;
 
 /// The folder of verified releases, inside the config directory.
 pub const FOLDER: &str = "releases";
@@ -178,14 +178,8 @@ impl Ctx {
         if !wanted {
             return Ok(());
         }
-        self.log.record(
-            LogLevel::Info,
-            "update.available",
-            Some(peer),
-            serde_json::json!({"version": manifest.version})
-                .as_object()
-                .cloned(),
-        );
+        self.log
+            .write(events::update_available(Some(peer), &manifest.version));
         core.release.offered = Some(Offered {
             from: peer,
             manifest,

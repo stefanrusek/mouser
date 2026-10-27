@@ -13,11 +13,10 @@ use std::sync::{Arc, Mutex};
 
 use mouser_proto::control::{FixAction, Notification, Problem, ProblemKind, Topic};
 use mouser_proto::ids::ComputerId;
-use mouser_proto::log::LogLevel;
 use mouser_proto::model::PermissionKind;
 use tokio::sync::broadcast;
 
-use crate::logging::Log;
+use crate::logging::{Log, events};
 
 /// RFC 3339 UTC timestamp for "now".
 pub fn now() -> String {
@@ -77,19 +76,9 @@ impl Problems {
         self
     }
 
-    fn log(&self, event: &str, problem: &Problem) {
+    fn log(&self, event: events::Event) {
         if let Some(log) = &self.log {
-            let fields = serde_json::json!({
-                "kind": kind_name(problem.kind),
-                "problem_id": problem.problem_id,
-                "message": problem.message,
-            });
-            log.record(
-                LogLevel::Warn,
-                event,
-                Some(problem.computer),
-                fields.as_object().cloned(),
-            );
+            log.write(event);
         }
     }
 
@@ -134,7 +123,7 @@ impl Problems {
         };
         all.push(problem.clone());
         drop(all);
-        self.log("problem.raised", &problem);
+        self.log(events::problem_raised(&problem));
         self.announce(&problem);
         true
     }
@@ -156,7 +145,7 @@ impl Problems {
         problem.cleared_at = Some(now());
         let cleared = problem.clone();
         drop(all);
-        self.log("problem.cleared", &cleared);
+        self.log(events::problem_cleared(&cleared));
         self.announce(&cleared);
         true
     }

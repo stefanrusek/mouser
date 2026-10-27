@@ -206,3 +206,75 @@ async fn shutdown_while_remote_returns_locally_releases_and_closes_every_link() 
     })
     .await;
 }
+
+#[test]
+fn the_engine_mode_is_a_computer_mode_and_a_new_engine_is_installed() {
+    use mouser_proto::wire::ComputerMode;
+    let params = EngineParams::new(
+        Arc::new(VirtualPlatform::new()),
+        std::path::PathBuf::from("config"),
+        std::path::PathBuf::from("mouser.sock"),
+        "Alpha".into(),
+        "0.3.0".into(),
+    );
+    let mode: ComputerMode = params.mode;
+    assert_eq!(mode, ComputerMode::Installed);
+}
+
+#[tokio::test]
+async fn harness_nodes_are_installed_and_status_reports_the_mode_of_this_computer() {
+    use mouser_proto::wire::ComputerMode;
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let me = status(&nodes[0]).await;
+    let mine = me
+        .computers
+        .iter()
+        .find(|c| c.id == me.computer.id)
+        .unwrap();
+    assert_eq!(mine.mode, Some(ComputerMode::Installed));
+    for mode in [
+        ComputerMode::Portable,
+        ComputerMode::PortableElevated,
+        ComputerMode::Service,
+        ComputerMode::Headless,
+    ] {
+        let node = lab
+            .start_released("Mode", |_| {}, move |params| params.mode = mode)
+            .await;
+        let s = status(&node).await;
+        let mine = s.computers.iter().find(|c| c.id == s.computer.id).unwrap();
+        assert_eq!(mine.mode, Some(mode));
+        node.engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn a_state_that_cannot_be_saved_is_a_fault_in_the_log_and_the_state_is_kept() {
+    let lab = Lab::new();
+    let node = lab
+        .start_with("Alpha", VirtualPlatform::new(), |c| {
+            c.diagnostics.logging = true
+        })
+        .await;
+    let path = node.engine.ctx.state_path();
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    let line = line!() + 1;
+    let failed = node.engine.ctx.persist(&node.engine.ctx.core.guard());
+    assert!(failed.is_err());
+    let text = std::fs::read_to_string(node.engine.log().path()).unwrap();
+    let fault: serde_json::Value = text
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|r| r["event"] == "fault")
+        .expect("a fault record");
+    assert_eq!(fault["level"], "error");
+    assert_eq!(fault["fields"]["where"], "persist");
+    assert_eq!(fault["fields"]["message"], "state.json could not be saved");
+    let location = fault["fields"]["location"].as_str().unwrap();
+    assert!(
+        location.ends_with(&format!("engine_tests.rs:{line}")),
+        "{location}"
+    );
+}

@@ -429,3 +429,33 @@ async fn what_is_meant_for_a_computer_that_is_gone_goes_nowhere() {
         },
     ]);
 }
+
+#[tokio::test]
+async fn each_offer_applied_is_logged_with_the_same_shape_as_the_one_sent() {
+    let lab = Lab::new();
+    let nodes = logged_desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let (ia, ib) = (
+        a.engine.computer_id().to_string(),
+        b.engine.computer_id().to_string(),
+    );
+    a.platform.set_local_clipboard(vec![
+        ClipRep::Text("typed MOUSER-MARKER-7f3a".into()),
+        ClipRep::Png(vec![0; 2 * INLINE_LIMIT]),
+    ]);
+    let received = logged(b, "clipboard.received", |r| r["peer"] == ia.as_str()).await;
+    assert_eq!(
+        received["fields"],
+        serde_json::json!({
+            "from": ia, "to": ib,
+            "reps": [
+                {"kind": "text", "size": 24},
+                {"kind": "png", "size": 2 * INLINE_LIMIT}
+            ]
+        })
+    );
+    let sent = logged(a, "clipboard.sent", |r| r["peer"] == ib.as_str()).await;
+    assert_eq!(sent["fields"], received["fields"]);
+    let text = std::fs::read_to_string(b.engine.log().path()).unwrap();
+    assert!(!text.contains("MOUSER-MARKER"));
+}

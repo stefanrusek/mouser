@@ -4,6 +4,8 @@
 pub mod client;
 pub mod config_api;
 pub mod layout;
+pub mod logs;
+pub mod logs_stream;
 pub mod server;
 pub mod status;
 pub mod update;
@@ -12,6 +14,10 @@ pub mod update;
 mod config_api_tests;
 #[cfg(test)]
 mod layout_tests;
+#[cfg(test)]
+mod logs_stream_tests;
+#[cfg(test)]
+mod logs_tests;
 #[cfg(test)]
 mod server_tests;
 #[cfg(test)]

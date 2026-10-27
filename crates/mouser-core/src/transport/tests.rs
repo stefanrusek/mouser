@@ -326,3 +326,51 @@ async fn an_ephemeral_endpoint_never_shares_its_ipv4_port() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_skipped_frame_tells_the_hook_its_variant_index() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let (mut send, _recv) = dialed.open_bi().await.unwrap();
+    send.write_all(&[0, 0, 0, 1, 0x7f]).await.unwrap();
+    send.write_all(&encode_frame(&ControlMessage::Panic))
+        .await
+        .unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    let skipped = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = skipped.clone();
+    acceptor
+        .reader
+        .on_unknown(move |variant| seen.lock().unwrap().push(variant));
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Panic)
+    );
+    assert_eq!(*skipped.lock().unwrap(), [0x7f]);
+    assert!(!acceptor.reader.undecodable());
+}
+
+#[tokio::test]
+async fn a_reader_that_closed_for_a_malformed_frame_says_so() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let (mut send, _recv) = dialed.open_bi().await.unwrap();
+    send.write_all(&[0, 0, 0, 2, 0xff, 0xff]).await.unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    assert_eq!(acceptor.reader.recv::<ControlMessage>().await, None);
+    assert!(acceptor.reader.undecodable());
+}
+
+#[tokio::test]
+async fn a_skipped_unknown_variant_is_logged_as_wire_unknown_with_the_peer() {
+    use crate::testing::{Lab, Rogue, logged};
+    let lab = Lab::new();
+    let node = lab.start_logged("Alpha").await;
+    let rogue = Rogue::new(0x75);
+    let (mut link, _) = rogue.dial(&node, None).await;
+    link.writer.send_raw(&[0, 0, 0, 1, 0x7f]).await;
+    let id = rogue.identity.computer_id().to_string();
+    let record = logged(&node, "wire.unknown", |r| r["peer"] == id.as_str()).await;
+    assert_eq!(record["level"], "warn");
+    assert_eq!(record["fields"], serde_json::json!({"variant": 127}));
+    // The link stays up.
+    assert!(link.conn.close_reason().is_none());
+}

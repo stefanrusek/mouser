@@ -455,4 +455,37 @@ mod on_the_wire {
         ctx.sync_layout(&mut core);
         assert_eq!(core.state.desk.as_ref().unwrap().state.epoch, epoch);
     }
+
+    #[tokio::test]
+    async fn a_computer_the_desk_places_by_itself_is_logged_as_auto_placed() {
+        use mouser_platform::Platform;
+        let lab = Lab::new();
+        let nodes = logged_desk_of(&lab, &["Alpha", "Beta"]).await;
+        let (a, b) = (&nodes[0], &nodes[1]);
+        let (ia, ib) = (
+            a.engine.computer_id().to_string(),
+            b.engine.computer_id().to_string(),
+        );
+        // Beta was placed when it joined.
+        let joined = logged(a, "layout.changed", |r| {
+            r["fields"]["change"] == "auto_placed"
+        })
+        .await;
+        assert_eq!(
+            joined["fields"],
+            serde_json::json!({"by": ia, "computer": ib, "change": "auto_placed"})
+        );
+        let before = log_events(a, "layout.changed").len();
+        // A second display makes Beta's group be placed again.
+        let mut all = b.platform.displays().unwrap();
+        all.push(screen("side", (1920.0, 0.0)));
+        b.platform.set_displays(all);
+        eventually("Beta to be placed again", || async {
+            log_events(a, "layout.changed").len() > before
+        })
+        .await;
+        let again = log_events(a, "layout.changed").pop().unwrap();
+        assert_eq!(again["fields"]["computer"], ib);
+        assert_eq!(again["fields"]["change"], "auto_placed");
+    }
 }

@@ -5,6 +5,7 @@ use mouser_proto::wire::ControlMessage;
 
 use super::Crossing;
 use super::state::{Control, Pressed};
+use crate::logging::events::{ControlHow, PointerShown};
 
 impl Crossing {
     /// As controller: control comes back here, the grab ends (the pointer
@@ -18,12 +19,10 @@ impl Crossing {
             if let Some(wire) = self.map.wires.get(&r.computer) {
                 wire.send(ControlMessage::ReleaseAll { seq });
             }
+            self.moved(r.computer, self.me, ControlHow::Fault);
         }
         self.session.sent = Pressed::default();
-        // A computer whose input never started has nothing to ungrab.
-        if let Some(io) = self.io.as_mut() {
-            let _ = io.capture.set_grabbed(false);
-        }
+        self.ungrab(PointerShown::Fault);
         self.end_receiving();
         self.dirty.notify_one();
     }

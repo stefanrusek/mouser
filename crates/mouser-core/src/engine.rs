@@ -15,7 +15,7 @@ use mouser_proto::config::Config;
 use mouser_proto::control::Notification;
 use mouser_proto::ids::{ComputerId, DeskId};
 use mouser_proto::model::{DeskState, DisplayId, Layout, Member};
-use mouser_proto::wire::{ControlMessage, PROTOCOL_VERSION, PeerStatus, TransferId};
+use mouser_proto::wire::{ComputerMode, ControlMessage, PROTOCOL_VERSION, PeerStatus, TransferId};
 use tokio::sync::{Notify, broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -28,14 +28,15 @@ use crate::crossing::buttons::Buttons45;
 use crate::crossing::{Crossing, Host};
 use crate::desk::join::Requests;
 use crate::discovery::{Advert, Discovery, MdnsDiscovery};
-use crate::faults::run_unit;
+use crate::faults::{self, RecoveryAction, run_unit};
 use crate::identity::Identity;
-use crate::logging::Log;
+use crate::logging::{self, Log, events};
 use crate::problems::Problems;
 use crate::release::http::Http;
 use crate::release::pubkey::UPDATER_PUBKEY;
 use crate::release::serve::FOLDER;
 use crate::release::{CheckSchedule, Installer, ReleaseState, Version};
+use crate::session::close_reason::{CloseReason, LinkLossReason};
 use crate::session::handshake::PeerHello;
 use crate::state::{self, LocalState, desk_key_name};
 use crate::transport::Transport;
@@ -79,6 +80,9 @@ pub struct EngineParams {
     /// Running from `MouserData/` (see [`crate::paths`]): nothing is installed
     /// on this computer, so start at login is never registered.
     pub portable: bool,
+    /// How this computer runs; the diagnostic log's header and `status` say
+    /// so.
+    pub mode: ComputerMode,
 }
 
 impl EngineParams {
@@ -105,6 +109,7 @@ impl EngineParams {
             port: None,
             secrets: None,
             portable: false,
+            mode: ComputerMode::Installed,
         }
     }
 }
@@ -163,6 +168,9 @@ pub(crate) struct Peer {
     pub out: mpsc::UnboundedSender<Outgoing>,
     /// We dialled this connection (otherwise the peer did).
     pub dialed: bool,
+    /// Why this computer closed the link, when it did (otherwise the
+    /// connection's own error says).
+    pub closing: Option<LinkLossReason>,
     pub phase: Phase,
     pub displays: Vec<mouser_proto::model::Display>,
     pub status: Option<PeerStatus>,
@@ -179,6 +187,12 @@ impl Peer {
 
     pub fn close(&self) {
         let _ = self.out.send(Outgoing::Close);
+    }
+
+    /// Close the connection now, for `why`.
+    pub fn close_for(&mut self, why: CloseReason) {
+        self.closing = Some(why.loss());
+        self.conn.close(0u32.into(), why.bytes());
     }
 }
 
@@ -218,6 +232,7 @@ pub(crate) struct Ctx {
     pub platform: Arc<dyn Platform>,
     pub config_dir: PathBuf,
     pub portable: bool,
+    pub mode: ComputerMode,
     pub computer_name: String,
     pub mouser_version: String,
     pub protocol_version: u16,
@@ -254,6 +269,8 @@ pub(crate) struct Ctx {
     >,
     /// Desk-mates offered the release this computer holds.
     pub(crate) release_serving: Mutex<BTreeMap<ComputerId, crate::release::serve::Serving>>,
+    /// Streams awaited as answers to `LogsRequest`.
+    pub(crate) logs_waiters: Mutex<Vec<crate::logs::collect::Waiter>>,
     pub next_link: AtomicU64,
     stop: CancellationToken,
     tasks: TaskTracker,
@@ -355,8 +372,24 @@ impl Ctx {
     /// Persist the state. When `state.json` cannot be written the in-memory
     /// state is kept (and written by the next change that can be); callers
     /// do not fail because of it.
+    #[track_caller]
     pub fn persist(&self, core: &Core) -> std::io::Result<()> {
-        core.state.save(&self.state_path())
+        self.log.set_desk(
+            core.state
+                .desk
+                .as_ref()
+                .map(|d| (d.desk_id, d.name.clone())),
+        );
+        let saved = core.state.save(&self.state_path());
+        if saved.is_err() {
+            let at = std::panic::Location::caller();
+            self.log.write(events::fault(
+                "persist",
+                &format!("{}:{}", at.file(), at.line()),
+                "state.json could not be saved",
+            ));
+        }
+        saved
     }
 
     /// A failing store is an ordinary failure (locked keychain, full disk):
@@ -424,7 +457,8 @@ impl Engine {
         let (notify, _) = broadcast::channel(256);
         let (events, _) = broadcast::channel(256);
         let dirty = Arc::new(Notify::new());
-        let log = Arc::new(Log::new(
+        let info = params.platform.info();
+        let log = Arc::new(Log::with_context(
             &params.config_dir,
             identity.computer_id(),
             match config.general.computer_name.as_str() {
@@ -433,6 +467,13 @@ impl Engine {
             },
             config.diagnostics.logging,
             config.diagnostics.max_log_mb,
+            logging::Context {
+                mouser_version: params.mouser_version.clone(),
+                os: crate::platform_os(info.os),
+                os_version: info.version,
+                mode: params.mode,
+                desk: state.desk.as_ref().map(|d| (d.desk_id, d.name.clone())),
+            },
         ));
         let problems = Arc::new(Problems::new(notify.clone()).logged_to(log.clone()));
         let (panic, targeted_paste, quickjump) =
@@ -451,6 +492,7 @@ impl Engine {
                 dirty: dirty.clone(),
                 platform: params.platform.clone(),
                 problems: problems.clone(),
+                log: log.clone(),
                 clipboard: clip.clone(),
                 drag: params.platform.file_drag(),
                 transfers: xfer.clone(),
@@ -466,6 +508,7 @@ impl Engine {
             identity,
             platform: params.platform,
             portable: params.portable,
+            mode: params.mode,
             config_dir: params.config_dir,
             computer_name: params.computer_name,
             mouser_version: params.mouser_version,
@@ -488,6 +531,7 @@ impl Engine {
             http: params.http,
             release_waiters: Mutex::new(Vec::new()),
             release_serving: Mutex::new(BTreeMap::new()),
+            logs_waiters: Mutex::new(Vec::new()),
             core: Mutex::new(Core {
                 config,
                 state,
@@ -636,8 +680,21 @@ impl Engine {
     pub async fn shutdown(self) {
         drop(self.watch);
         self.ctx.stop_input();
-        for peer in self.ctx.core.guard().peers.values() {
-            peer.conn.close(0u32.into(), b"shutdown");
+        // Every link ends here and now, so each is also ended and logged
+        // here: the link tasks that would notice are about to be stopped.
+        let links: Vec<(ComputerId, u64)> = self
+            .ctx
+            .core
+            .guard()
+            .peers
+            .iter_mut()
+            .map(|(id, peer)| {
+                peer.close_for(CloseReason::Quit);
+                (*id, peer.link_id)
+            })
+            .collect();
+        for (id, link) in links {
+            self.ctx.on_link_closed(id, link);
         }
         self.ctx.transport.close();
         let discovery = self.ctx.discovery.clone();
@@ -691,6 +748,7 @@ async fn reconcile_loop(ctx: Arc<Ctx>, mut config_text: String) {
         });
         if ticked.is_err() {
             ctx.crossing.guard().recover_after_fault();
+            faults::recovered(&ctx.log, "reconcile", RecoveryAction::ReturnedLocal);
         }
     }
 }

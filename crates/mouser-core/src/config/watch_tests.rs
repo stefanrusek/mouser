@@ -332,3 +332,38 @@ async fn a_still_broken_file_keeps_one_problem_with_the_newest_reason() {
     reload(&node, &mut seen);
     assert!(problems(&node).is_empty());
 }
+
+#[tokio::test]
+async fn an_edit_of_the_file_is_a_change_from_the_file() {
+    let lab = Lab::new();
+    let node = lab.start_logged("Alpha").await;
+    let mut notes = node.engine.control().notifications();
+    let mut seen = String::new();
+    reload(&node, &mut seen);
+    edit(&node, |t| {
+        t["mouse"]["buttons_4_5"] = "back_forward".into();
+        t["general"]["notifications"] = false.into();
+    });
+    reload(&node, &mut seen);
+    let mut keys = Vec::new();
+    for _ in 0..2 {
+        let change: mouser_proto::control::SettingChange =
+            serde_json::from_value(recv_topic(&mut notes, Topic::Config).await).unwrap();
+        assert_eq!(change.origin, mouser_proto::control::SettingOrigin::File);
+        keys.push(change.key);
+    }
+    assert_eq!(keys, ["general.notifications", "mouse.buttons_4_5"]);
+    let records = log(&node);
+    let from_the_file: Vec<_> = records
+        .iter()
+        .filter(|r| r["event"] == "setting.changed")
+        .map(|r| (r["fields"]["key"].clone(), r["fields"]["origin"].clone()))
+        .collect();
+    assert_eq!(
+        from_the_file,
+        [
+            (json!("general.notifications"), json!("file")),
+            (json!("mouse.buttons_4_5"), json!("file"))
+        ]
+    );
+}

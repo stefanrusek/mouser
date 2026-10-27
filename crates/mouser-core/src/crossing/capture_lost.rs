@@ -8,6 +8,7 @@ use mouser_proto::wire::ControlMessage;
 
 use super::Crossing;
 use super::state::{Control, Pressed};
+use crate::logging::events::ControlHow;
 
 impl Crossing {
     pub(super) fn on_capture_lost(&mut self) {
@@ -16,6 +17,8 @@ impl Crossing {
             .remote()
             .expect("capture is only lost, as far as the input path is told, while remote");
         self.session.control = Control::Local;
+        self.moved(computer, self.me, ControlHow::CaptureLost);
+        self.pointer_lost();
         let seq = self.session.next_seq();
         // A computer that left the map has nothing to release.
         if let Some(wire) = self.map.wires.get(&computer) {

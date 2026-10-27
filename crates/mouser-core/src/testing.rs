@@ -387,6 +387,78 @@ pub(crate) async fn recv_topic(
     .expect("the notification arrives in time")
 }
 
+impl Lab {
+    /// Start a node with diagnostic logging on.
+    pub async fn start_logged(&self, name: &str) -> TestNode {
+        self.start_with(name, VirtualPlatform::new(), |c| {
+            c.diagnostics.logging = true
+        })
+        .await
+    }
+}
+
+impl Lab {
+    /// Start a node that runs Mouser `version`, with logging on or off.
+    pub async fn start_version(&self, name: &str, version: &str, logging: bool) -> TestNode {
+        let version = version.to_string();
+        self.start_released(
+            name,
+            move |c| c.diagnostics.logging = logging,
+            move |params| params.mouser_version = version,
+        )
+        .await
+    }
+}
+
+/// A desk of nodes with logging on, like [`desk_of`].
+pub(crate) async fn logged_desk_of(lab: &Lab, names: &[&str]) -> Vec<TestNode> {
+    let mut nodes = Vec::new();
+    for name in names {
+        nodes.push(lab.start_logged(name).await);
+    }
+    desk_from(nodes).await
+}
+
+/// Every record in the log files at `path` (the older file first). A line
+/// that is only partly written yet is not a record.
+pub(crate) fn read_log(path: &std::path::Path) -> Vec<Value> {
+    [path.with_extension("log.1"), path.to_path_buf()]
+        .iter()
+        .filter_map(|file| std::fs::read_to_string(file).ok())
+        .flat_map(|text| {
+            text.lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Every record in the node's log files.
+pub(crate) fn log_records(node: &TestNode) -> Vec<Value> {
+    read_log(&node.engine.log().path())
+}
+
+/// The records of `event` in the node's log.
+pub(crate) fn log_events(node: &TestNode, event: &str) -> Vec<Value> {
+    log_records(node)
+        .into_iter()
+        .filter(|r| r["event"] == event)
+        .collect()
+}
+
+/// Wait for a record of `event` satisfying `pred`.
+pub(crate) async fn logged(node: &TestNode, event: &str, pred: impl Fn(&Value) -> bool) -> Value {
+    let found = Mutex::new(None);
+    eventually(&format!("{event} to be logged"), || async {
+        let hit = log_events(node, event).into_iter().find(&pred);
+        let done = hit.is_some();
+        *found.guard() = hit;
+        done
+    })
+    .await;
+    found.into_inner().unwrap().expect("polled at least once")
+}
+
 /// Number of other computers `node` is connected to.
 pub(crate) async fn connected(node: &TestNode) -> usize {
     use mouser_proto::control::ConnectionState;
@@ -465,6 +537,47 @@ impl Rogue {
             .unwrap();
         (link, theirs)
     }
+}
+
+/// A desk member that is hand-driven, so the way the node closes a link can
+/// be read from the other end of it.
+pub(crate) async fn member_rogue(
+    node: &TestNode,
+    desk: &mouser_proto::control::Desk,
+    seed: u8,
+) -> crate::transport::Link {
+    let key: [u8; 32] = mouser_platform::Platform::secrets(&node.platform)
+        .get(&crate::state::desk_key_name(&desk.desk_id))
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let rogue = Rogue::new(seed);
+    let (mut link, _) = rogue.dial(node, Some(desk.desk_id)).await;
+    assert!(matches!(
+        link.reader
+            .recv::<mouser_proto::wire::ControlMessage>()
+            .await,
+        Some(mouser_proto::wire::ControlMessage::DeskAuth { .. })
+    ));
+    let good = crate::session::auth::proof(
+        &key,
+        &crate::session::auth::export(&link.conn),
+        &desk.desk_id,
+        &rogue.identity.computer_id(),
+    );
+    link.writer
+        .send(&mouser_proto::wire::ControlMessage::DeskAuth { hmac: good })
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        link.reader
+            .recv::<mouser_proto::wire::ControlMessage>()
+            .await
+            .unwrap();
+    }
+    // The node knows the rogue's (non-existent) display; give it one.
+    link
 }
 
 pub(crate) fn empty_state() -> mouser_proto::model::DeskState {

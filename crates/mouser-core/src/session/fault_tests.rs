@@ -6,10 +6,7 @@ use mouser_testkit::Injected;
 
 use crate::EngineEvent;
 use crate::lock::LockExt;
-use crate::session::auth::{export, proof};
-use crate::state::desk_key_name;
 use crate::testing::*;
-use mouser_platform::Platform;
 use mouser_proto::control::{Desk, Method};
 use serde_json::json;
 
@@ -150,41 +147,7 @@ async fn a_message_that_violates_the_protocol_closes_the_link_with_reason_protoc
     healed_and_crossing(&nodes, old).await;
 }
 
-/// A desk member that is hand-driven, so the way the node closes a link can
-/// be read from the other end of it.
-async fn member_rogue(node: &TestNode, desk: &Desk, seed: u8) -> crate::transport::Link {
-    let key: [u8; 32] = node
-        .platform
-        .secrets()
-        .get(&desk_key_name(&desk.desk_id))
-        .unwrap()
-        .unwrap()
-        .try_into()
-        .unwrap();
-    let rogue = Rogue::new(seed);
-    let (mut link, _) = rogue.dial(node, Some(desk.desk_id)).await;
-    assert!(matches!(
-        link.reader.recv::<ControlMessage>().await,
-        Some(ControlMessage::DeskAuth { .. })
-    ));
-    let good = proof(
-        &key,
-        &export(&link.conn),
-        &desk.desk_id,
-        &rogue.identity.computer_id(),
-    );
-    link.writer
-        .send(&ControlMessage::DeskAuth { hmac: good })
-        .await
-        .unwrap();
-    for _ in 0..2 {
-        link.reader.recv::<ControlMessage>().await.unwrap();
-    }
-    // The node knows the rogue's (non-existent) display; give it one.
-    link
-}
-
-async fn closed_with(conn: &quinn::Connection) -> Vec<u8> {
+pub(crate) async fn closed_with(conn: &quinn::Connection) -> Vec<u8> {
     match conn.closed().await {
         quinn::ConnectionError::ApplicationClosed(close) => close.reason.to_vec(),
         other => panic!("closed by the node with a reason, not {other:?}"),

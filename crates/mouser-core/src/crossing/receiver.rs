@@ -13,6 +13,7 @@ use super::ordering::Sequencer;
 use super::state::Pressed;
 use super::{Crossing, Io};
 use crate::engine::EngineEvent;
+use crate::logging::events::{ControlHow, InputKind};
 
 /// A controller has entered this computer.
 #[derive(Debug)]
@@ -71,7 +72,7 @@ impl Crossing {
         // computer we were controlling crosses back onto us with its mouse:
         // our grab ends (showing our pointer again) and nothing more is
         // forwarded, as after the panic key.
-        self.return_local(Return::Release, None);
+        self.return_local(Return::Release, ControlHow::Entered, None);
         // A computer that cannot inject input cannot be controlled.
         let Some(io) = self.io.as_mut() else {
             return Ok(());
@@ -81,7 +82,9 @@ impl Crossing {
             f64::from(origin.1) + f64::from(y),
         );
         // A refused move is skipped: the session starts anyway.
-        let _ = io.inject.motion_abs(desktop.0, desktop.1);
+        let moved = io.inject.motion_abs(desktop.0, desktop.1);
+        self.tally(InputKind::Motion, Some(from), &moved);
+        self.moved(from, self.me, ControlHow::Entered);
         self.receiving = Some(Receiving {
             from,
             os,
@@ -119,10 +122,11 @@ impl Crossing {
             return;
         }
         // A refused move is skipped.
-        let _ = io.inject.motion_abs(
+        let moved = io.inject.motion_abs(
             f64::from(origin.0) + f64::from(motion.x),
             f64::from(origin.1) + f64::from(motion.y),
         );
+        self.tally(InputKind::Motion, Some(from), &moved);
     }
 
     /// A key, translated for this computer's keyboard shortcuts.
@@ -135,9 +139,10 @@ impl Crossing {
             return;
         }
         let usage = map_usage(rx.os, me, usage);
-        press(&mut rx.injected, io, Action::Key(usage, down));
+        let (kind, injected) = press(&mut rx.injected, io, Action::Key(usage, down));
+        let held = rx.injected.keys.clone();
+        self.tally(kind, Some(from), &injected);
         if down {
-            let held = rx.injected.keys.clone();
             self.clipboard_keys(&held, usage);
         }
     }
@@ -151,8 +156,12 @@ impl Crossing {
         if !rx.stream.admit(seq) {
             return;
         }
-        for action in buttons::actions(setting, os, button, down) {
-            press(&mut rx.injected, io, action);
+        let results: Vec<_> = buttons::actions(setting, os, button, down)
+            .into_iter()
+            .map(|action| press(&mut rx.injected, io, action))
+            .collect();
+        for (kind, injected) in results {
+            self.tally(kind, Some(from), &injected);
         }
     }
 
@@ -164,7 +173,8 @@ impl Crossing {
             return;
         }
         // A refused scroll is skipped.
-        let _ = io.inject.scroll(f64::from(dx), f64::from(dy));
+        let scrolled = io.inject.scroll(f64::from(dx), f64::from(dy));
+        self.tally(InputKind::Scroll, Some(from), &scrolled);
     }
 
     /// `ReleaseAll` and `Panic`: release everything and take no more input
@@ -188,6 +198,7 @@ impl Crossing {
         for button in rx.injected.buttons {
             let _ = io.inject.button(button, false);
         }
+        self.end_refusal_runs();
         self.dirty.notify_one();
     }
 }
@@ -198,16 +209,23 @@ fn record<T: Ord>(held: &mut std::collections::BTreeSet<T>, item: T, down: bool,
     set(held, item, down && accepted);
 }
 
-/// Inject one action and remember what stays pressed.
-fn press(injected: &mut Pressed, io: &mut Io, action: Action) {
+/// Inject one action and remember what stays pressed; the kind of input
+/// it was and what the system did with it.
+fn press(
+    injected: &mut Pressed,
+    io: &mut Io,
+    action: Action,
+) -> (InputKind, mouser_platform::Result<()>) {
     match action {
         Action::Key(usage, down) => {
-            let accepted = io.inject.key(usage, down).is_ok();
-            record(&mut injected.keys, usage, down, accepted);
+            let result = io.inject.key(usage, down);
+            record(&mut injected.keys, usage, down, result.is_ok());
+            (InputKind::Key, result)
         }
         Action::Button(button, down) => {
-            let accepted = io.inject.button(button, down).is_ok();
-            record(&mut injected.buttons, button, down, accepted);
+            let result = io.inject.button(button, down);
+            record(&mut injected.buttons, button, down, result.is_ok());
+            (InputKind::Button, result)
         }
     }
 }

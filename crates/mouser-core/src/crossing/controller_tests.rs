@@ -552,6 +552,7 @@ use std::sync::atomic::Ordering;
 
 use super::controller::Return;
 use super::state::Control;
+use crate::logging::events::ControlHow;
 
 /// A desk of Alpha (whose capture can fail) and Beta.
 async fn flaky_desk(lab: &Lab) -> (Vec<TestNode>, Knobs) {
@@ -596,11 +597,11 @@ async fn a_refused_warp_is_skipped_and_control_still_returns() {
     })
     .await;
     knobs.refuse_warp.store(true, Ordering::SeqCst);
-    a.engine
-        .ctx
-        .crossing
-        .guard()
-        .return_local(Return::Release, Some((10.0, 10.0)));
+    a.engine.ctx.crossing.guard().return_local(
+        Return::Release,
+        ControlHow::Crossing,
+        Some((10.0, 10.0)),
+    );
     assert_eq!(
         a.engine.ctx.crossing.guard().session.control,
         Control::Local
@@ -692,7 +693,7 @@ async fn releasing_and_returning_with_a_peer_that_left_the_map_do_not_panic() {
     {
         let mut crossing = nodes[0].engine.ctx.crossing.guard();
         crossing.release_current();
-        crossing.return_local(Return::Release, None);
+        crossing.return_local(Return::Release, ControlHow::LinkLost, None);
     }
     assert_returned_locally(&nodes[0]);
 }
@@ -707,7 +708,7 @@ async fn panic_return_with_a_peer_that_left_the_map_does_not_panic() {
         .ctx
         .crossing
         .guard()
-        .return_local(Return::Panic, None);
+        .return_local(Return::Panic, ControlHow::Panic, None);
     assert_returned_locally(&nodes[0]);
 }
 

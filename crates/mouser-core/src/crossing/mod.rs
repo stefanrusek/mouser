@@ -19,8 +19,10 @@ pub mod ordering;
 pub mod r#override;
 pub mod panic;
 pub mod pause;
+pub mod pointer;
 pub mod receiver;
 pub mod recover;
+pub mod refusals;
 pub mod sas;
 pub mod state;
 
@@ -49,9 +51,13 @@ mod panic_tests;
 #[cfg(test)]
 mod pause_tests;
 #[cfg(test)]
+mod pointer_tests;
+#[cfg(test)]
 mod receiver_tests;
 #[cfg(test)]
 mod recover_tests;
+#[cfg(test)]
+mod refusals_tests;
 #[cfg(test)]
 mod sas_tests;
 #[cfg(test)]
@@ -75,8 +81,10 @@ use tokio::sync::{Notify, broadcast};
 use crate::clipboard::Command;
 use crate::clipboard::targeted::{Chord, paste_chord};
 use crate::engine::{Core, Ctx, EngineEvent, Outgoing, Phase};
-use crate::faults::run_unit;
+use crate::faults::{self, RecoveryAction, run_unit};
 use crate::layout::edges::{self, Placed};
+use crate::logging::Log;
+use crate::logging::events::ControlHow;
 use crate::problems::Problems;
 use buttons::Buttons45;
 use r#override::Bumps;
@@ -148,6 +156,12 @@ pub(crate) struct Crossing {
     pub dirty: Arc<Notify>,
     pub platform: Arc<dyn Platform>,
     pub problems: Arc<Problems>,
+    /// The diagnostic log.
+    pub log: Arc<Log>,
+    /// The pointer is hidden by a grab (what `pointer.hidden` last said).
+    pub pointer_hidden: bool,
+    /// Runs of input the system refused.
+    pub refusals: refusals::Refusals,
     /// Blocked crossings that may be overridden by a second bump.
     pub bumps: Bumps,
     /// The targeted-paste hotkey.
@@ -176,6 +190,7 @@ pub(crate) struct Host {
     pub dirty: Arc<Notify>,
     pub platform: Arc<dyn Platform>,
     pub problems: Arc<Problems>,
+    pub log: Arc<Log>,
     pub clipboard: UnboundedSender<Command>,
     pub drag: Option<Box<dyn FileDrag>>,
     pub transfers: UnboundedSender<crate::transfer::engine::Command>,
@@ -205,6 +220,9 @@ impl Crossing {
             dirty: host.dirty,
             platform: host.platform,
             problems: host.problems,
+            log: host.log,
+            pointer_hidden: false,
+            refusals: refusals::Refusals::default(),
             bumps: Bumps::default(),
             targeted_paste,
             quickjump,
@@ -256,7 +274,7 @@ impl Crossing {
     /// Quitting: give control back (the computer driven releases what it
     /// was sent) and stop capturing.
     pub fn stop(&mut self) {
-        self.return_local(controller::Return::Quit, None);
+        self.return_local(controller::Return::Quit, ControlHow::Quit, None);
         self.end_receiving();
         if let Some(mut io) = self.io.take() {
             io.capture.stop();
@@ -358,6 +376,11 @@ impl Ctx {
                     });
                     if handled.is_err() {
                         crossing.recover_after_fault();
+                        faults::recovered(
+                            &crossing.log,
+                            "mouser-input",
+                            RecoveryAction::ReturnedLocal,
+                        );
                     }
                 }
             })

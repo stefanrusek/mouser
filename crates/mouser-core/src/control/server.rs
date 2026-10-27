@@ -8,18 +8,19 @@ use std::sync::Arc;
 
 use mouser_proto::control::{
     ConfigGetParams, ConfigSetParams, DeskCreateParams, DeskJoinParams, DeskMoveParams, Empty,
-    JoinDecideParams, LoggingSetParams, Method, RemoveMemberParams, Request, Response, RpcError,
-    SubscribeParams, Topic,
+    JoinDecideParams, LoggingSetParams, LogsCollectParams, Method, RemoveMemberParams, Request,
+    Response, RpcError, SetOrigin, SettingOrigin, SubscribeParams, Topic,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::sync::mpsc::{self, UnboundedSender};
 
 use crate::control::{invalid, status};
 use crate::discovery::group_by_desk;
 use crate::engine::Ctx;
-use crate::faults::{Faulted, run_unit_async};
+use crate::faults::{self, Faulted, RecoveryAction, run_unit_async};
 
 /// A connected control client.
 pub(crate) trait Duplex: AsyncRead + AsyncWrite + Send + Unpin {}
@@ -40,9 +41,23 @@ pub(crate) async fn call(
     name: &str,
     params: Option<Value>,
 ) -> Result<Value, RpcError> {
-    run_unit_async(&ctx.events, "control", dispatch(ctx, name, params))
+    // Nobody is on the other end of an in-process call to take chunks.
+    let (chunks, _) = mpsc::unbounded_channel();
+    call_streaming(ctx, name, params, &chunks).await
+}
+
+/// [`call`] for a caller that is a connection: whatever the method sends
+/// to it before it answers goes down `chunks`.
+async fn call_streaming(
+    ctx: &Arc<Ctx>,
+    name: &str,
+    params: Option<Value>,
+    chunks: &UnboundedSender<Value>,
+) -> Result<Value, RpcError> {
+    run_unit_async(&ctx.events, "control", dispatch(ctx, name, params, chunks))
         .await
         .unwrap_or_else(|Faulted| {
+            faults::recovered(&ctx.log, "control", RecoveryAction::Continued);
             Err(RpcError {
                 code: -32603,
                 message: "Internal error: the request failed inside Mouser.".into(),
@@ -51,7 +66,12 @@ pub(crate) async fn call(
         })
 }
 
-async fn dispatch(ctx: &Arc<Ctx>, name: &str, params: Option<Value>) -> Result<Value, RpcError> {
+async fn dispatch(
+    ctx: &Arc<Ctx>,
+    name: &str,
+    params: Option<Value>,
+    chunks: &UnboundedSender<Value>,
+) -> Result<Value, RpcError> {
     let unknown = |message: String| RpcError {
         code: -32601,
         message,
@@ -111,13 +131,22 @@ async fn dispatch(ctx: &Arc<Ctx>, name: &str, params: Option<Value>) -> Result<V
         }
         Method::ConfigSet => {
             let p: ConfigSetParams = parse(params)?;
-            ctx.set_config(&p.key, p.value)?;
+            let origin = match p.origin {
+                SetOrigin::App => SettingOrigin::App,
+                SetOrigin::Cli => SettingOrigin::Cli,
+            };
+            ctx.set_config(&p.key, p.value, origin)?;
             json(Empty {})
         }
         Method::LoggingSet => {
             let p: LoggingSetParams = parse(params)?;
             json(ctx.set_logging(p.enabled)?)
         }
+        Method::LogsCollect => {
+            let p: LogsCollectParams = parse(Some(params.unwrap_or_else(|| json!({}))))?;
+            json(ctx.logs_collect(p).await?)
+        }
+        Method::LogsCollectStream => json(ctx.logs_collect_stream(chunks).await?),
         Method::UpdateCheck => json(ctx.update_check().await?),
         Method::UpdateApply => json(ctx.update_apply().await?),
         _ => Err(unknown(format!("{name} is not available yet"))),
@@ -143,14 +172,19 @@ async fn serve_connection(ctx: Arc<Ctx>, stream: Box<dyn Duplex>) {
                     break;
                 };
                 let request: Request = serde_json::from_str(&line).expect("well-formed JSON-RPC request");
+                let (chunks, mut sent) = mpsc::unbounded_channel();
                 let result = if request.method == Method::Subscribe.name() {
                     parse::<SubscribeParams>(request.params).map(|p| {
                         topics = p.topics;
                         json!({})
                     })
                 } else {
-                    call(&ctx, &request.method, request.params).await
+                    call_streaming(&ctx, &request.method, request.params, &chunks).await
                 };
+                // What was sent to this connection comes before the answer.
+                while let Ok(chunk) = sent.try_recv() {
+                    write_line(&mut write, &chunk).await;
+                }
                 let response = match result {
                     Ok(value) => Response::ok(request.id, value),
                     Err(error) => Response::err(request.id, error),
