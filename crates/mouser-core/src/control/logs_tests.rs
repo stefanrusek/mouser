@@ -172,6 +172,14 @@ async fn the_installed_service_writes_no_bundle_to_any_folder() {
             "logs.collect: the installed Mouser service does not write to a chosen folder; use logs.collect_stream"
         );
     }
+    // The folder is optional: the call may carry no params at all.
+    let bare = node
+        .engine
+        .control()
+        .call(Method::LogsCollect, None)
+        .await
+        .unwrap_err();
+    assert_eq!(bare.code, -32602);
     assert_eq!(std::fs::read_dir(out.path()).unwrap().count(), 0);
     assert!(!node.dir.path().join("bundles").exists());
     assert!(log_events(&node, "logs.collected").is_empty());
