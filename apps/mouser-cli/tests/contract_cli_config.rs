@@ -296,6 +296,96 @@ async fn offline_set_applies_the_engines_rules_to_every_hotkey_and_leaves_the_fi
     lab.shutdown().await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn set_is_recorded_as_a_change_made_by_the_cli() {
+    use mouser_core::ControlClient;
+    use mouser_proto::control::{SettingChange, SettingOrigin, Topic};
+
+    let lab = Lab::new();
+    let alpha = lab.add("Alpha").await;
+    let mut watcher = ControlClient::connect(alpha.control_path()).await.unwrap();
+    watcher.subscribe(vec![Topic::Config]).await.unwrap();
+    let set = alpha
+        .mouser(&["config", "set", "general.notifications", "false"])
+        .await;
+    assert_eq!(set.code, 0, "{}", set.stderr);
+    let note = watcher.next_notification().await.unwrap();
+    assert_eq!(note.method, Topic::Config);
+    let change: SettingChange = serde_json::from_value(note.params).unwrap();
+    assert_eq!(change.key, "general.notifications");
+    assert_eq!(change.origin, SettingOrigin::Cli);
+    lab.shutdown().await;
+}
+
+/// The request the CLI sends is explicit about where the change came from.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn set_sends_origin_cli_in_the_request() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    let listener = tokio::net::UnixListener::bind(nobody.control_path()).unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        let mut set_params = Value::Null;
+        while let Some(line) = lines.next_line().await.unwrap() {
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let result = if request["method"] == "config.get" {
+                json!(true)
+            } else {
+                set_params = request["params"].clone();
+                json!({})
+            };
+            let reply = json!({"jsonrpc": "2.0", "id": request["id"], "result": result});
+            write
+                .write_all(format!("{reply}\n").as_bytes())
+                .await
+                .unwrap();
+            if request["method"] == "config.set" {
+                break;
+            }
+        }
+        set_params
+    });
+    let set = nobody
+        .mouser(&["config", "set", "general.notifications", "false"])
+        .await;
+    assert_eq!(set.code, 0, "{}", set.stderr);
+    assert_eq!(
+        server.await.unwrap(),
+        json!({"key": "general.notifications", "value": false, "origin": "cli"})
+    );
+    lab.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn offline_set_of_a_bad_enable_disable_chord_exits_3_with_the_parse_reason() {
+    let lab = Lab::new();
+    let nobody = lab.offline("Nobody");
+    let dir = &nobody.user_config_dir;
+    std::fs::create_dir_all(dir).unwrap();
+    config::save(dir, &config::Config::default());
+    let before = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+    let bad = nobody
+        .mouser(&["config", "set", "hotkeys.enable_disable", "Hyper+M"])
+        .await;
+    assert_eq!((bad.code, bad.stdout.as_str()), (3, ""));
+    assert!(
+        bad.stderr.starts_with("hotkeys.enable_disable: "),
+        "{}",
+        bad.stderr
+    );
+    assert!(bad.stderr.trim().len() > "hotkeys.enable_disable: ".len());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("config.toml")).unwrap(),
+        before
+    );
+    lab.shutdown().await;
+}
+
 /// A copy of the `mouser` binary in a directory of its own, as a portable
 /// install carries it beside `MouserData/`.
 fn portable_copy(home: &std::path::Path) -> std::path::PathBuf {

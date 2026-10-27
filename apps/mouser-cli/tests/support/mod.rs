@@ -92,6 +92,8 @@ pub struct Node {
     control_path: PathBuf,
     /// Where this user's `mouser` looks for `config.toml` and `logs/`.
     pub user_config_dir: PathBuf,
+    /// This user's home folder (the parent of their Downloads folder).
+    pub home: PathBuf,
     id: Option<ComputerId>,
     _home: tempfile::TempDir,
     _config: tempfile::TempDir,
@@ -130,6 +132,7 @@ fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf, PathB
 fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf, PathBuf) {
     (
         vec![
+            ("HOME", home.to_str().unwrap().to_string()),
             ("XDG_RUNTIME_DIR", home.to_str().unwrap().to_string()),
             (
                 "XDG_CONFIG_HOME",
@@ -154,6 +157,7 @@ fn login(home: &std::path::Path) -> (Vec<(&'static str, String)>, PathBuf, PathB
     (
         vec![
             ("USERNAME", user),
+            ("USERPROFILE", home.to_str().unwrap().to_string()),
             ("APPDATA", home.to_str().unwrap().to_string()),
         ],
         pipe,
@@ -352,6 +356,7 @@ impl Lab {
             env,
             control_path,
             user_config_dir,
+            home: home.path().to_path_buf(),
             id: None,
             _home: home,
             _config: tempfile::tempdir().unwrap(),

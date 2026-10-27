@@ -43,7 +43,10 @@ pub async fn run(live: Option<Mouser>, json: bool, action: ConfigCommand) -> Res
             match live {
                 Some(mut mouser) => {
                     mouser
-                        .call(Method::ConfigSet, json!({ "key": key, "value": typed }))
+                        .call(
+                            Method::ConfigSet,
+                            json!({ "key": key, "value": typed, "origin": "cli" }),
+                        )
                         .await?;
                 }
                 None => set_file(&dir, &key, typed)?,

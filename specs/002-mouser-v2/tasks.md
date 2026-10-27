@@ -502,14 +502,14 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 15: US2-cli — As a troubleshooting agent, I want the diagnostic log to show what Mouser did and why (P1)
 
-- [ ] T358 [P] [US2-cli] Write tests `apps/mouser-cli/tests/contract_cli_logs_collect.rs`: `mouser logs collect [--out DIR] [--json]` calls `logs.collect`; text output is the bundle path, then one line per computer `<name>: included` or `<name>: not included (<offline|logging off|older version>)`; `--json` prints the method's result; exit 2 when the engine is not running (Story 2 sc. 10)
-- [ ] T359 [US2-cli] Implement `logs collect` in `apps/mouser-cli/src/logs.rs`
-- [ ] T360 [P] [US2-cli] Write tests in `apps/mouser-cli/tests/contract_cli_config.rs`: `mouser config set` sends `origin: "cli"`, and the change appears as `setting.changed origin=cli` (Story 2 sc. 8)
-- [ ] T361 [US2-cli] Send `origin: "cli"` in `apps/mouser-cli/src/config.rs`
-- [ ] T362 [P] [US2-cli] Write tests in `apps/mouser-cli/tests/contract_cli_config.rs`: offline `mouser config set hotkeys.enable_disable <bad chord>` exits 3 with `hotkeys.enable_disable: <chord parse reason>`
-- [ ] T363 [US2-cli] Validate offline `config set` with `Config::validate` in `apps/mouser-cli/src/config.rs`
-- [ ] T364 [US2-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T365 [US2-cli] Commit: phase boundary "US2-cli" (5.3)
+- [X] T358 [P] [US2-cli] Write tests `apps/mouser-cli/tests/contract_cli_logs_collect.rs`: `mouser logs collect [--out DIR] [--json]` calls `logs.collect`; text output is the bundle path, then one line per computer `<name>: included` or `<name>: not included (<offline|logging off|older version>)`; `--json` prints the method's result; exit 2 when the engine is not running (Story 2 sc. 10)
+- [X] T359 [US2-cli] Implement `logs collect` in `apps/mouser-cli/src/logs.rs`
+- [X] T360 [P] [US2-cli] Write tests in `apps/mouser-cli/tests/contract_cli_config.rs`: `mouser config set` sends `origin: "cli"`, and the change appears as `setting.changed origin=cli` (Story 2 sc. 8)
+- [X] T361 [US2-cli] Send `origin: "cli"` in `apps/mouser-cli/src/config.rs`
+- [X] T362 [P] [US2-cli] Write tests in `apps/mouser-cli/tests/contract_cli_config.rs`: offline `mouser config set hotkeys.enable_disable <bad chord>` exits 3 with `hotkeys.enable_disable: <chord parse reason>`
+- [X] T363 [US2-cli] Validate offline `config set` with `Config::validate` in `apps/mouser-cli/src/config.rs`
+- [X] T364 [US2-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T365 [US2-cli] Commit: phase boundary "US2-cli" (5.3)
 
 #### Phase 16: US3-cli — As a desk owner, I want one Mouser window where I can find everything (P2)
 
