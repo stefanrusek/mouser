@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mouser.local/schemas/status.v2.json",
+  "title": "Mouser status (control-api `status`, `mouser status --json`) — v2. Changes from v1: tray_summary, computers[].mode, problems[].kind elevated_app, problems[].app, problems[].fix values, active_computer always present.",
+  "type": "object",
+  "required": ["version", "computer", "state", "desk", "computers", "problems", "active_computer", "tray_summary"],
+  "properties": {
+    "version": { "type": "string" },
+    "computer": { "$ref": "#/$defs/computerRef" },
+    "state": { "enum": ["active", "paused"] },
+    "desk": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "pending_join": { "type": "boolean" } }
+        }
+      ]
+    },
+    "active_computer": { "type": ["string", "null"], "description": "Computer currently receiving this desk user's input as seen from here; this computer's id when Local." },
+    "tray_summary": {
+      "type": "object",
+      "required": ["state", "connection", "computers", "displays"],
+      "properties": {
+        "state": { "enum": ["active", "paused"] },
+        "connection": { "enum": ["connected", "alone", "disconnected"] },
+        "computers": { "type": "integer", "minimum": 1 },
+        "displays": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "computers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "os", "version", "connection", "permissions", "displays"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "description": "Desk-wide friendly name (Member.display_name)." },
+          "os": { "enum": ["macos", "windows", "linux"] },
+          "os_version": { "type": "string" },
+          "version": { "type": "string" },
+          "mode": { "enum": ["installed", "portable", "portable_elevated", "service", "headless"] },
+          "connection": { "enum": ["self", "connected", "reconnecting", "offline", "incompatible"] },
+          "rtt_ms": { "type": ["number", "null"], "description": "Raw; the UI rounds (FR-009)." },
+          "last_seen": { "type": ["string", "null"], "format": "date-time" },
+          "permissions": { "type": "object", "additionalProperties": { "enum": ["granted", "missing", "not_applicable"] } },
+          "limitations": { "type": "array", "items": { "type": "string" }, "description": "Only place limitations appear (FR-010)." },
+          "displays": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "problems": {
+      "type": "array",
+      "description": "Unique per (problem_id, computer). Never contains start-up platform limitations.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "computer", "message"],
+        "properties": {
+          "problem_id": { "type": "string" },
+          "kind": { "enum": ["missing_permission", "incompatible_version", "join_refused", "secure_input", "crossing_blocked", "peer_offline", "platform_limitation", "elevated_app"] },
+          "computer": { "type": "string" },
+          "message": { "type": "string" },
+          "app": { "type": ["string", "null"], "description": "Program name only (FR-003); set for elevated_app." },
+          "fix": {
+            "type": ["string", "null"],
+            "pattern": "^(open_system_settings:[a-z_]+|approve_join|open_update|cross_anyway_hint|open_arranger_edge|restart_elevated:[0-9a-f]{32}|keep_placement:[0-9a-f]{32}|update_computer:[0-9a-f]{32})$"
+          }
+        }
+      }
+    },
+    "logging": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "path": { "type": "string" } } }
+  },
+  "$defs": { "computerRef": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } } }
+}
