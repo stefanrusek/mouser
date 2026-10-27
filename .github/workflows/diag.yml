@@ -1,0 +1,14 @@
+name: diag
+on:
+  push:
+    branches: [ci-rule10]
+jobs:
+  diag:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p mouser-platform-macos --test diag_rule10 -- --nocapture --test-threads=1
+      - run: cargo test -p mouser-platform-macos --test contract_platform_macos_v2 -- --nocapture
+      - run: for i in 1 2 3 4 5; do cargo test -q -p mouser-platform-macos --test contract_platform_macos_v2 || true; done
