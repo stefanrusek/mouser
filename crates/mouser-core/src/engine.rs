@@ -492,7 +492,7 @@ impl Engine {
             config::validate(&config).expect("a loaded config is valid");
         let (clip, clip_commands) = mpsc::unbounded_channel();
         let (xfer, xfer_commands) = mpsc::unbounded_channel();
-        let crossing = Arc::new(Mutex::new(Crossing::new(
+        let mut crossing = Crossing::new(
             identity.computer_id(),
             crate::platform_os(params.platform.info().os),
             Buttons45::from_config(&config.mouse.buttons_4_5),
@@ -509,7 +509,10 @@ impl Engine {
                 drag: params.platform.file_drag(),
                 transfers: xfer.clone(),
             },
-        )));
+        );
+        crossing.landing_highlight = config.crossing.landing_highlight;
+        crossing.command_as_control = config.keyboard.command_as_control;
+        let crossing = Arc::new(Mutex::new(crossing));
         let interfaces = params.platform.interfaces();
         let release = ReleaseState::load(
             &params.config_dir.join(FOLDER),

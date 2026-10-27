@@ -109,6 +109,10 @@ async fn dispatch(
             ctx.remove_member(p.computer_id)?;
             json(Empty {})
         }
+        Method::DeskRename => {
+            ctx.rename(parse(params)?)?;
+            json(Empty {})
+        }
         Method::JoinPending => json(ctx.pending_joins()),
         Method::JoinDecide => {
             let p: JoinDecideParams = parse(params)?;

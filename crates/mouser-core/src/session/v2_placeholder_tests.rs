@@ -1,4 +1,3 @@
-use mouser_proto::ids::ComputerId;
 use mouser_proto::wire::ControlMessage;
 
 use crate::testing::*;
@@ -21,18 +20,6 @@ async fn ignored(msg: ControlMessage) {
     assert_eq!(link_of(&nodes[0], &nodes[1]), link);
     assert_eq!(connected(&nodes[0]).await, 1);
     assert_eq!(connected(&nodes[1]).await, 1);
-}
-
-// v2: replaced in T205
-#[tokio::test]
-async fn an_inbound_desk_settings_is_ignored_and_the_link_stays_up() {
-    ignored(ControlMessage::DeskSettings {
-        epoch: 1,
-        author: ComputerId([1; 16]),
-        landing_highlight: true,
-        command_as_control: false,
-    })
-    .await;
 }
 
 // v2: replaced in T226

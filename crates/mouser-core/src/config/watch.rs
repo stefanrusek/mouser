@@ -13,7 +13,7 @@ use std::sync::Arc;
 use mouser_proto::config::{Config, DESK_SHARED_KEYS};
 use mouser_proto::control::{ProblemKind, SettingOrigin};
 
-use super::{FILE, validate};
+use super::{FILE, is_desk_state_key, validate};
 use crate::engine::Ctx;
 use crate::logging::events;
 
@@ -72,10 +72,13 @@ impl Ctx {
         }
         let old = serde_json::to_value(&core.config).expect("config serializes");
         let new = serde_json::to_value(&next).expect("config serializes");
-        let shared = DESK_SHARED_KEYS.iter().any(|key| {
-            let (section, name) = key.split_once('.').expect("a key has a section");
-            old[section][name] != new[section][name]
-        });
+        let shared = DESK_SHARED_KEYS
+            .iter()
+            .filter(|key| is_desk_state_key(key))
+            .any(|key| {
+                let (section, name) = key.split_once('.').expect("a key has a section");
+                old[section][name] != new[section][name]
+            });
         self.apply_config(core, next, hotkeys, shared, false, SettingOrigin::File);
     }
 }

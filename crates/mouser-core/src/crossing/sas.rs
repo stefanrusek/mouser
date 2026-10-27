@@ -54,7 +54,7 @@ impl Ctx {
         result.map_err(|computer| {
             let name = match computer == self.me() {
                 true => self.display_name_in(&core),
-                false => core.peers[&computer].hello.display_name.clone(),
+                false => core.name_of(computer),
             };
             RpcError {
                 code: -32001,

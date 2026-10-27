@@ -54,7 +54,7 @@ impl Ctx {
                 peer.send(ControlMessage::Paused { paused });
             }
             if paused {
-                self.forget(*id, &peer.hello.display_name);
+                self.forget(*id, &core.name_of(*id));
             }
         }
         // No clipboard task means this platform shares no clipboard.
@@ -78,9 +78,9 @@ impl Ctx {
         if !Self::authed(&core, peer) {
             return Err("Paused from a computer that is not on the desk".into());
         }
+        let name = core.name_of(peer);
         let entry = core.peers.get_mut(&peer).expect("authed");
         entry.paused = paused;
-        let name = entry.hello.display_name.clone();
         self.refresh_map(&core);
         drop(core);
         if paused {

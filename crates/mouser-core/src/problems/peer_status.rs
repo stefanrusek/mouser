@@ -76,8 +76,8 @@ impl Ctx {
         status
             .problems
             .retain(|p| !is_start_up_limitation(&p.problem_id));
+        let name = core.name_of(peer);
         let entry = core.peers.get_mut(&peer).expect("authed");
-        let name = entry.hello.display_name.clone();
         let old = entry.status.replace(status.clone());
         drop(core);
         if old.as_ref() == Some(&status) {

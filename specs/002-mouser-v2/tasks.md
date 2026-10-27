@@ -295,25 +295,25 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 
 **Independent test**: `cargo test -p mouser-core --test acc_v2_us4` passes: a rename from any node reaches every node (including one offline during it), `DeskSettings` reaches ≥ 0.3.0 peers only, landing and modifier mapping follow it, and a changed panic key works without restart.
 
-- [ ] T199 [US4-core] Write the acceptance runner `crates/mouser-core/tests/acc_v2_us4.rs` and steps `crates/mouser-core/tests/steps/v2_us4.rs` for every scenario in `tests/features/v2_us4.feature`
-- [ ] T200 [P] [US4-core] Write unit tests in `crates/mouser-core/src/desk/rename_tests.rs`: `desk.rename {computer, name}` trims the name and requires "1–64 chars, trimmed", sets `Member.display_name` in `DeskState` with `epoch + 1` and broadcasts it; status, problems, notifications and `layout.get` use the member name; an invalid name returns `-32602`; with no desk it returns `-32001` `data.kind = join_refused` (Story 4 sc. 3)
-- [ ] T201 [US4-core] Implement `desk.rename` in `crates/mouser-core/src/desk/rename.rs` and register the method in `crates/mouser-core/src/control/server.rs`
-- [ ] T202 [P] [US4-core] Write unit tests in `crates/mouser-core/src/desk/replication_tests.rs`: setting `general.computer_name` renames this computer desk-wide (empty means the OS name); adopting a winning `DeskState` that renamed this computer writes the new name into this computer's `general.computer_name` with origin `desk_mate`; a computer offline during the rename adopts the higher epoch on reconnect (edge case)
-- [ ] T203 [US4-core] Implement rename adoption and `general.computer_name` write-back in `crates/mouser-core/src/desk/replication.rs`
-- [ ] T204 [P] [US4-core] Write unit tests in `crates/mouser-core/src/desk/settings_tests.rs`: a change to `crossing.landing_highlight` or `keyboard.command_as_control` sends `DeskSettings {epoch, author, landing_highlight, command_as_control}` to every authed peer ≥ `V2_SINCE`, and after each new connection; "The higher `(epoch, author)` wins"; the receiver adopts it, writes `config.toml` and logs `setting.changed origin=desk_mate from=<author>`; a 0.2.8 peer never receives it (FR-012)
-- [ ] T205 [US4-core] Implement `DeskSettings` send/adopt in `crates/mouser-core/src/desk/settings.rs`, replacing the T065 `DeskSettings` placeholder arm and deleting its placeholder test in `crates/mouser-core/src/session/v2_placeholder_tests.rs`
-- [ ] T206 [P] [US4-core] Write unit tests in `crates/mouser-core/src/crossing/receiver_tests.rs`: with `crossing.landing_highlight = false` no `Landing` event is emitted on `Enter`; with `true` (default) it is (Story 4 sc. 4)
-- [ ] T207 [US4-core] Suppress the `Landing` event when the highlight is off in `crates/mouser-core/src/crossing/receiver.rs`
-- [ ] T208 [P] [US4-core] Write unit tests in `crates/mouser-core/src/crossing/modifiers_tests.rs`: with `keyboard.command_as_control = true` a Mac controller's Command acts as Control on Windows/Linux (001 behaviour); with `false`, "Command maps to the Windows/Super key and Control to Control" (Story 4 sc. 5–6)
-- [ ] T209 [US4-core] Apply `map_usage` only when `command_as_control` is on in `crates/mouser-core/src/crossing/modifiers.rs` (lines 18–32)
-- [ ] T210 [P] [US4-core] Write unit tests in `crates/mouser-core/src/crossing/panic_tests.rs`: changing `hotkeys.panic` (format `<Key>*<count>`, count 1–5) through `config.set` takes effect without restart; the previous panic key no longer returns control (Story 4 sc. 1)
-- [ ] T211 [US4-core] Re-read the panic key on each `SettingChange` for `hotkeys.panic` in `crates/mouser-core/src/crossing/panic.rs`
-- [ ] T212 [P] [US4-core] Write unit tests in `crates/mouser-core/src/quickjump/tests.rs`: changing `hotkeys.quickjump` takes effect without restart and the previous chord no longer shows the letters (Story 4 sc. 2)
-- [ ] T213 [US4-core] Re-read the QuickJump chord on each `SettingChange` in `crates/mouser-core/src/quickjump/mod.rs`
-- [ ] T214 [P] [US4-core] Write unit tests in `crates/mouser-core/src/clipboard/targeted_tests.rs`: changing `hotkeys.targeted_paste` takes effect without restart and the previous chord no longer pastes (Story 4 sc. 2)
-- [ ] T215 [US4-core] Re-read the targeted-paste chord on each `SettingChange` in `crates/mouser-core/src/clipboard/targeted.rs`
-- [ ] T216 [US4-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T217 [US4-core] Commit: phase boundary "US4-core" (5.3)
+- [X] T199 [US4-core] Write the acceptance runner `crates/mouser-core/tests/acc_v2_us4.rs` and steps `crates/mouser-core/tests/steps/v2_us4.rs` for every scenario in `tests/features/v2_us4.feature`
+- [X] T200 [P] [US4-core] Write unit tests in `crates/mouser-core/src/desk/rename_tests.rs`: `desk.rename {computer, name}` trims the name and requires "1–64 chars, trimmed", sets `Member.display_name` in `DeskState` with `epoch + 1` and broadcasts it; status, problems, notifications and `layout.get` use the member name; an invalid name returns `-32602`; with no desk it returns `-32001` `data.kind = join_refused` (Story 4 sc. 3)
+- [X] T201 [US4-core] Implement `desk.rename` in `crates/mouser-core/src/desk/rename.rs` and register the method in `crates/mouser-core/src/control/server.rs`
+- [X] T202 [P] [US4-core] Write unit tests in `crates/mouser-core/src/desk/replication_tests.rs`: setting `general.computer_name` renames this computer desk-wide (empty means the OS name); adopting a winning `DeskState` that renamed this computer writes the new name into this computer's `general.computer_name` with origin `desk_mate`; a computer offline during the rename adopts the higher epoch on reconnect (edge case)
+- [X] T203 [US4-core] Implement rename adoption and `general.computer_name` write-back in `crates/mouser-core/src/desk/replication.rs`
+- [X] T204 [P] [US4-core] Write unit tests in `crates/mouser-core/src/desk/settings_tests.rs`: a change to `crossing.landing_highlight` or `keyboard.command_as_control` sends `DeskSettings {epoch, author, landing_highlight, command_as_control}` to every authed peer ≥ `V2_SINCE`, and after each new connection; "The higher `(epoch, author)` wins"; the receiver adopts it, writes `config.toml` and logs `setting.changed origin=desk_mate from=<author>`; a 0.2.8 peer never receives it (FR-012)
+- [X] T205 [US4-core] Implement `DeskSettings` send/adopt in `crates/mouser-core/src/desk/settings.rs`, replacing the T065 `DeskSettings` placeholder arm and deleting its placeholder test in `crates/mouser-core/src/session/v2_placeholder_tests.rs`
+- [X] T206 [P] [US4-core] Write unit tests in `crates/mouser-core/src/crossing/receiver_tests.rs`: with `crossing.landing_highlight = false` no `Landing` event is emitted on `Enter`; with `true` (default) it is (Story 4 sc. 4)
+- [X] T207 [US4-core] Suppress the `Landing` event when the highlight is off in `crates/mouser-core/src/crossing/receiver.rs`
+- [X] T208 [P] [US4-core] Write unit tests in `crates/mouser-core/src/crossing/modifiers_tests.rs`: with `keyboard.command_as_control = true` a Mac controller's Command acts as Control on Windows/Linux (001 behaviour); with `false`, "Command maps to the Windows/Super key and Control to Control" (Story 4 sc. 5–6)
+- [X] T209 [US4-core] Apply `map_usage` only when `command_as_control` is on in `crates/mouser-core/src/crossing/modifiers.rs` (lines 18–32)
+- [X] T210 [P] [US4-core] Write unit tests in `crates/mouser-core/src/crossing/panic_tests.rs`: changing `hotkeys.panic` (format `<Key>*<count>`, count 1–5) through `config.set` takes effect without restart; the previous panic key no longer returns control (Story 4 sc. 1)
+- [X] T211 [US4-core] Re-read the panic key on each `SettingChange` for `hotkeys.panic` in `crates/mouser-core/src/crossing/panic.rs`
+- [X] T212 [P] [US4-core] Write unit tests in `crates/mouser-core/src/quickjump/tests.rs`: changing `hotkeys.quickjump` takes effect without restart and the previous chord no longer shows the letters (Story 4 sc. 2)
+- [X] T213 [US4-core] Re-read the QuickJump chord on each `SettingChange` in `crates/mouser-core/src/quickjump/mod.rs`
+- [X] T214 [P] [US4-core] Write unit tests in `crates/mouser-core/src/clipboard/targeted_tests.rs`: changing `hotkeys.targeted_paste` takes effect without restart and the previous chord no longer pastes (Story 4 sc. 2)
+- [X] T215 [US4-core] Re-read the targeted-paste chord on each `SettingChange` in `crates/mouser-core/src/clipboard/targeted.rs`
+- [X] T216 [US4-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T217 [US4-core] Commit: phase boundary "US4-core" (5.3)
 
 #### Phase 8: US5-core — As a desk user, I want to control a Windows computer at its login screen, elevation prompts and administrator applications (P2)
 

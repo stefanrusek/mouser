@@ -14,8 +14,12 @@ pub const RIGHT_ALT: u32 = 0x0007_00E6;
 pub const RIGHT_META: u32 = 0x0007_00E7;
 
 /// The key to inject on a `to` computer for `usage` typed on a `from`
-/// computer's keyboard.
-pub fn map_usage(from: Os, to: Os, usage: u32) -> u32 {
+/// computer's keyboard. With `command_as_control` off every key is
+/// injected as typed: Command is the Windows key and Control is Control.
+pub fn map_usage(command_as_control: bool, from: Os, to: Os, usage: u32) -> u32 {
+    if !command_as_control {
+        return usage;
+    }
     match (from == Os::Macos, to == Os::Macos) {
         (true, false) => match usage {
             LEFT_META => LEFT_CTRL,

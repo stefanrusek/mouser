@@ -100,6 +100,7 @@ impl Ctx {
         core.peers[&peer].send(ControlMessage::DeskState(state));
         core.peers[&peer].send(ControlMessage::Displays { displays });
         core.peers[&peer].send_status(&self.peer_status());
+        self.send_settings(&core, peer);
         self.tell_paused(&core, peer);
         self.offer_release(&core, peer);
         self.refresh_map(&core);

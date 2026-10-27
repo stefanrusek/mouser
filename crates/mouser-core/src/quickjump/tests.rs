@@ -553,3 +553,31 @@ async fn a_refused_key_release_during_a_jump_is_skipped_and_the_jump_happens() {
     assert!(a.platform.is_grabbed());
     assert!(a.platform.injected().is_empty());
 }
+
+#[tokio::test]
+async fn a_changed_chord_applies_at_once_and_the_previous_one_shows_no_letters() {
+    let lab = Lab::new();
+    let nodes = docked_desk(&lab).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let (mut mine, mut theirs) = (a.engine.events(), b.engine.events());
+    let _: Empty = call(
+        a,
+        Method::ConfigSet,
+        json!({"key": "hotkeys.quickjump", "value": "Ctrl+Alt+Shift+K"}),
+    )
+    .await;
+    // The previous chord does nothing.
+    hotkey(a);
+    a_moment().await;
+    while let Ok(event) = mine.try_recv() {
+        assert!(
+            !matches!(event, EngineEvent::QuickJumpShow { .. }),
+            "the previous chord must not show letters"
+        );
+    }
+    // The new one shows them, on the whole desk.
+    chord(a, 'K');
+    let letters = shown(&mut mine).await;
+    assert_eq!(shown(&mut theirs).await, letters);
+    assert_eq!(letters.len(), 3);
+}

@@ -168,6 +168,10 @@ pub(crate) struct Crossing {
     pub targeted_paste: Chord,
     /// The QuickJump hotkey.
     pub quickjump: Chord,
+    /// `crossing.landing_highlight`: announce where the pointer lands.
+    pub landing_highlight: bool,
+    /// `keyboard.command_as_control`: a Mac's Command is Control elsewhere.
+    pub command_as_control: bool,
     /// The letters QuickJump is showing, while it is.
     pub jump: Option<Vec<(DisplayId, char)>>,
     /// The desk-mate whose QuickJump letters this computer is showing.
@@ -226,6 +230,8 @@ impl Crossing {
             bumps: Bumps::default(),
             targeted_paste,
             quickjump,
+            landing_highlight: true,
+            command_as_control: true,
             jump: None,
             letters_from: None,
             pointer: (0.0, 0.0),

@@ -524,8 +524,12 @@ impl Ctx {
             ControlMessage::ReleaseAll { .. } => self.input(peer, |c| c.on_release_all(peer)),
             ControlMessage::Panic => self.input(peer, |c| c.on_panic(peer)),
             ControlMessage::LogsRequest { request } => self.on_logs_request(peer, request),
-            // v2: replaced in T205
-            ControlMessage::DeskSettings { .. } => Ok(()),
+            ControlMessage::DeskSettings {
+                epoch,
+                author,
+                landing_highlight,
+                command_as_control,
+            } => self.on_desk_settings(peer, epoch, author, landing_highlight, command_as_control),
             // v2: replaced in T226
             ControlMessage::RestartElevated => Ok(()),
             other => Err(format!("unexpected message {other:?}")),

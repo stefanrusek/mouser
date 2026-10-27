@@ -92,13 +92,15 @@ impl Crossing {
             stream: Sequencer::after(seq_base),
             injected: Pressed::default(),
         });
-        // No subscribers is fine.
-        let _ = self.events.send(EngineEvent::Landing {
-            display: display_id,
-            x,
-            y,
-            desktop,
-        });
+        if self.landing_highlight {
+            // No subscribers is fine.
+            let _ = self.events.send(EngineEvent::Landing {
+                display: display_id,
+                x,
+                y,
+                desktop,
+            });
+        }
         self.dirty.notify_one();
         Ok(())
     }
@@ -131,14 +133,14 @@ impl Crossing {
 
     /// A key, translated for this computer's keyboard shortcuts.
     pub fn on_key(&mut self, from: ComputerId, seq: u64, usage: u32, down: bool) {
-        let me = self.os;
+        let (me, command_as_control) = (self.os, self.command_as_control);
         let Some((rx, io)) = self.receiver(from) else {
             return;
         };
         if !rx.stream.admit(seq) {
             return;
         }
-        let usage = map_usage(rx.os, me, usage);
+        let usage = map_usage(command_as_control, rx.os, me, usage);
         let (kind, injected) = press(&mut rx.injected, io, Action::Key(usage, down));
         let held = rx.injected.keys.clone();
         self.tally(kind, Some(from), &injected);

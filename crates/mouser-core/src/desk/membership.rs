@@ -70,6 +70,7 @@ impl Ctx {
         let id = core.state.desk.as_ref().expect("on a desk").desk_id;
         self.delete_desk_key(&id)?;
         core.state.desk = None;
+        core.state.settings = Default::default();
         core.desk_key = None;
         core.state.displays.clear();
         core.needs_review.clear();

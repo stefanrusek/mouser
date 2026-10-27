@@ -28,6 +28,14 @@ pub struct PersistedDesk {
     pub state: DeskState,
 }
 
+/// Which `DeskSettings` this computer holds: the higher `(epoch, author)`
+/// wins, as for the desk state. Nothing was ever changed at `default()`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsVersion {
+    pub epoch: u64,
+    pub author: Option<ComputerId>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocalState {
     pub membership: Membership,
@@ -39,6 +47,9 @@ pub struct LocalState {
     /// Keys of this computer's displays the owner removed from the layout.
     #[serde(default)]
     pub removed: BTreeSet<String>,
+    /// The version of the desk-shared settings held.
+    #[serde(default)]
+    pub settings: SettingsVersion,
 }
 
 impl Default for LocalState {
@@ -48,6 +59,7 @@ impl Default for LocalState {
             desk: None,
             displays: BTreeMap::new(),
             removed: BTreeSet::new(),
+            settings: SettingsVersion::default(),
         }
     }
 }

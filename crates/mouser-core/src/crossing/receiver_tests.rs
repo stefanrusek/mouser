@@ -744,3 +744,47 @@ async fn a_refused_press_is_not_recorded_as_held() {
     let held = &crossing.receiving.as_ref().unwrap().injected;
     assert!(held.keys.is_empty() && held.buttons.is_empty(), "{held:?}");
 }
+
+async fn set_landing(node: &TestNode, on: bool) {
+    let _: mouser_proto::control::Empty = call(
+        node,
+        Method::ConfigSet,
+        json!({"key": "crossing.landing_highlight", "value": on}),
+    )
+    .await;
+}
+
+fn landings(events: &mut tokio::sync::broadcast::Receiver<EngineEvent>) -> usize {
+    let mut count = 0;
+    while let Ok(event) = events.try_recv() {
+        if matches!(event, EngineEvent::Landing { .. }) {
+            count += 1;
+        }
+    }
+    count
+}
+
+#[tokio::test]
+async fn with_the_highlight_off_the_pointer_still_lands_but_no_landing_is_announced() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let mut events = b.engine.events();
+    set_landing(b, false).await;
+    send_to(a, b, enter(b, 30.0, 40.0, 5));
+    injected_where(&b.platform, "the pointer", |i| {
+        *i == Injected::MotionAbs { x: 30.0, y: 40.0 }
+    })
+    .await;
+    settle().await;
+    assert_eq!(landings(&mut events), 0);
+    // Turned on again, the next crossing is announced.
+    set_landing(b, true).await;
+    send_to(a, b, enter(b, 50.0, 60.0, 9));
+    injected_where(&b.platform, "the pointer again", |i| {
+        *i == Injected::MotionAbs { x: 50.0, y: 60.0 }
+    })
+    .await;
+    settle().await;
+    assert_eq!(landings(&mut events), 1);
+}

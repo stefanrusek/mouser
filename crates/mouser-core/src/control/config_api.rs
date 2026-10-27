@@ -9,7 +9,7 @@
 use crate::lock::LockExt;
 use std::sync::{Arc, MutexGuard};
 
-use mouser_proto::config::{Config, DESK_SHARED_KEYS};
+use mouser_proto::config::Config;
 use mouser_proto::control::{RpcError, SettingOrigin};
 use mouser_proto::wire::ControlMessage;
 use serde_json::Value;
@@ -44,7 +44,7 @@ impl Ctx {
         let core = self.core.guard();
         let (next, hotkeys) =
             config::with_value(&core.config, key, value).map_err(|e| invalid(e.to_string()))?;
-        let shared = DESK_SHARED_KEYS.contains(&key);
+        let shared = config::is_desk_state_key(key);
         self.apply_config(core, next, hotkeys, shared, true, origin);
         Ok(())
     }
@@ -62,6 +62,9 @@ impl Ctx {
         origin: SettingOrigin,
     ) {
         let name_changed = next.general.computer_name != core.config.general.computer_name;
+        let settings_changed = next.crossing.landing_highlight
+            != core.config.crossing.landing_highlight
+            || next.keyboard.command_as_control != core.config.keyboard.command_as_control;
         let changes = changes::diff(&core.config, &next, origin, None);
         core.config = next;
         if save {
@@ -77,6 +80,8 @@ impl Ctx {
             crossing.buttons = Buttons45::from_config(&core.config.mouse.buttons_4_5);
             crossing.targeted_paste = targeted_paste;
             crossing.quickjump = quickjump;
+            crossing.landing_highlight = core.config.crossing.landing_highlight;
+            crossing.command_as_control = core.config.keyboard.command_as_control;
             if crossing.panic.spec() != panic {
                 crossing.panic = PanicDetector::new(panic);
             }
@@ -84,8 +89,16 @@ impl Ctx {
         if matches!(core.state.membership, Membership::Member(_)) {
             self.set_autostart(core.config.general.start_at_login);
         }
+        if name_changed && core.state.desk.is_some() {
+            // The desk names this computer as its owner now says.
+            let name = self.display_name_in(&core);
+            self.set_member_name(&mut core, self.me(), &name);
+        }
         if shared {
             self.share_config(&mut core);
+        }
+        if settings_changed {
+            self.share_settings(&mut core);
         }
         drop(core);
         self.publish_changes(changes);

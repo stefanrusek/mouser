@@ -311,3 +311,64 @@ async fn the_hotkey_works_for_a_controlled_computer_too() {
         [ClipRep::Text("from Beta".into())]
     );
 }
+
+#[tokio::test]
+async fn a_changed_hotkey_applies_to_forwarded_keys_at_once_and_the_old_one_stops() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    a.platform
+        .set_local_clipboard(vec![ClipRep::Text("from Alpha".into())]);
+    eventually("Beta to hold it", || async {
+        b.platform.clipboard_contents() == [ClipRep::Text("from Alpha".into())]
+    })
+    .await;
+    b.platform
+        .set_local_clipboard(vec![ClipRep::Text("from Beta".into())]);
+    eventually("Alpha to hold it", || async {
+        a.platform.clipboard_contents() == [ClipRep::Text("from Beta".into())]
+    })
+    .await;
+    // Beta is driven from Alpha's keyboard; Beta's hotkey is changed there.
+    let _: mouser_proto::control::Empty = call(
+        b,
+        Method::ConfigSet,
+        json!({"key": "hotkeys.targeted_paste", "value": "Ctrl+Alt+P"}),
+    )
+    .await;
+    push_right(a);
+    injected_where(&b.platform, "the pointer on Beta", |i| {
+        matches!(i, mouser_testkit::Injected::MotionAbs { .. })
+    })
+    .await;
+    let press = |usages: &[u32], key: u32| {
+        for usage in usages {
+            a.platform.send_input(LocalInput::Key {
+                usage: *usage,
+                down: true,
+            });
+        }
+        for down in [true, false] {
+            a.platform.send_input(LocalInput::Key { usage: key, down });
+        }
+        for usage in usages.iter().rev() {
+            a.platform.send_input(LocalInput::Key {
+                usage: *usage,
+                down: false,
+            });
+        }
+    };
+    // The previous chord no longer pastes on Beta.
+    press(&[LEFT_CTRL, LEFT_ALT, LEFT_SHIFT], V);
+    settle().await;
+    assert_eq!(
+        b.platform.clipboard_contents(),
+        [ClipRep::Text("from Beta".into())]
+    );
+    // The new one does.
+    press(&[LEFT_CTRL, LEFT_ALT], P);
+    eventually("the new chord to paste", || async {
+        b.platform.clipboard_contents() == [ClipRep::Text("from Alpha".into())]
+    })
+    .await;
+}

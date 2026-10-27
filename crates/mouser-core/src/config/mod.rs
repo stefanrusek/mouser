@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::clipboard::targeted::Chord;
 use crate::crossing::panic::PanicSpec;
-pub use mouser_proto::config::{Config, ConfigError};
+pub use mouser_proto::config::{Config, ConfigError, DESK_SHARED_KEYS};
 
 /// The release URL 0.1.x wrote as its default: a literal `<owner>` that
 /// never resolves. A file still holding it gets the current default.
@@ -15,8 +15,15 @@ const PLACEHOLDER_RELEASE_URL: &str = "https://api.github.com/repos/<owner>/mous
 /// File name inside the config directory.
 pub const FILE: &str = "config.toml";
 
-/// The keys that take only `true` or `false`, and say so in those words.
-const BOOLEAN_KEYS: [&str; 2] = ["crossing.landing_highlight", "keyboard.command_as_control"];
+/// The desk-shared keys that travel as `DeskSettings`, with a version of
+/// their own, instead of in the desk state. They take only `true` or
+/// `false`, and say so in those words.
+const SETTINGS_KEYS: [&str; 2] = ["crossing.landing_highlight", "keyboard.command_as_control"];
+
+/// A desk-shared key that travels in the desk state.
+pub fn is_desk_state_key(key: &str) -> bool {
+    DESK_SHARED_KEYS.contains(&key) && !SETTINGS_KEYS.contains(&key)
+}
 
 /// The hotkeys the engine parses out of a valid config: the panic gesture,
 /// the targeted-paste chord and the QuickJump chord.
@@ -92,7 +99,7 @@ pub fn with_value(
     let (section, name) = key.split_once('.').expect("a leaf key has a section");
     tree[section][name] = value;
     let next: Config = serde_json::from_value(tree).map_err(|e| {
-        if BOOLEAN_KEYS.contains(&key) {
+        if SETTINGS_KEYS.contains(&key) {
             rejected(key, "must be true or false")
         } else {
             rejected(key, e)

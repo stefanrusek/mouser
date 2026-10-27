@@ -282,3 +282,82 @@ mod on_the_wire {
         .await;
     }
 }
+
+mod reconfigured {
+    use mouser_platform::LocalInput;
+    use mouser_proto::control::{Empty, Method};
+    use mouser_testkit::Injected;
+    use serde_json::json;
+
+    use crate::testing::*;
+
+    const ESC: u32 = 0x0007_0029;
+    const F5: u32 = 0x0007_003E;
+
+    fn tap(node: &TestNode, usage: u32) {
+        for down in [true, false] {
+            node.platform.send_input(LocalInput::Key { usage, down });
+        }
+    }
+
+    #[tokio::test]
+    async fn a_changed_panic_key_works_at_once_and_the_previous_one_no_longer_does() {
+        let lab = Lab::new();
+        let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+        let (a, b) = (&nodes[0], &nodes[1]);
+        let _: Empty = call(
+            a,
+            Method::ConfigSet,
+            json!({"key": "hotkeys.panic", "value": "F5*3"}),
+        )
+        .await;
+        push_right(a);
+        eventually("the grab", || async { a.platform.is_grabbed() }).await;
+        // The previous gesture is now only keys, delivered to Beta.
+        tap(a, ESC);
+        tap(a, ESC);
+        let escapes = || {
+            b.platform
+                .injected()
+                .iter()
+                .filter(|i| {
+                    matches!(
+                        i,
+                        Injected::Key {
+                            usage: ESC,
+                            down: true
+                        }
+                    )
+                })
+                .count()
+        };
+        eventually("both escapes to arrive", || async { escapes() == 2 }).await;
+        assert!(a.platform.is_grabbed());
+        // Two presses of the new key are not enough; the third is the panic.
+        tap(a, F5);
+        tap(a, F5);
+        eventually("two F5s to arrive", || async {
+            b.platform
+                .injected()
+                .iter()
+                .filter(|i| {
+                    matches!(
+                        i,
+                        Injected::Key {
+                            usage: F5,
+                            down: true
+                        }
+                    )
+                })
+                .count()
+                == 2
+        })
+        .await;
+        assert!(a.platform.is_grabbed());
+        tap(a, F5);
+        eventually("control to come home", || async {
+            !a.platform.is_grabbed()
+        })
+        .await;
+    }
+}
