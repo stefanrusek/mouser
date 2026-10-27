@@ -11,8 +11,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fetch --locked && cargo xtask bootstrap
       - run: cargo llvm-cov -p mouser-platform-macos --text --output-path cov.txt || true
-      - run: for i in 1 2; do cargo llvm-cov -p mouser-platform-macos --text --output-path cov$i.txt || true; done
+      - run: cargo llvm-cov -p mouser-proto -p mouser-platform -p mouser-testkit -p mouser-core -p mouser-platform-macos -p mouser-app -p mouser-cli -p xtask --ignore-filename-regex '(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\.rs)' --show-missing-lines 2>&1 | grep -E "capture.rs|^TOTAL|Uncovered" -A1 || true
+      - run: cargo llvm-cov report --ignore-filename-regex '(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\.rs)' --text --output-path cov.txt; cargo llvm-cov report --ignore-filename-regex '(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\.rs)' --json --output-path cov.json
       - uses: actions/upload-artifact@v4
         with:
           name: cov
-          path: cov*.txt
+          path: cov.*
