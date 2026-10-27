@@ -51,3 +51,12 @@ fn delegates_permissions_interfaces_and_autostart_status() {
             .is_none()
     );
 }
+
+#[test]
+fn delegates_the_foreground_app_query() {
+    // Read-only NSWorkspace query; a headless runner may have no front app.
+    if let Some(app) = MacPlatform::new().foreground_app() {
+        assert!(!app.name.is_empty());
+        assert!(!app.admin && !app.outranks_mouser);
+    }
+}
