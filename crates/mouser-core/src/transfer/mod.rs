@@ -30,6 +30,7 @@ mod progress_tests;
 #[cfg(test)]
 mod space_tests;
 
+use crate::lock::LockExt;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -61,7 +62,7 @@ impl Ctx {
         if !drag::is_drag(&message, &self.transfer_ids) {
             return self.clipboard_message(peer, message);
         }
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("file transfer traffic from a computer that is not on the desk".into());
         }
@@ -110,7 +111,7 @@ impl Ctx {
         for out in outs {
             match out {
                 Out::To(peer, message) => {
-                    if let Some(entry) = self.core.lock().unwrap().peers.get(&peer) {
+                    if let Some(entry) = self.core.guard().peers.get(&peer) {
                         entry.send(message);
                     }
                 }
@@ -119,7 +120,7 @@ impl Ctx {
                     transfer,
                     files,
                 } => {
-                    if let Some(entry) = self.core.lock().unwrap().peers.get(&to) {
+                    if let Some(entry) = self.core.guard().peers.get(&to) {
                         self.stream_files(entry.conn.clone(), transfer, files);
                     }
                 }
@@ -129,7 +130,7 @@ impl Ctx {
                     std::thread::Builder::new()
                         .name("mouser-drag".into())
                         .spawn(move || {
-                            let dropped = drag.lock().unwrap().begin_incoming(names);
+                            let dropped = drag.guard().begin_incoming(names);
                             // A drag that was cancelled ends quietly. The engine
                             // outlives the drag unless it is shutting down.
                             let _ = commands.send(match dropped {
@@ -144,14 +145,13 @@ impl Ctx {
                     index,
                     decision,
                 } => {
-                    let waiting = self.xfer_waiters.lock().unwrap().remove(&(id, index));
+                    let waiting = self.xfer_waiters.guard().remove(&(id, index));
                     // The stream may have been cut while the user decided.
                     let _ = waiting.expect("a stream waits for this").send(decision);
                 }
                 Out::Forget { id } => {
                     self.xfer_waiters
-                        .lock()
-                        .unwrap()
+                        .guard()
                         .retain(|(waiting, _), _| *waiting != id);
                 }
                 Out::Notify(params) => {
@@ -175,7 +175,7 @@ impl Ctx {
         mut stream: quinn::RecvStream,
     ) {
         let (tell, told) = oneshot::channel();
-        self.xfer_waiters.lock().unwrap().insert((id, index), tell);
+        self.xfer_waiters.guard().insert((id, index), tell);
         // The engine runs whenever a transfer id is known.
         let _ = self.xfer.send(Command::ItemStart { id, index });
         // The engine gives up on the transfer when its computer goes offline.

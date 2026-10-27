@@ -3,6 +3,7 @@
 //! of the connection (unique per connection), the desk id and the sender, so a
 //! proof cannot be replayed on another connection or reflected to its sender.
 
+use crate::lock::LockExt;
 use hmac::{Hmac, KeyInit, Mac};
 use mouser_proto::ids::{ComputerId, DeskId};
 use mouser_proto::log::LogLevel;
@@ -76,7 +77,7 @@ impl Ctx {
         peer: ComputerId,
         hmac: [u8; 32],
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let (Some(key), Some(desk)) = (core.desk_key, core.state.desk.as_ref().map(|d| d.desk_id))
         else {
             return Err("DeskAuth while not on a desk".into());

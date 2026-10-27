@@ -9,6 +9,8 @@ pub mod redial;
 #[cfg(test)]
 mod auth_tests;
 #[cfg(test)]
+mod fault_tests;
+#[cfg(test)]
 mod handshake_tests;
 #[cfg(test)]
 mod liveness_tests;
@@ -17,6 +19,7 @@ mod redial_tests;
 #[cfg(test)]
 mod v2_placeholder_tests;
 
+use crate::lock::LockExt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -30,6 +33,7 @@ use tokio::task::JoinSet;
 
 use crate::discovery::Found;
 use crate::engine::{Ctx, Outgoing, Peer, Phase};
+use crate::faults::{Faulted, run_unit};
 use crate::transport::{FrameReader, FrameWriter, Link, Transport};
 use handshake::{PeerHello, exchange, incompatibility};
 
@@ -73,7 +77,13 @@ impl Drop for LinkGuard {
     }
 }
 
-async fn read_loop(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, mut reader: FrameReader) {
+async fn read_loop(
+    ctx: Arc<Ctx>,
+    peer: ComputerId,
+    link_id: u64,
+    conn: quinn::Connection,
+    mut reader: FrameReader,
+) {
     let _guard = LinkGuard {
         ctx: ctx.clone(),
         peer,
@@ -85,16 +95,33 @@ async fn read_loop(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, mut reader: Fr
         if !ctx.is_current(peer, link_id) {
             break;
         }
-        ctx.on_message(peer, msg)
-            .expect("peer followed the protocol");
+        match run_unit(&ctx.events, "read_loop", || ctx.on_message(peer, msg)) {
+            Ok(Ok(())) => {}
+            // The peer broke the protocol: this link ends, the desk heals
+            // by the usual re-dial.
+            Ok(Err(_violation)) => {
+                conn.close(0u32.into(), b"protocol");
+                break;
+            }
+            Err(Faulted) => {
+                ctx.fault_link(&conn);
+                break;
+            }
+        }
     }
 }
 
 /// Applies the motion datagrams of `peer` until the connection ends.
 async fn motion_loop(ctx: Arc<Ctx>, peer: ComputerId, conn: quinn::Connection) {
     while let Ok(bytes) = conn.read_datagram().await {
-        let motion = postcard::from_bytes(&bytes).expect("well-formed datagram");
-        ctx.crossing.lock().unwrap().on_motion(peer, motion);
+        let handled = run_unit(&ctx.events, "motion_loop", || {
+            let motion = postcard::from_bytes(&bytes).expect("well-formed datagram");
+            ctx.crossing.guard().on_motion(peer, motion);
+        });
+        if handled.is_err() {
+            ctx.fault_link(&conn);
+            break;
+        }
     }
 }
 
@@ -129,7 +156,7 @@ struct DialingGuard {
 
 impl Drop for DialingGuard {
     fn drop(&mut self) {
-        self.ctx.core.lock().unwrap().dialing.remove(&self.peer);
+        self.ctx.core.guard().dialing.remove(&self.peer);
     }
 }
 
@@ -139,6 +166,14 @@ async fn watch_closed(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, conn: quinn
 }
 
 impl Ctx {
+    /// A unit of work on this link faulted: control comes back here, nothing
+    /// stays held, and the link is closed with reason `fault` so that the
+    /// redial brings it back.
+    fn fault_link(&self, conn: &quinn::Connection) {
+        self.crossing.guard().recover_after_fault();
+        conn.close(0u32.into(), b"fault");
+    }
+
     /// Dial `addr` and exchange `Hello`s; `None` if unreachable, not the
     /// expected computer, or the peer hung up.
     pub(crate) async fn dial(
@@ -229,7 +264,7 @@ impl Ctx {
             &hello,
         );
         {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             let same_desk = core.state.desk.as_ref().map(|d| d.desk_id) == hello.desk_id
                 && hello.desk_id.is_some();
             let phase = match (compatible, join.is_some()) {
@@ -274,7 +309,7 @@ impl Ctx {
         if compatible {
             self.problems
                 .clear(ProblemKind::IncompatibleVersion, &peer.to_string());
-            self.spawn(read_loop(self.clone(), peer, link_id, reader));
+            self.spawn(read_loop(self.clone(), peer, link_id, conn.clone(), reader));
             self.spawn(motion_loop(self.clone(), peer, conn.clone()));
             self.spawn(file_loop(self.clone(), conn.clone()));
         } else {
@@ -297,8 +332,7 @@ impl Ctx {
     /// Whether `link_id` is the current connection to `peer`.
     pub(crate) fn is_current(&self, peer: ComputerId, link_id: u64) -> bool {
         self.core
-            .lock()
-            .unwrap()
+            .guard()
             .peers
             .get(&peer)
             .is_some_and(|p| p.link_id == link_id)
@@ -307,7 +341,7 @@ impl Ctx {
     /// Forget a peer whose link ended (unless a newer link replaced it).
     pub(crate) fn on_link_closed(&self, peer: ComputerId, link_id: u64) {
         let (waiting, name) = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             if core.peers.get(&peer).is_none_or(|p| p.link_id != link_id) {
                 return;
             }
@@ -346,10 +380,10 @@ impl Ctx {
         peer: ComputerId,
         apply: impl FnOnce(&mut crate::crossing::Crossing),
     ) -> Result<(), String> {
-        if !Self::authed(&self.core.lock().unwrap(), peer) {
+        if !Self::authed(&self.core.guard(), peer) {
             return Err("input from a computer that is not on the desk".into());
         }
-        apply(&mut self.crossing.lock().unwrap());
+        apply(&mut self.crossing.guard());
         Ok(())
     }
 
@@ -359,7 +393,7 @@ impl Ctx {
         peer: ComputerId,
         msg: ControlMessage,
     ) -> Result<(), String> {
-        if let Some(entry) = self.core.lock().unwrap().peers.get_mut(&peer) {
+        if let Some(entry) = self.core.guard().peers.get_mut(&peer) {
             if entry.phase == Phase::Departed {
                 return Ok(());
             }
@@ -405,8 +439,7 @@ impl Ctx {
                 ..
             } => self
                 .crossing
-                .lock()
-                .unwrap()
+                .guard()
                 .on_enter(peer, display_id, x, y, seq_base),
             ControlMessage::Key {
                 seq, usage, down, ..

@@ -1,6 +1,7 @@
 //! `Engine`: startup and shutdown, composing identity, state, config,
 //! discovery, transport, desk and control modules.
 
+use crate::lock::LockExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ use crate::crossing::buttons::Buttons45;
 use crate::crossing::{Crossing, Host};
 use crate::desk::join::Requests;
 use crate::discovery::{Advert, Discovery, MdnsDiscovery};
+use crate::faults::run_unit;
 use crate::identity::Identity;
 use crate::logging::Log;
 use crate::problems::Problems;
@@ -128,6 +130,8 @@ pub enum EngineEvent {
     /// QuickJump ended (a letter was chosen, or it was cancelled): remove the
     /// letters.
     QuickJumpHide,
+    /// A unit of work faulted and was recovered from (`where` names it).
+    Fault { r#where: String },
 }
 
 /// Where a connection to a peer is in its life.
@@ -261,7 +265,7 @@ impl Ctx {
     }
 
     pub fn display_name(&self) -> String {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         self.display_name_in(&core)
     }
 
@@ -290,7 +294,7 @@ impl Ctx {
 
     /// The `Hello` this computer sends first on every connection.
     pub fn hello(&self) -> ControlMessage {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         ControlMessage::Hello {
             protocol_version: self.protocol_version,
             mouser_version: self.mouser_version.clone(),
@@ -332,7 +336,7 @@ impl Ctx {
     /// Tell the network what this computer is and which desk it is on.
     pub fn announce(&self) {
         let advert = {
-            let core = self.core.lock().unwrap();
+            let core = self.core.guard();
             Advert {
                 computer: self.me(),
                 display_name: self.display_name_in(&core),
@@ -348,20 +352,22 @@ impl Ctx {
         self.discovery.announce(&advert);
     }
 
-    /// Persist the state, and the desk key in the secret store.
-    pub fn persist(&self, core: &Core) {
-        core.state.save(&self.state_path());
+    /// Persist the state. When `state.json` cannot be written the in-memory
+    /// state is kept (and written by the next change that can be); callers
+    /// do not fail because of it.
+    pub fn persist(&self, core: &Core) -> std::io::Result<()> {
+        core.state.save(&self.state_path())
     }
 
     /// A failing store is an ordinary failure (locked keychain, full disk):
     /// callers report it and leave their state alone. It must never panic
     /// while the core lock or the store lock is held, which would poison it.
     pub fn store_desk_key(&self, desk: &DeskId, key: &[u8; 32]) -> mouser_platform::Result<()> {
-        self.secrets.lock().unwrap().set(&desk_key_name(desk), key)
+        self.secrets.guard().set(&desk_key_name(desk), key)
     }
 
     pub fn delete_desk_key(&self, desk: &DeskId) -> mouser_platform::Result<()> {
-        self.secrets.lock().unwrap().delete(&desk_key_name(desk))
+        self.secrets.guard().delete(&desk_key_name(desk))
     }
 
     /// Send the current `status` to subscribers.
@@ -609,7 +615,7 @@ impl Engine {
 
     /// The desk's layout (empty when this computer is not on a desk).
     pub fn layout(&self) -> Layout {
-        let core = self.ctx.core.lock().unwrap();
+        let core = self.ctx.core.guard();
         core.state
             .desk
             .as_ref()
@@ -619,15 +625,18 @@ impl Engine {
 
     /// Displays whose automatic placement has not been reviewed.
     pub fn needs_review(&self) -> Vec<DisplayId> {
-        let core = self.ctx.core.lock().unwrap();
+        let core = self.ctx.core.guard();
         core.needs_review.iter().cloned().collect()
     }
 
-    /// Close every connection, leave the network and stop all tasks.
+    /// Close every connection, leave the network and stop all tasks. In this
+    /// order: stop input (the pointer is shown again, what is held is
+    /// released and the computer being driven is told to let go), then
+    /// close the links.
     pub async fn shutdown(self) {
         drop(self.watch);
         self.ctx.stop_input();
-        for peer in self.ctx.core.lock().unwrap().peers.values() {
+        for peer in self.ctx.core.guard().peers.values() {
             peer.conn.close(0u32.into(), b"shutdown");
         }
         self.ctx.transport.close();
@@ -667,16 +676,22 @@ async fn reconcile_loop(ctx: Arc<Ctx>, mut config_text: String) {
     // (`config_text` starts empty unless the file was rejected at start).
     loop {
         tick.tick().await;
-        ctx.reload_config(&mut config_text);
-        ctx.reconcile();
-        ctx.redial_pending();
-        ctx.check_liveness();
-        ctx.try_start_input();
-        ctx.sync_secure_input();
-        if ctx.sync_permission_problems() {
-            ctx.notify_status();
+        // A fault in one tick returns control here and the loop carries on.
+        let ticked = run_unit(&ctx.events, "reconcile", || {
+            ctx.reload_config(&mut config_text);
+            ctx.reconcile();
+            ctx.redial_pending();
+            ctx.check_liveness();
+            ctx.try_start_input();
+            ctx.sync_secure_input();
+            if ctx.sync_permission_problems() {
+                ctx.notify_status();
+            }
+            ctx.sync_peer_status();
+        });
+        if ticked.is_err() {
+            ctx.crossing.guard().recover_after_fault();
         }
-        ctx.sync_peer_status();
     }
 }
 
@@ -694,7 +709,7 @@ impl Ctx {
     /// Only the lower `ComputerId` dials, so a pair never connects twice.
     pub fn reconcile(self: &Arc<Self>) {
         let found = self.discovery.found();
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let my_desk = core.state.desk.as_ref().map(|d| d.desk_id);
         for f in found {
             let known = core.peers.contains_key(&f.computer) || core.dialing.contains(&f.computer);

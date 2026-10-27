@@ -10,6 +10,7 @@ mod filter_tests;
 #[cfg(test)]
 mod tests;
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::net::{IpAddr, SocketAddr, SocketAddrV6};
 use std::sync::{Arc, Mutex};
@@ -177,8 +178,7 @@ impl MdnsDiscovery {
             .expect("mDNS daemon alive");
         let interfaces = Arc::new(Mutex::new(interfaces));
         let allowed = interfaces.clone();
-        let predicate =
-            IfPredicate::new(move |i| is_enabled(&allowed.lock().unwrap(), &i.name, i.ip()));
+        let predicate = IfPredicate::new(move |i| is_enabled(&allowed.guard(), &i.name, i.ip()));
         daemon
             .enable_interface(IfKind::Predicate(predicate))
             .expect("mDNS daemon alive");
@@ -190,11 +190,11 @@ impl MdnsDiscovery {
                 match event {
                     ServiceEvent::ServiceResolved(resolved) => {
                         if let Some(f) = found_from(&resolved).filter(|f| f.computer != own) {
-                            seen.lock().unwrap().insert(resolved.fullname.clone(), f);
+                            seen.guard().insert(resolved.fullname.clone(), f);
                         }
                     }
                     ServiceEvent::ServiceRemoved(_, fullname) => {
-                        seen.lock().unwrap().remove(&fullname);
+                        seen.guard().remove(&fullname);
                     }
                     _ => {}
                 }
@@ -210,11 +210,11 @@ impl MdnsDiscovery {
 
     /// Addresses announced now: those of physical LAN interfaces.
     fn announced_addrs(&self) -> Vec<IpAddr> {
-        advertised_addrs(&self.interfaces.lock().unwrap())
+        advertised_addrs(&self.interfaces.guard())
     }
 
     fn unregister(&self) {
-        if let Some(fullname) = self.registered.lock().unwrap().take() {
+        if let Some(fullname) = self.registered.guard().take() {
             self.daemon
                 .unregister(&fullname)
                 .expect("mDNS daemon alive")
@@ -228,16 +228,16 @@ impl Discovery for MdnsDiscovery {
     fn announce(&self, advert: &Advert) {
         self.unregister();
         let info = service_info(advert, &self.announced_addrs());
-        *self.registered.lock().unwrap() = Some(info.get_fullname().to_string());
+        *self.registered.guard() = Some(info.get_fullname().to_string());
         self.daemon.register(info).expect("mDNS daemon alive");
     }
 
     fn interfaces_changed(&self, interfaces: Vec<NetInterface>) {
-        *self.interfaces.lock().unwrap() = interfaces;
+        *self.interfaces.guard() = interfaces;
     }
 
     fn found(&self) -> Vec<Found> {
-        self.found.lock().unwrap().values().cloned().collect()
+        self.found.guard().values().cloned().collect()
     }
 
     fn stop(&self) {

@@ -2,6 +2,7 @@
 //! cannot be typed through ordinary input injection, so the controller asks
 //! the active computer's platform to signal it.
 
+use crate::lock::LockExt;
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::Os;
 use mouser_proto::wire::ControlMessage;
@@ -48,8 +49,8 @@ impl Crossing {
 impl Ctx {
     /// The control API's `send_cad`.
     pub(crate) fn send_cad(&self) -> Result<(), RpcError> {
-        let core = self.core.lock().unwrap();
-        let result = self.crossing.lock().unwrap().send_cad();
+        let core = self.core.guard();
+        let result = self.crossing.guard().send_cad();
         result.map_err(|computer| {
             let name = match computer == self.me() {
                 true => self.display_name_in(&core),

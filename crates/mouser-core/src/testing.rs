@@ -1,8 +1,10 @@
 //! Helpers for unit tests that run real engines on loopback: an in-process
 //! discovery registry and a way to start named nodes and call their API.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -28,15 +30,14 @@ pub(crate) struct Registry {
 impl Registry {
     pub fn advert_of(&self, computer: ComputerId) -> Option<Advert> {
         self.adverts
-            .lock()
-            .unwrap()
+            .guard()
             .get(&computer)
             .map(|(advert, _)| advert.clone())
     }
 
     /// Stop `computer` being visible, as when its mDNS records expire.
     pub fn hide(&self, computer: ComputerId) {
-        self.adverts.lock().unwrap().remove(&computer);
+        self.adverts.guard().remove(&computer);
     }
 }
 
@@ -51,33 +52,32 @@ pub(crate) struct Browser {
 impl Browser {
     /// Every advert announced, in order.
     pub fn announcements(&self) -> Vec<Advert> {
-        self.announced.lock().unwrap().clone()
+        self.announced.guard().clone()
     }
 
     /// Every interface list the engine reported after a network change.
     pub fn interface_changes(&self) -> Vec<Vec<NetInterface>> {
-        self.interface_changes.lock().unwrap().clone()
+        self.interface_changes.guard().clone()
     }
 }
 
 impl Discovery for Browser {
     fn announce(&self, advert: &Advert) {
-        *self.own.lock().unwrap() = Some(advert.computer);
-        self.announced.lock().unwrap().push(advert.clone());
+        *self.own.guard() = Some(advert.computer);
+        self.announced.guard().push(advert.clone());
         self.registry
             .adverts
-            .lock()
-            .unwrap()
+            .guard()
             .insert(advert.computer, (advert.clone(), self.me.clone()));
     }
 
     fn interfaces_changed(&self, interfaces: Vec<NetInterface>) {
-        self.interface_changes.lock().unwrap().push(interfaces);
+        self.interface_changes.guard().push(interfaces);
     }
 
     fn found(&self) -> Vec<Found> {
-        let own = *self.own.lock().unwrap();
-        let adverts = self.registry.adverts.lock().unwrap();
+        let own = *self.own.guard();
+        let adverts = self.registry.adverts.guard();
         adverts
             .values()
             .filter(|(a, _)| Some(a.computer) != own)
@@ -95,11 +95,10 @@ impl Discovery for Browser {
     }
 
     fn stop(&self) {
-        let own = self.own.lock().unwrap().take();
+        let own = self.own.guard().take();
         self.registry
             .adverts
-            .lock()
-            .unwrap()
+            .guard()
             .retain(|id, _| Some(*id) != own);
     }
 }
@@ -540,7 +539,7 @@ pub(crate) async fn ready(nodes: &[TestNode]) {
     for node in nodes {
         eventually("every computer to be connected and placed", || async {
             connected(node).await == nodes.len() - 1
-                && node.engine.ctx.crossing.lock().unwrap().map.placed.len() == nodes.len()
+                && node.engine.ctx.crossing.guard().map.placed.len() == nodes.len()
         })
         .await;
     }
@@ -577,7 +576,7 @@ pub(crate) async fn injected_where(
 
 /// Send `msg` from `from` to its desk-mate `to` over the control stream.
 pub(crate) fn send_to(from: &TestNode, to: &TestNode, msg: mouser_proto::wire::ControlMessage) {
-    from.engine.ctx.core.lock().unwrap().peers[&to.engine.computer_id()].send(msg);
+    from.engine.ctx.core.guard().peers[&to.engine.computer_id()].send(msg);
 }
 
 /// Send a motion datagram from `from` to `to`.
@@ -587,7 +586,7 @@ pub(crate) fn datagram_to(
     motion: &mouser_proto::wire::MotionDatagram,
 ) {
     let bytes = postcard::to_stdvec(motion).unwrap();
-    from.engine.ctx.core.lock().unwrap().peers[&to.engine.computer_id()]
+    from.engine.ctx.core.guard().peers[&to.engine.computer_id()]
         .conn
         .send_datagram(bytes.into())
         .unwrap();
@@ -620,8 +619,7 @@ pub(crate) fn link_of(
     node.engine
         .ctx
         .core
-        .lock()
-        .unwrap()
+        .guard()
         .peers
         .get(&other.engine.computer_id())
         .map(|p| (p.link_id, p.dialed, p.phase))
@@ -660,7 +658,7 @@ pub(crate) async fn wait_connection(
             .find(|c| c.id == id)
             .expect("a desk member");
         let done = computer.connection == state;
-        *seen.lock().unwrap() = Some(computer);
+        *seen.guard() = Some(computer);
         done
     })
     .await;
@@ -708,8 +706,7 @@ pub(crate) fn mapped(node: &TestNode) -> Vec<String> {
         .engine
         .ctx
         .crossing
-        .lock()
-        .unwrap()
+        .guard()
         .map
         .placed
         .iter()
@@ -729,8 +726,7 @@ pub(crate) fn epoch_of(node: &TestNode) -> u64 {
     node.engine
         .ctx
         .core
-        .lock()
-        .unwrap()
+        .guard()
         .state
         .desk
         .as_ref()
@@ -796,6 +792,151 @@ impl mouser_platform::InputCapture for NoGrabCapture {
 
     fn stop(&mut self) {
         self.0.stop()
+    }
+}
+
+/// Knobs of a [`Flaky`] computer, shared with the test.
+#[derive(Clone, Default)]
+pub(crate) struct Knobs {
+    /// `set_grabbed(true)` fails with an operating-system error.
+    pub refuse_grab: Arc<AtomicBool>,
+    /// `warp` fails with an operating-system error.
+    pub refuse_warp: Arc<AtomicBool>,
+    /// The next `secure_input()` (asked on every reconcile tick) panics.
+    pub panic_secure_input: Arc<AtomicBool>,
+    /// Every `set_grabbed` call that reached the capture, in order.
+    pub grabs: Arc<Mutex<Vec<bool>>>,
+}
+
+/// A virtual computer whose capture and platform can be made to fail.
+pub(crate) struct Flaky {
+    pub inner: VirtualPlatform,
+    pub knobs: Knobs,
+}
+
+pub(crate) struct FlakyCapture {
+    inner: Box<dyn mouser_platform::InputCapture>,
+    knobs: Knobs,
+}
+
+impl mouser_platform::InputCapture for FlakyCapture {
+    fn start(
+        &mut self,
+        tx: std::sync::mpsc::Sender<mouser_platform::LocalInput>,
+    ) -> mouser_platform::Result<()> {
+        self.inner.start(tx)
+    }
+
+    fn set_grabbed(&mut self, grabbed: bool) -> mouser_platform::Result<()> {
+        self.knobs.grabs.guard().push(grabbed);
+        if grabbed && self.knobs.refuse_grab.load(Ordering::SeqCst) {
+            return Err(mouser_platform::Error::Os("grab refused".into()));
+        }
+        self.inner.set_grabbed(grabbed)
+    }
+
+    fn warp(&mut self, x: f64, y: f64) -> mouser_platform::Result<()> {
+        if self.knobs.refuse_warp.load(Ordering::SeqCst) {
+            return Err(mouser_platform::Error::Os("warp refused".into()));
+        }
+        self.inner.warp(x, y)
+    }
+
+    fn stop(&mut self) {
+        self.inner.stop()
+    }
+}
+
+impl mouser_platform::Platform for Flaky {
+    fn info(&self) -> mouser_platform::PlatformInfo {
+        self.inner.info()
+    }
+
+    fn displays(&self) -> mouser_platform::Result<Vec<mouser_platform::LocalDisplay>> {
+        self.inner.displays()
+    }
+
+    fn watch_displays(
+        &self,
+        tx: std::sync::mpsc::Sender<Vec<mouser_platform::LocalDisplay>>,
+    ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
+        self.inner.watch_displays(tx)
+    }
+
+    fn permissions(
+        &self,
+    ) -> Vec<(
+        mouser_platform::PermissionKind,
+        mouser_platform::PermissionState,
+    )> {
+        self.inner.permissions()
+    }
+
+    fn open_permission_settings(
+        &self,
+        kind: mouser_platform::PermissionKind,
+    ) -> mouser_platform::Result<()> {
+        self.inner.open_permission_settings(kind)
+    }
+
+    fn capture(&self) -> mouser_platform::Result<Box<dyn mouser_platform::InputCapture>> {
+        Ok(Box::new(FlakyCapture {
+            inner: self.inner.capture()?,
+            knobs: self.knobs.clone(),
+        }))
+    }
+
+    fn inject(&self) -> mouser_platform::Result<Box<dyn mouser_platform::InputInject>> {
+        self.inner.inject()
+    }
+
+    fn clipboard(&self) -> mouser_platform::Result<Box<dyn mouser_platform::Clipboard>> {
+        self.inner.clipboard()
+    }
+
+    fn secure_input(&self) -> Option<mouser_platform::SecureInputHolder> {
+        if self.knobs.panic_secure_input.swap(false, Ordering::SeqCst) {
+            panic!("scripted platform fault");
+        }
+        self.inner.secure_input()
+    }
+
+    fn foreground_is_fullscreen(&self) -> bool {
+        self.inner.foreground_is_fullscreen()
+    }
+
+    fn interfaces(&self) -> Vec<NetInterface> {
+        self.inner.interfaces()
+    }
+
+    fn watch_network(
+        &self,
+        tx: std::sync::mpsc::Sender<()>,
+    ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
+        self.inner.watch_network(tx)
+    }
+
+    fn watch_problems(
+        &self,
+        tx: std::sync::mpsc::Sender<mouser_platform::PlatformProblem>,
+    ) -> mouser_platform::Result<mouser_platform::WatchHandle> {
+        self.inner.watch_problems(tx)
+    }
+
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        self.inner.foreground_app()
+    }
+
+    fn secrets(&self) -> Box<dyn mouser_platform::SecretStore> {
+        self.inner.secrets()
+    }
+
+    fn autostart(&self) -> Box<dyn mouser_platform::Autostart> {
+        self.inner.autostart()
+    }
+
+    fn file_drag(&self) -> Option<Box<dyn mouser_platform::FileDrag>> {
+        self.inner.file_drag()
     }
 }
 
@@ -887,6 +1028,26 @@ impl mouser_platform::Platform for NoGrab {
 }
 
 impl Lab {
+    /// Start a node whose capture and platform fail when its knobs say so.
+    pub async fn start_flaky(&self, name: &str) -> (TestNode, Knobs) {
+        let platform = VirtualPlatform::new();
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = mouser_proto::config::Config::default();
+        config.advanced.port = u32::from(free_port());
+        crate::config::save(dir.path(), &config);
+        let knobs = Knobs::default();
+        let flaky = Flaky {
+            inner: platform.clone(),
+            knobs: knobs.clone(),
+        };
+        let node = self
+            .boot_with(name, platform, dir, move |params| {
+                params.platform = Arc::new(flaky);
+            })
+            .await;
+        (node, knobs)
+    }
+
     /// Start a node whose input cannot be grabbed.
     pub async fn start_ungrabbable(&self, name: &str) -> TestNode {
         let platform = VirtualPlatform::new();
@@ -921,4 +1082,38 @@ fn the_ungrabbable_computer_is_the_wrapped_one_in_every_other_way() {
     assert!(inner.is_capturing());
     capture.stop();
     assert!(!inner.is_capturing());
+}
+
+#[test]
+fn the_flaky_computer_is_the_wrapped_one_in_every_other_way() {
+    use mouser_platform::{PermissionKind, Platform};
+    let inner = VirtualPlatform::new();
+    inner.set_foreground_app(None);
+    let knobs = Knobs::default();
+    let platform = Flaky {
+        inner: inner.clone(),
+        knobs: knobs.clone(),
+    };
+    assert!(platform.foreground_app().is_none());
+    platform
+        .open_permission_settings(PermissionKind::Accessibility)
+        .unwrap();
+    assert_eq!(
+        inner.opened_permission_settings(),
+        [PermissionKind::Accessibility]
+    );
+    let mut capture = platform.capture().unwrap();
+    capture.start(std::sync::mpsc::channel().0).unwrap();
+    assert!(inner.is_capturing());
+    capture.set_grabbed(true).unwrap();
+    assert!(inner.is_grabbed());
+    knobs.refuse_grab.store(true, Ordering::SeqCst);
+    assert!(capture.set_grabbed(true).is_err());
+    knobs.refuse_warp.store(true, Ordering::SeqCst);
+    assert!(capture.warp(1.0, 1.0).is_err());
+    knobs.refuse_warp.store(false, Ordering::SeqCst);
+    capture.warp(1.0, 1.0).unwrap();
+    capture.stop();
+    assert!(!inner.is_capturing());
+    assert_eq!(*knobs.grabs.guard(), [true, true]);
 }

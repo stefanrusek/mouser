@@ -5,6 +5,7 @@ use mouser_testkit::{Injected, VirtualPlatform};
 use serde_json::json;
 
 use crate::EngineEvent;
+use crate::lock::LockExt;
 use crate::testing::*;
 
 const A: u32 = 0x0007_0004;
@@ -545,4 +546,210 @@ async fn command_c_and_v_on_another_mac_release_command_while_the_clipboard_is_s
         "{:?}",
         a.platform.local_delivered()
     );
+}
+
+use std::sync::atomic::Ordering;
+
+use super::controller::Return;
+use super::state::Control;
+
+/// A desk of Alpha (whose capture can fail) and Beta.
+async fn flaky_desk(lab: &Lab) -> (Vec<TestNode>, Knobs) {
+    let (alpha, knobs) = lab.start_flaky("Alpha").await;
+    let beta = lab.start("Beta").await;
+    (desk_from(vec![alpha, beta]).await, knobs)
+}
+
+#[tokio::test]
+async fn a_refused_grab_when_crossing_out_means_no_crossing_and_the_pointer_stays() {
+    let lab = Lab::new();
+    let (nodes, knobs) = flaky_desk(&lab).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    knobs.refuse_grab.store(true, Ordering::SeqCst);
+    push_right(a);
+    settle().await;
+    assert_eq!(
+        a.engine.ctx.crossing.guard().session.control,
+        Control::Local
+    );
+    assert!(!a.platform.pointer_hidden());
+    assert!(b.platform.injected().is_empty());
+    assert_eq!(connected(a).await, 1);
+    // Once the system accepts the grab again, crossing works.
+    knobs.refuse_grab.store(false, Ordering::SeqCst);
+    push_right(a);
+    injected_where(&b.platform, "the pointer on Beta", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    assert!(a.platform.pointer_hidden());
+}
+
+#[tokio::test]
+async fn a_refused_warp_is_skipped_and_control_still_returns() {
+    let lab = Lab::new();
+    let (nodes, knobs) = flaky_desk(&lab).await;
+    let a = &nodes[0];
+    push_right(a);
+    eventually("Alpha to be remote", || async {
+        a.engine.ctx.crossing.guard().session.remote().is_some()
+    })
+    .await;
+    knobs.refuse_warp.store(true, Ordering::SeqCst);
+    a.engine
+        .ctx
+        .crossing
+        .guard()
+        .return_local(Return::Release, Some((10.0, 10.0)));
+    assert_eq!(
+        a.engine.ctx.crossing.guard().session.control,
+        Control::Local
+    );
+    assert!(!a.platform.pointer_hidden());
+    assert!(a.platform.warps().is_empty());
+}
+
+fn without_wire(node: &TestNode, other: &TestNode) {
+    node.engine
+        .ctx
+        .crossing
+        .guard()
+        .map
+        .wires
+        .remove(&other.engine.computer_id());
+}
+
+async fn remote_on_beta(lab: &Lab) -> Vec<TestNode> {
+    let nodes = desk_of(lab, &["Alpha", "Beta"]).await;
+    push_right(&nodes[0]);
+    eventually("Alpha to be remote", || async {
+        nodes[0]
+            .engine
+            .ctx
+            .crossing
+            .guard()
+            .session
+            .remote()
+            .is_some()
+    })
+    .await;
+    nodes
+}
+
+fn assert_returned_locally(node: &TestNode) {
+    assert_eq!(
+        node.engine.ctx.crossing.guard().session.control,
+        Control::Local
+    );
+    assert!(!node.platform.pointer_hidden());
+}
+
+#[tokio::test]
+async fn forwarding_to_a_peer_that_left_the_map_returns_control_locally() {
+    let lab = Lab::new();
+    let nodes = remote_on_beta(&lab).await;
+    without_wire(&nodes[0], &nodes[1]);
+    nodes[0].platform.send_input(key(A, true));
+    eventually("control back", || async {
+        nodes[0]
+            .engine
+            .ctx
+            .crossing
+            .guard()
+            .session
+            .remote()
+            .is_none()
+    })
+    .await;
+    assert_returned_locally(&nodes[0]);
+}
+
+#[tokio::test]
+async fn moving_on_a_peer_that_left_the_map_returns_control_locally() {
+    let lab = Lab::new();
+    let nodes = remote_on_beta(&lab).await;
+    without_wire(&nodes[0], &nodes[1]);
+    nodes[0].platform.send_input(motion(10.0));
+    eventually("control back", || async {
+        nodes[0]
+            .engine
+            .ctx
+            .crossing
+            .guard()
+            .session
+            .remote()
+            .is_none()
+    })
+    .await;
+    assert_returned_locally(&nodes[0]);
+}
+
+#[tokio::test]
+async fn releasing_and_returning_with_a_peer_that_left_the_map_do_not_panic() {
+    let lab = Lab::new();
+    let nodes = remote_on_beta(&lab).await;
+    without_wire(&nodes[0], &nodes[1]);
+    {
+        let mut crossing = nodes[0].engine.ctx.crossing.guard();
+        crossing.release_current();
+        crossing.return_local(Return::Release, None);
+    }
+    assert_returned_locally(&nodes[0]);
+}
+
+#[tokio::test]
+async fn panic_return_with_a_peer_that_left_the_map_does_not_panic() {
+    let lab = Lab::new();
+    let nodes = remote_on_beta(&lab).await;
+    without_wire(&nodes[0], &nodes[1]);
+    nodes[0]
+        .engine
+        .ctx
+        .crossing
+        .guard()
+        .return_local(Return::Panic, None);
+    assert_returned_locally(&nodes[0]);
+}
+
+#[tokio::test]
+async fn crossing_onto_a_peer_that_left_the_map_does_not_happen() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    without_wire(&nodes[0], &nodes[1]);
+    push_right(&nodes[0]);
+    settle().await;
+    assert_returned_locally(&nodes[0]);
+    assert!(nodes[1].platform.injected().is_empty());
+}
+
+#[tokio::test]
+async fn a_held_button_is_released_locally_before_the_pointer_leaves() {
+    use mouser_testkit::InputKind;
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let a = &nodes[0];
+    a.platform.send_input(LocalInput::Button {
+        button: 1,
+        down: true,
+    });
+    push_right(a);
+    injected_where(&a.platform, "the local release", |i| {
+        *i == Injected::Button {
+            button: 1,
+            down: false,
+        }
+    })
+    .await;
+    // Refused, the release is skipped and the crossing still happens.
+    push_back(&nodes, 0);
+    eventually("control to be back", || async {
+        a.engine.ctx.crossing.guard().session.remote().is_none()
+    })
+    .await;
+    a.platform.refuse_input(&[InputKind::Button]);
+    push_right(a);
+    eventually("the crossing", || async {
+        a.engine.ctx.crossing.guard().session.remote().is_some()
+    })
+    .await;
 }

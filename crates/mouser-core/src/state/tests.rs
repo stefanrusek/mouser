@@ -39,7 +39,7 @@ fn every_membership_round_trips_with_layout_and_epoch() {
             desk: Some(desk(3)),
             ..LocalState::default()
         };
-        state.save(&path);
+        state.save(&path).unwrap();
         let loaded = LocalState::load(&path);
         assert_eq!(loaded, state);
         assert_eq!(loaded.desk.unwrap().state.epoch, 7);
@@ -55,7 +55,8 @@ fn the_file_holds_no_key_material() {
         desk: Some(desk(3)),
         ..LocalState::default()
     }
-    .save(&path);
+    .save(&path)
+    .unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(!text.contains("key"), "{text}");
     assert_eq!(
@@ -79,7 +80,7 @@ fn removed_displays_survive_a_restart_and_default_to_none() {
         removed: std::collections::BTreeSet::from(["b2".to_string()]),
         ..LocalState::default()
     };
-    state.save(&path);
+    state.save(&path).unwrap();
     assert_eq!(LocalState::load(&path), state);
     // A file from before displays could be removed has none.
     std::fs::write(

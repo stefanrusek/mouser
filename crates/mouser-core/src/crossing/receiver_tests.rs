@@ -6,6 +6,7 @@ use mouser_testkit::{Injected, VirtualPlatform};
 use serde_json::json;
 
 use crate::EngineEvent;
+use crate::lock::LockExt;
 use crate::testing::*;
 
 const A: u32 = 0x0007_0004;
@@ -558,4 +559,188 @@ async fn stream_input_that_is_not_newer_is_dropped() {
             }
         ]
     );
+}
+
+fn button_msg(seq: u64, button: u8, down: bool) -> ControlMessage {
+    ControlMessage::Button { seq, button, down }
+}
+
+fn scroll_msg(seq: u64) -> ControlMessage {
+    ControlMessage::Scroll { seq, dx: 0, dy: 3 }
+}
+
+/// A desk where Alpha has entered Beta; returns the nodes.
+async fn entered() -> (Lab, Vec<TestNode>) {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    send_to(&nodes[0], &nodes[1], enter(&nodes[1], 1.0, 2.0, 1));
+    injected_where(&nodes[1].platform, "entry", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    nodes[1].platform.take_injected();
+    (lab, nodes)
+}
+
+async fn still_linked(nodes: &[TestNode]) {
+    settle().await;
+    assert_eq!(connected(&nodes[0]).await, 1);
+    assert_eq!(connected(&nodes[1]).await, 1);
+}
+
+#[tokio::test]
+async fn a_refused_key_is_skipped_and_later_input_is_injected_in_order() {
+    use mouser_testkit::InputKind;
+    let (_lab, nodes) = entered().await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    b.platform.refuse_input(&[InputKind::Key]);
+    send_to(a, b, key(2, A, true));
+    settle().await;
+    b.platform.accept_input();
+    send_to(a, b, button_msg(3, 1, true));
+    send_to(a, b, key(4, C, true));
+    send_to(a, b, key(5, C, false));
+    injected_where(&b.platform, "the later key", |i| {
+        *i == Injected::Key {
+            usage: C,
+            down: false,
+        }
+    })
+    .await;
+    assert_eq!(
+        b.platform.injected(),
+        vec![
+            Injected::Button {
+                button: 1,
+                down: true
+            },
+            Injected::Key {
+                usage: C,
+                down: true
+            },
+            Injected::Key {
+                usage: C,
+                down: false
+            },
+        ]
+    );
+    still_linked(&nodes).await;
+}
+
+#[tokio::test]
+async fn a_refused_button_scroll_and_motion_are_skipped_in_turn() {
+    use mouser_testkit::InputKind;
+    let (_lab, nodes) = entered().await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    b.platform.refuse_input(&[InputKind::Button]);
+    send_to(a, b, button_msg(2, 1, true));
+    settle().await;
+    b.platform.refuse_input(&[InputKind::Scroll]);
+    send_to(a, b, scroll_msg(3));
+    settle().await;
+    b.platform.refuse_input(&[InputKind::Motion]);
+    datagram_to(a, b, &motion(b, 4, 50.0));
+    settle().await;
+    b.platform.accept_input();
+    assert!(b.platform.injected().is_empty());
+    datagram_to(a, b, &motion(b, 5, 60.0));
+    send_to(a, b, scroll_msg(6));
+    send_to(a, b, button_msg(7, 1, true));
+    injected_where(&b.platform, "the button", |i| {
+        *i == Injected::Button {
+            button: 1,
+            down: true,
+        }
+    })
+    .await;
+    let injected = b.platform.injected();
+    assert!(injected.contains(&Injected::MotionAbs { x: 60.0, y: 20.0 }));
+    assert!(injected.contains(&Injected::Scroll { dx: 0.0, dy: 3.0 }));
+    still_linked(&nodes).await;
+}
+
+#[tokio::test]
+async fn a_refused_entry_pointer_move_still_starts_the_session() {
+    use mouser_testkit::InputKind;
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    b.platform.refuse_input(&[InputKind::Motion]);
+    send_to(a, b, enter(b, 1.0, 2.0, 1));
+    settle().await;
+    b.platform.accept_input();
+    send_to(a, b, key(2, A, true));
+    injected_where(&b.platform, "the key", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: true,
+        }
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_refused_release_still_clears_the_key_and_button_from_the_held_set() {
+    use mouser_testkit::InputKind;
+    let (_lab, nodes) = entered().await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    send_to(a, b, key(2, A, true));
+    send_to(a, b, button_msg(3, 1, true));
+    injected_where(&b.platform, "the press", |i| {
+        *i == Injected::Button {
+            button: 1,
+            down: true,
+        }
+    })
+    .await;
+    assert_eq!(
+        b.engine
+            .ctx
+            .crossing
+            .guard()
+            .receiving
+            .as_ref()
+            .unwrap()
+            .injected
+            .keys
+            .len(),
+        1
+    );
+    b.platform
+        .refuse_input(&[InputKind::Key, InputKind::Button]);
+    send_to(a, b, key(4, A, false));
+    send_to(a, b, button_msg(5, 1, false));
+    settle().await;
+    {
+        let crossing = b.engine.ctx.crossing.guard();
+        let held = &crossing.receiving.as_ref().unwrap().injected;
+        assert!(held.keys.is_empty() && held.buttons.is_empty(), "{held:?}");
+    }
+    // Releasing at the end of the session while still refused is skipped too.
+    send_to(a, b, key(6, C, true));
+    b.platform.accept_input();
+    send_to(a, b, key(6, C, true));
+    send_to(a, b, key(7, C, true));
+    settle().await;
+    b.platform
+        .refuse_input(&[InputKind::Key, InputKind::Button]);
+    send_to(a, b, ControlMessage::ReleaseAll { seq: 8 });
+    settle().await;
+    assert!(b.engine.ctx.crossing.guard().receiving.is_none());
+    still_linked(&nodes).await;
+}
+
+#[tokio::test]
+async fn a_refused_press_is_not_recorded_as_held() {
+    use mouser_testkit::InputKind;
+    let (_lab, nodes) = entered().await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    b.platform
+        .refuse_input(&[InputKind::Key, InputKind::Button]);
+    send_to(a, b, key(2, A, true));
+    send_to(a, b, button_msg(3, 1, true));
+    settle().await;
+    let crossing = b.engine.ctx.crossing.guard();
+    let held = &crossing.receiving.as_ref().unwrap().injected;
+    assert!(held.keys.is_empty() && held.buttons.is_empty(), "{held:?}");
 }

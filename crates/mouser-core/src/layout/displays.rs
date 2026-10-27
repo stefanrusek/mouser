@@ -1,5 +1,6 @@
 //! Display exchange: a member's local displays as wire `Display`s.
 
+use crate::lock::LockExt;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -58,14 +59,14 @@ impl Ctx {
         peer: ComputerId,
         displays: Vec<Display>,
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("Displays from a computer that is not on the desk".into());
         }
         core.peers.get_mut(&peer).expect("authed").displays = displays.clone();
         core.state.displays.insert(peer, displays);
         self.sync_layout(&mut core);
-        self.persist(&core);
+        let _ = self.persist(&core);
         self.refresh_map(&core);
         drop(core);
         self.notify_status();
@@ -75,9 +76,9 @@ impl Ctx {
     /// This computer's displays changed (a monitor was plugged in, the
     /// laptop was docked): tell the desk, and place them.
     pub(crate) fn on_local_displays(self: &Arc<Self>) {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         self.sync_layout(&mut core);
-        self.persist(&core);
+        let _ = self.persist(&core);
         self.refresh_map(&core);
         let displays = self.local_displays(&core);
         for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {

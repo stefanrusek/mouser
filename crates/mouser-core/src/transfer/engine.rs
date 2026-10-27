@@ -7,6 +7,7 @@
 //! space, accepts, and writes each file's stream under that folder, asking
 //! about names that are taken.
 
+use crate::lock::LockExt;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -63,19 +64,19 @@ pub struct Ids(Arc<Mutex<HashSet<TransferId>>>);
 
 impl Ids {
     pub fn is_empty(&self) -> bool {
-        self.0.lock().unwrap().is_empty()
+        self.0.guard().is_empty()
     }
 
     pub fn contains(&self, id: &TransferId) -> bool {
-        self.0.lock().unwrap().contains(id)
+        self.0.guard().contains(id)
     }
 
     fn insert(&self, id: TransferId) {
-        self.0.lock().unwrap().insert(id);
+        self.0.guard().insert(id);
     }
 
     pub(super) fn remove(&self, id: &TransferId) {
-        self.0.lock().unwrap().remove(id);
+        self.0.guard().remove(id);
     }
 }
 

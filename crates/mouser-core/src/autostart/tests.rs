@@ -63,7 +63,8 @@ async fn a_join_that_never_finished_is_over_after_a_restart() {
         desk: None,
         ..LocalState::default()
     }
-    .save(&dir.path().join(crate::state::FILE));
+    .save(&dir.path().join(crate::state::FILE))
+    .unwrap();
     let b = lab.boot("Beta", platform, dir).await;
     let s = status(&b).await;
     assert_eq!(s.desk, None);

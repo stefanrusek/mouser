@@ -80,9 +80,8 @@ impl Crossing {
             f64::from(origin.0) + f64::from(x),
             f64::from(origin.1) + f64::from(y),
         );
-        io.inject
-            .motion_abs(desktop.0, desktop.1)
-            .expect("pointer can be moved");
+        // A refused move is skipped: the session starts anyway.
+        let _ = io.inject.motion_abs(desktop.0, desktop.1);
         self.receiving = Some(Receiving {
             from,
             os,
@@ -119,12 +118,11 @@ impl Crossing {
         if !rx.motion.admit(motion.seq) {
             return;
         }
-        io.inject
-            .motion_abs(
-                f64::from(origin.0) + f64::from(motion.x),
-                f64::from(origin.1) + f64::from(motion.y),
-            )
-            .expect("pointer can be moved");
+        // A refused move is skipped.
+        let _ = io.inject.motion_abs(
+            f64::from(origin.0) + f64::from(motion.x),
+            f64::from(origin.1) + f64::from(motion.y),
+        );
     }
 
     /// A key, translated for this computer's keyboard shortcuts.
@@ -165,9 +163,8 @@ impl Crossing {
         if !rx.stream.admit(seq) {
             return;
         }
-        io.inject
-            .scroll(f64::from(dx), f64::from(dy))
-            .expect("scroll can be injected");
+        // A refused scroll is skipped.
+        let _ = io.inject.scroll(f64::from(dx), f64::from(dy));
     }
 
     /// `ReleaseAll` and `Panic`: release everything and take no more input
@@ -184,30 +181,33 @@ impl Crossing {
             return;
         };
         let io = self.io.as_mut().expect("receiving implies input");
+        // A refused release is dropped; the held set is gone either way.
         for usage in rx.injected.keys {
-            io.inject.key(usage, false).expect("key can be released");
+            let _ = io.inject.key(usage, false);
         }
         for button in rx.injected.buttons {
-            io.inject
-                .button(button, false)
-                .expect("button can be released");
+            let _ = io.inject.button(button, false);
         }
         self.dirty.notify_one();
     }
+}
+
+/// A refused press is skipped, so nothing stays pressed; a release, refused
+/// or not, leaves nothing recorded as held.
+fn record<T: Ord>(held: &mut std::collections::BTreeSet<T>, item: T, down: bool, accepted: bool) {
+    set(held, item, down && accepted);
 }
 
 /// Inject one action and remember what stays pressed.
 fn press(injected: &mut Pressed, io: &mut Io, action: Action) {
     match action {
         Action::Key(usage, down) => {
-            io.inject.key(usage, down).expect("key can be injected");
-            set(&mut injected.keys, usage, down);
+            let accepted = io.inject.key(usage, down).is_ok();
+            record(&mut injected.keys, usage, down, accepted);
         }
         Action::Button(button, down) => {
-            io.inject
-                .button(button, down)
-                .expect("button can be injected");
-            set(&mut injected.buttons, button, down);
+            let accepted = io.inject.button(button, down).is_ok();
+            record(&mut injected.buttons, button, down, accepted);
         }
     }
 }

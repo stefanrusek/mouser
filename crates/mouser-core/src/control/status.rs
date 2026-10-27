@@ -1,5 +1,6 @@
 //! The `status` result (contracts/status.schema.json).
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 
 use mouser_platform::{PermissionKind as PlatformKind, PermissionState as PlatformState};
@@ -58,7 +59,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         .map(|(k, s)| (permission_kind(k), permission_state(s)))
         .collect();
     let my_displays = ctx.platform.displays().expect("displays readable").len() as u32;
-    let core = ctx.core.lock().unwrap();
+    let core = ctx.core.guard();
     let now = std::time::Instant::now();
     let name = ctx.display_name_in(&core);
     let mut computers = vec![StatusComputer {
@@ -168,7 +169,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         state,
         desk,
         // v2 placeholder: T192 (this computer when the pointer is local)
-        active_computer: ctx.crossing.lock().unwrap().active().unwrap_or(ctx.me()),
+        active_computer: ctx.crossing.guard().active().unwrap_or(ctx.me()),
         computers,
         problems,
         logging: Some(LoggingStatus {

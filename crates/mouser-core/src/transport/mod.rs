@@ -337,10 +337,15 @@ impl FrameWriter {
 pub struct FrameReader {
     recv: RecvStream,
     buf: Vec<u8>,
+    /// The connection the frames arrive on, closed when one is undecodable.
+    conn: Connection,
 }
 
 impl FrameReader {
-    /// The next message; `None` once the stream ended or the connection was lost.
+    /// The next message; `None` once the stream ended, the connection was
+    /// lost, or a frame could not be decoded (the connection is then closed
+    /// with reason `protocol`). A frame of a message this version does not
+    /// know is skipped: frames are length-prefixed, so the next one follows.
     pub async fn recv<T: DeserializeOwned>(&mut self) -> Option<T> {
         loop {
             match decode_frame::<T>(&self.buf) {
@@ -349,9 +354,14 @@ impl FrameReader {
                     return Some(msg);
                 }
                 Err(FrameError::Incomplete) => {}
-                // v2 placeholder: T102/T103
-                Err(FrameError::Malformed | FrameError::UnknownVariant(_)) => {
-                    panic!("malformed frame from peer")
+                Err(FrameError::UnknownVariant(_)) => {
+                    let prefix: [u8; 4] = self.buf[..4].try_into().expect("a whole frame is held");
+                    self.buf.drain(..4 + u32::from_be_bytes(prefix) as usize);
+                    continue;
+                }
+                Err(FrameError::Malformed) => {
+                    self.conn.close(0u32.into(), b"protocol");
+                    return None;
                 }
             }
             let chunk = self.recv.read_chunk(usize::MAX, true).await.ok()??;
@@ -372,12 +382,13 @@ impl Link {
     fn new(conn: Connection, send: SendStream, recv: RecvStream) -> Self {
         Self {
             peer: peer_id(&conn),
-            conn,
             writer: FrameWriter(send),
             reader: FrameReader {
                 recv,
                 buf: Vec::new(),
+                conn: conn.clone(),
             },
+            conn,
         }
     }
 

@@ -2,6 +2,7 @@
 //! which is available, and installing the verified bundle through the app's
 //! installer. The elected computer also looks for releases by itself.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,8 +44,7 @@ impl Ctx {
             current: self.mouser_version.clone(),
             available: self
                 .core
-                .lock()
-                .unwrap()
+                .guard()
                 .release
                 .offered
                 .as_ref()
@@ -55,7 +55,7 @@ impl Ctx {
     /// `update.check`: the elected computer looks at the release location
     /// first; the others only report what they were offered.
     pub(crate) async fn update_check(self: &Arc<Self>) -> Result<UpdateResult, RpcError> {
-        let fetcher = self.core.lock().unwrap().is_fetcher(self.me());
+        let fetcher = self.core.guard().is_fetcher(self.me());
         if fetcher {
             self.check_release().await.map_err(failed)?;
         }
@@ -72,7 +72,7 @@ impl Ctx {
     /// release that verifies.
     pub(crate) async fn check_release(self: &Arc<Self>) -> Result<(), String> {
         let (url, newer_than) = {
-            let core = self.core.lock().unwrap();
+            let core = self.core.guard();
             let mine = Version::parse(&self.mouser_version).expect("own version is valid");
             let held = core.release.held.as_ref().map(|h| h.version());
             (
@@ -94,7 +94,7 @@ impl Ctx {
                 .as_object()
                 .cloned(),
         );
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         core.release.offered = Some(Offered {
             from: self.me(),
             manifest: held.manifest.clone(),
@@ -128,7 +128,7 @@ impl Ctx {
     /// the updater key and hand it to the installer.
     pub(crate) async fn apply_release(self: &Arc<Self>) -> Result<(), String> {
         let (offered, installer) = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             if core.release.applying {
                 return Err("an update is already being installed".into());
             }
@@ -145,7 +145,7 @@ impl Ctx {
             (offered, installer)
         };
         let result = self.install(&offered, &installer).await;
-        self.core.lock().unwrap().release.applying = false;
+        self.core.guard().release.applying = false;
         result
     }
 
@@ -162,7 +162,7 @@ impl Ctx {
             .get(&key)
             .ok_or("no bundle for this computer")?;
         let bytes = if offered.from == self.me() {
-            let core = self.core.lock().unwrap();
+            let core = self.core.guard();
             let held = core
                 .release
                 .held
@@ -181,7 +181,7 @@ impl Ctx {
             manifest.platforms.retain(|platform, _| *platform == key);
             let bundles = BTreeMap::from([(asset.url.clone(), bytes.clone())]);
             let held = Held::store(&self.config_dir.join(FOLDER), manifest, &bundles);
-            self.core.lock().unwrap().release.held = Some(held);
+            self.core.guard().release.held = Some(held);
         }
         // Desk-mates still fetching from this computer are not cut short
         // by the restart the installer ends with.
@@ -206,11 +206,11 @@ impl Ctx {
         let id = stream_id(version, asset);
         let (tx, rx) = oneshot::channel();
         {
-            let core = self.core.lock().unwrap();
+            let core = self.core.guard();
             if !Self::authed(&core, from) {
                 return Err("the computer with the update is not connected".into());
             }
-            self.release_waiters.lock().unwrap().push((id, from, tx));
+            self.release_waiters.guard().push((id, from, tx));
             core.peers[&from].send(ControlMessage::ReleaseFetch {
                 version: version.into(),
                 asset: asset.into(),
@@ -235,7 +235,7 @@ impl Ctx {
         id: &mouser_proto::wire::TransferId,
         stream: quinn::RecvStream,
     ) -> Option<quinn::RecvStream> {
-        let mut waiters = self.release_waiters.lock().unwrap();
+        let mut waiters = self.release_waiters.guard();
         let Some(at) = waiters.iter().position(|(waiting, _, _)| waiting == id) else {
             return Some(stream);
         };
@@ -247,10 +247,9 @@ impl Ctx {
 
     /// Stop waiting for answers from `peer`, whose connection ended.
     pub(crate) fn drop_release_waiters(&self, peer: ComputerId) {
-        self.release_serving.lock().unwrap().remove(&peer);
+        self.release_serving.guard().remove(&peer);
         self.release_waiters
-            .lock()
-            .unwrap()
+            .guard()
             .retain(|(_, from, _)| *from != peer);
     }
 }
@@ -263,7 +262,7 @@ pub(crate) async fn check_loop(ctx: Arc<Ctx>, schedule: CheckSchedule) {
     loop {
         tick.tick().await;
         let due = {
-            let core = ctx.core.lock().unwrap();
+            let core = ctx.core.guard();
             core.config.updates.automatic && core.is_fetcher(ctx.me())
         };
         if due && let Err(message) = ctx.check_release().await {

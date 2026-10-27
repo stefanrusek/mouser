@@ -2,6 +2,7 @@
 //! domain socket (0600, so only the same OS user connects) or, on Windows, a
 //! named pipe that rejects remote clients.
 
+use crate::lock::LockExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader
 use crate::control::{invalid, status};
 use crate::discovery::group_by_desk;
 use crate::engine::Ctx;
+use crate::faults::{Faulted, run_unit_async};
 
 /// A connected control client.
 pub(crate) trait Duplex: AsyncRead + AsyncWrite + Send + Unpin {}
@@ -31,12 +33,25 @@ fn json<T: Serialize>(value: T) -> Result<Value, RpcError> {
     Ok(serde_json::to_value(value).expect("result serializes"))
 }
 
-/// Run one method.
+/// Run one method. A panic in it is that request's internal error (JSON-RPC
+/// `-32603`); the server keeps serving later requests.
 pub(crate) async fn call(
     ctx: &Arc<Ctx>,
     name: &str,
     params: Option<Value>,
 ) -> Result<Value, RpcError> {
+    run_unit_async(&ctx.events, "control", dispatch(ctx, name, params))
+        .await
+        .unwrap_or_else(|Faulted| {
+            Err(RpcError {
+                code: -32603,
+                message: "Internal error: the request failed inside Mouser.".into(),
+                data: None,
+            })
+        })
+}
+
+async fn dispatch(ctx: &Arc<Ctx>, name: &str, params: Option<Value>) -> Result<Value, RpcError> {
     let unknown = |message: String| RpcError {
         code: -32601,
         message,
@@ -47,14 +62,7 @@ pub(crate) async fn call(
     match method {
         Method::Status => json(status::build(ctx)),
         Method::DesksDiscovered => {
-            let mine = ctx
-                .core
-                .lock()
-                .unwrap()
-                .state
-                .desk
-                .as_ref()
-                .map(|d| d.desk_id);
+            let mine = ctx.core.guard().state.desk.as_ref().map(|d| d.desk_id);
             json(group_by_desk(&ctx.discovery.found(), mine))
         }
         Method::DeskCreate => {

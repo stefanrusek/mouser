@@ -21,6 +21,7 @@ mod targeted_tests;
 #[cfg(test)]
 mod watch_tests;
 
+use crate::lock::LockExt;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -212,7 +213,7 @@ impl Ctx {
         peer: ComputerId,
         message: ControlMessage,
     ) -> Result<(), String> {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("clipboard traffic from a computer that is not on the desk".into());
         }
@@ -227,7 +228,7 @@ impl Ctx {
 
     /// Put what the clip decided on the wire.
     fn emit(&self, outs: Vec<Out>) {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         for out in outs {
             match out {
                 Out::To(peer, message) => {

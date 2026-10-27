@@ -7,6 +7,7 @@
 //! The file is looked at on the engine's reconcile tick. What the engine
 //! saved itself parses to the config it already has, so it is not an edit.
 
+use crate::lock::LockExt;
 use std::sync::Arc;
 
 use mouser_proto::config::{Config, DESK_SHARED_KEYS};
@@ -47,7 +48,7 @@ impl Ctx {
     pub(crate) fn reload_config(self: &Arc<Self>, seen: &mut String) {
         // Read with the config locked: a save by the engine itself cannot
         // slip in between the read and the comparison and be undone.
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         let Ok(text) = std::fs::read_to_string(self.config_dir.join(FILE)) else {
             return;
         };

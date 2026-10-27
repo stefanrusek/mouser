@@ -4,6 +4,7 @@
 //! issues the new state (epoch + 1) and a fresh random desk key, and hands
 //! both to the other remaining members; the departed computer never gets them.
 
+use crate::lock::LockExt;
 use std::sync::Arc;
 
 use mouser_proto::control::RpcError;
@@ -75,7 +76,7 @@ impl Ctx {
         core.state.membership = Membership::Unjoined;
         core.pending = None;
         core.requests = Default::default();
-        self.persist(core);
+        let _ = self.persist(core);
         Ok(())
     }
 
@@ -93,7 +94,7 @@ impl Ctx {
         self.store_desk_key(&id, &key)?;
         desk.state = state.clone();
         core.desk_key = Some(key);
-        self.persist(core);
+        let _ = self.persist(core);
         let sealed = seal(&Sealed { key, name, state });
         for (_, peer) in core
             .peers
@@ -111,7 +112,7 @@ impl Ctx {
     /// `desk.leave`.
     pub(crate) fn leave_desk(self: &Arc<Self>) -> Result<(), RpcError> {
         {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             if core.state.desk.is_none() {
                 return Err(invalid("this computer is not on a desk"));
             }
@@ -128,7 +129,7 @@ impl Ctx {
     /// `desk.remove_member`.
     pub(crate) fn remove_member(self: &Arc<Self>, who: ComputerId) -> Result<(), RpcError> {
         {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             let desk = core
                 .state
                 .desk
@@ -156,7 +157,7 @@ impl Ctx {
         peer: ComputerId,
         who: ComputerId,
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if who != peer || !Self::authed(&core, peer) {
             return Err(format!("invalid Leave from {peer}"));
         }
@@ -181,7 +182,7 @@ impl Ctx {
         peer: ComputerId,
         who: ComputerId,
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if who != self.me() || !Self::authed(&core, peer) {
             return Err(format!("invalid Remove from {peer}"));
         }

@@ -362,7 +362,7 @@ impl Ctx {
         }
         core.needs_review
             .retain(|d| state.layout.placements.iter().any(|p| &p.display_id == d));
-        self.persist(core);
+        let _ = self.persist(core);
         self.refresh_map(core);
     }
 }

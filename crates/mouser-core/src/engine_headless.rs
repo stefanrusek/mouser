@@ -11,6 +11,7 @@
 //! only the directory is needed; on macOS the host uses [`FileSecrets`] in a
 //! directory only the agent can read.
 
+use crate::lock::LockExt;
 use std::path::{Path, PathBuf};
 
 use mouser_platform::SecretStore;
@@ -73,8 +74,8 @@ impl Engine {
     /// part of the privileged install step, and again after the desk or its
     /// key changes (joining, leaving, key rotation).
     pub fn export_machine_scope(&self, dir: &Path, machine: &mut dyn SecretStore) {
-        let core = self.ctx.core.lock().unwrap();
-        let secrets = self.ctx.secrets.lock().unwrap();
+        let core = self.ctx.core.guard();
+        let secrets = self.ctx.secrets.guard();
         let mut names = vec![DEVICE_KEY.to_string()];
         names.extend(core.state.desk.as_ref().map(|d| desk_key_name(&d.desk_id)));
         for name in names {
@@ -86,6 +87,8 @@ impl Engine {
                 .set(&name, &value)
                 .expect("machine-scope store writable");
         }
-        core.state.save(&dir.join(state::FILE));
+        core.state
+            .save(&dir.join(state::FILE))
+            .expect("machine-scope state writable");
     }
 }

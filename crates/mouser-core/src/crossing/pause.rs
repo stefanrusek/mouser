@@ -12,6 +12,7 @@
 //! * Clipboard and file transfers stop, as when a desk-mate is lost; on
 //!   resume the current clipboard is offered again, both ways.
 
+use crate::lock::LockExt;
 use mouser_proto::ids::ComputerId;
 use mouser_proto::wire::ControlMessage;
 
@@ -44,9 +45,9 @@ impl Crossing {
 impl Ctx {
     /// `active.pause` / `active.resume`.
     pub(crate) fn set_paused(&self, paused: bool) {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         core.paused = paused;
-        self.crossing.lock().unwrap().set_paused(paused);
+        self.crossing.guard().set_paused(paused);
         for (id, peer) in core.peers.iter().filter(|(_, p)| p.phase == Phase::Authed) {
             if Self::speaks_paused(&peer.hello.mouser_version) {
                 peer.send(ControlMessage::Paused { paused });
@@ -72,7 +73,7 @@ impl Ctx {
     /// `Paused` from `peer`: its displays leave (or rejoin) the layout the
     /// input path sees, and nothing is shared with it while it is paused.
     pub(crate) fn on_peer_paused(&self, peer: ComputerId, paused: bool) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("Paused from a computer that is not on the desk".into());
         }

@@ -2,6 +2,7 @@
 //! verified release offers it to desk-mates that are older and serves their
 //! `ReleaseFetch` requests; desk-mates never go to the internet for it.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -131,7 +132,7 @@ impl Ctx {
         let entry = &core.peers[&peer];
         let older = Version::parse(&entry.hello.mouser_version).is_ok_and(|v| v < held.version());
         if entry.phase == Phase::Authed && older {
-            self.release_serving.lock().unwrap().insert(
+            self.release_serving.guard().insert(
                 peer,
                 Serving {
                     offered_at: tokio::time::Instant::now(),
@@ -161,7 +162,7 @@ impl Ctx {
         let manifest: ReleaseManifest = serde_json::from_str(manifest_json)
             .map_err(|e| format!("ReleaseAvailable with a malformed manifest: {e}"))?;
         let version = Version::parse(&manifest.version)?;
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("ReleaseAvailable from a computer that is not on the desk".into());
         }
@@ -205,7 +206,7 @@ impl Ctx {
         version: String,
         asset: String,
     ) -> Result<(), String> {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("ReleaseFetch from a computer that is not on the desk".into());
         }
@@ -218,14 +219,14 @@ impl Ctx {
             .unwrap_or_default();
         let conn = core.peers[&peer].conn.clone();
         drop(core);
-        if let Some(serving) = self.release_serving.lock().unwrap().get_mut(&peer) {
+        if let Some(serving) = self.release_serving.guard().get_mut(&peer) {
             serving.fetching = true;
         }
         let ctx = self.clone();
         self.spawn(async move {
             // A connection lost meanwhile is the asker's to notice.
             let _ = stream_bundle(conn, stream_id(&version, &asset), bytes).await;
-            ctx.release_serving.lock().unwrap().remove(&peer);
+            ctx.release_serving.guard().remove(&peer);
         });
         Ok(())
     }
@@ -242,8 +243,7 @@ impl Ctx {
         while tokio::time::Instant::now() < end
             && self
                 .release_serving
-                .lock()
-                .unwrap()
+                .guard()
                 .values()
                 .any(|s| s.fetching || s.offered_at.elapsed() < grace)
         {

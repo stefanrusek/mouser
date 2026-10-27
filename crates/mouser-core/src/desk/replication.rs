@@ -1,5 +1,6 @@
 //! `DeskState` replication: the highest `(epoch, computer_id)` wins.
 
+use crate::lock::LockExt;
 use std::sync::Arc;
 
 use mouser_proto::ids::ComputerId;
@@ -23,7 +24,7 @@ impl Ctx {
         peer: ComputerId,
         incoming: DeskState,
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("DeskState from a computer that is not on the desk".into());
         }

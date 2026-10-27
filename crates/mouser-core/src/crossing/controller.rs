@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use mouser_platform::LocalInput;
+use mouser_platform::{Error, LocalInput};
 use mouser_proto::ids::ComputerId;
 use mouser_proto::wire::ControlMessage;
 
@@ -12,7 +12,6 @@ use super::Crossing;
 use super::modifiers::held_modifiers;
 use super::motion;
 use super::state::{Control, Leave, Pressed, Remote};
-use super::supported;
 use crate::layout::edges::{self, Step};
 use crate::layout::equalize;
 
@@ -21,6 +20,9 @@ use crate::layout::equalize;
 pub enum Return {
     /// A normal transfer: the computer left releases everything.
     Release,
+    /// This computer's Mouser is quitting: as a transfer, and the engine
+    /// then closes the links.
+    Quit,
     /// The panic key: the computer left releases everything and stops
     /// accepting input.
     Panic,
@@ -113,7 +115,10 @@ impl Crossing {
             Leave::Local(held) => self.release_locally(&held),
             Leave::Remote(computer) => {
                 let seq = self.session.next_seq();
-                self.map.wires[&computer].send(ControlMessage::ReleaseAll { seq });
+                // A computer that left the map has nothing to release.
+                if let Some(wire) = self.map.wires.get(&computer) {
+                    wire.send(ControlMessage::ReleaseAll { seq });
+                }
             }
         }
     }
@@ -122,29 +127,35 @@ impl Crossing {
     /// release it for local applications first.
     fn release_locally(&mut self, held: &Pressed) {
         let io = self.io.as_mut().expect("input is running");
+        // A refused release is skipped.
         for usage in &held.keys {
-            io.inject.key(*usage, false).expect("key can be released");
+            let _ = io.inject.key(*usage, false);
         }
         for button in &held.buttons {
-            io.inject
-                .button(*button, false)
-                .expect("button can be released");
+            let _ = io.inject.button(*button, false);
         }
     }
 
-    /// Hand control to display `to`, entering at desk point `at`.
+    /// Hand control to display `to`, entering at desk point `at`. Nothing
+    /// happens when the computer is no longer on the map or the system
+    /// refuses the grab.
     pub(crate) fn begin(&mut self, to: usize, at: (f64, f64), speed: (f64, f64), back: (f64, f64)) {
         let target = &self.map.placed[to];
         let display = target.display.display_id.clone();
         let (x, y) = edges::to_local(target, at);
-        let wire = self.map.wires[&display.computer].clone();
+        let Some(wire) = self.map.wires.get(&display.computer).cloned() else {
+            return;
+        };
+        // Where input cannot be grabbed (Wayland, `Unsupported`) the
+        // platform's capture is driven by the screen edge instead; a grab the
+        // system refuses means the pointer stays here.
+        let io = self.io.as_mut().expect("input is running");
+        if let Err(Error::Os(_)) = io.capture.set_grabbed(true) {
+            return;
+        }
         // This computer's own devices take over: whoever was driving it stops
         // being obeyed (what it held is released here).
         self.end_receiving();
-        // Where input cannot be grabbed (Wayland) the platform's capture is
-        // driven by the screen edge instead.
-        let io = self.io.as_mut().expect("input is running");
-        let _ = supported(io.capture.set_grabbed(true));
         // A computer that kept something pressed from before starts clean.
         let seq = self.session.next_seq();
         wire.send(ControlMessage::ReleaseAll { seq });
@@ -175,18 +186,25 @@ impl Crossing {
             return;
         };
         match how {
-            Return::Release => {
+            Return::Release | Return::Quit => {
                 let seq = self.session.next_seq();
-                self.map.wires[&r.computer].send(ControlMessage::ReleaseAll { seq });
+                if let Some(wire) = self.map.wires.get(&r.computer) {
+                    wire.send(ControlMessage::ReleaseAll { seq });
+                }
             }
-            Return::Panic => self.map.wires[&r.computer].send(ControlMessage::Panic),
+            Return::Panic => {
+                if let Some(wire) = self.map.wires.get(&r.computer) {
+                    wire.send(ControlMessage::Panic);
+                }
+            }
             Return::Lost => {}
         }
         self.session.sent = Pressed::default();
         let (x, y) = at.unwrap_or(r.back);
         let io = self.io.as_mut().expect("input is running");
-        let _ = supported(io.capture.set_grabbed(false));
-        io.capture.warp(x, y).expect("pointer can be placed");
+        // A refusal leaves nothing more to do: control is back regardless.
+        let _ = io.capture.set_grabbed(false);
+        let _ = io.capture.warp(x, y);
         self.dirty.notify_one();
     }
 
@@ -212,8 +230,7 @@ impl Crossing {
                     dy: dy.round() as i32,
                 });
             }
-            // v2: replaced in T111
-            LocalInput::CaptureLost(_) => {}
+            LocalInput::CaptureLost(_) => self.on_capture_lost(),
             LocalInput::Key { usage, down } => {
                 if down && self.panic.pressed(usage, now) {
                     self.panic_desk();
@@ -247,9 +264,14 @@ impl Crossing {
         }
     }
 
-    fn send(&self, msg: ControlMessage) {
+    /// Send to the computer that has the pointer. One that left the map is
+    /// lost: control returns here.
+    fn send(&mut self, msg: ControlMessage) {
         let computer = self.session.remote().expect("pointer is remote");
-        self.map.wires[&computer].send(msg);
+        match self.map.wires.get(&computer) {
+            Some(wire) => wire.send(msg),
+            None => self.return_local(Return::Lost, None),
+        }
     }
 
     /// Move the remote pointer by device deltas, crossing onward when it
@@ -306,6 +328,10 @@ impl Crossing {
         let r = self.session.remote_mut().expect("pointer is remote");
         r.display = display;
         r.at = at;
-        self.map.wires[&r.computer].datagram(&datagram);
+        let computer = r.computer;
+        match self.map.wires.get(&computer) {
+            Some(wire) => wire.datagram(&datagram),
+            None => self.return_local(Return::Lost, None),
+        }
     }
 }

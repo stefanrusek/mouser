@@ -1,5 +1,6 @@
 //! Desk creation (Story 1 scenario 3, second part).
 
+use crate::lock::LockExt;
 use std::sync::Arc;
 
 use mouser_proto::control::{Desk, RpcError};
@@ -34,7 +35,7 @@ impl Ctx {
     pub(crate) fn create_desk(self: &Arc<Self>, name: &str) -> Result<Desk, RpcError> {
         let name = validate_name(name).map_err(invalid)?;
         let desk = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             if core.state.membership != Membership::Unjoined {
                 return Err(invalid("this computer is already on, or joining, a desk"));
             }
@@ -51,7 +52,7 @@ impl Ctx {
                 state: state.clone(),
             });
             self.sync_layout(&mut core);
-            self.persist(&core);
+            let _ = self.persist(&core);
             let state = core
                 .state
                 .desk

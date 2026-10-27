@@ -1,6 +1,7 @@
 //! Release fixtures for unit tests: a signer standing in for the Mouser
 //! updater key, and a local HTTP server standing in for the release host.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -86,8 +87,8 @@ impl Server {
                     let n = stream.read(&mut buf).await.unwrap();
                     let head = String::from_utf8_lossy(&buf[..n]).to_string();
                     let path = head.split_whitespace().nth(1).unwrap().to_string();
-                    seen.lock().unwrap().push(path.clone());
-                    let response = table.lock().unwrap().get(&path).cloned();
+                    seen.guard().push(path.clone());
+                    let response = table.guard().get(&path).cloned();
                     let bytes = response.unwrap_or_else(|| {
                         b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                             .to_vec()
@@ -122,8 +123,7 @@ impl Server {
     /// Answer `path` with exactly these bytes.
     pub fn raw(&self, path: &str, response: &[u8]) {
         self.routes
-            .lock()
-            .unwrap()
+            .guard()
             .insert(path.to_string(), response.to_vec());
     }
 
@@ -194,7 +194,7 @@ pub(crate) fn installer() -> (super::Installer, Arc<Mutex<Vec<super::Bundle>>>) 
     let installed: Arc<Mutex<Vec<super::Bundle>>> = Arc::default();
     let sink = installed.clone();
     let installer: super::Installer = Arc::new(move |bundle| {
-        sink.lock().unwrap().push(bundle);
+        sink.guard().push(bundle);
         Ok(())
     });
     (installer, installed)

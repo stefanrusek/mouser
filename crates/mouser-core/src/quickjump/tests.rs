@@ -481,3 +481,75 @@ fn letters_go_left_to_right_across_the_desk() {
 fn a_desk_with_more_displays_than_letters_is_not_supported() {
     assign(&placed(37));
 }
+
+use std::sync::atomic::Ordering;
+
+async fn flaky_pair(lab: &Lab) -> (Vec<TestNode>, Knobs) {
+    let (alpha, knobs) = lab.start_flaky("Alpha").await;
+    let beta = lab.start("Beta").await;
+    (desk_from(vec![alpha, beta]).await, knobs)
+}
+
+#[tokio::test]
+async fn a_refused_warp_during_a_jump_is_skipped_and_quickjump_stays_usable() {
+    let lab = Lab::new();
+    let (nodes, knobs) = flaky_pair(&lab).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let mut mine = a.engine.events();
+    knobs.refuse_warp.store(true, Ordering::SeqCst);
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    tap(a, usage(alpha_letter(&letters, a)));
+    hidden(&mut mine).await;
+    a_moment().await;
+    assert!(warps(a).is_empty());
+    assert_eq!(connected(a).await, 1);
+    // The system accepts warps again: the next jump works.
+    knobs.refuse_warp.store(false, Ordering::SeqCst);
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    tap(a, usage(alpha_letter(&letters, a)));
+    eventually("the pointer to be placed", || async {
+        !warps(a).is_empty()
+    })
+    .await;
+    assert!(b.platform.injected().is_empty());
+}
+
+#[tokio::test]
+async fn a_refused_grab_cancels_the_jump_to_another_computer_and_quickjump_stays_usable() {
+    let lab = Lab::new();
+    let (nodes, knobs) = flaky_pair(&lab).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let (mut mine, mut theirs) = (a.engine.events(), b.engine.events());
+    knobs.refuse_grab.store(true, Ordering::SeqCst);
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    shown(&mut theirs).await;
+    tap(a, usage(letter_of(&letters, b, "virtual-0")));
+    hidden(&mut mine).await;
+    a_moment().await;
+    assert!(!a.platform.is_grabbed());
+    assert!(b.platform.injected().is_empty());
+    knobs.refuse_grab.store(false, Ordering::SeqCst);
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    tap(a, usage(letter_of(&letters, b, "virtual-0")));
+    entered_at(b, 960.0, 540.0).await;
+    assert!(a.platform.is_grabbed());
+}
+
+#[tokio::test]
+async fn a_refused_key_release_during_a_jump_is_skipped_and_the_jump_happens() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let mut mine = a.engine.events();
+    a.platform.refuse_input(&[mouser_testkit::InputKind::Key]);
+    hotkey(a);
+    let letters = shown(&mut mine).await;
+    tap(a, usage(letter_of(&letters, b, "virtual-0")));
+    entered_at(b, 960.0, 540.0).await;
+    assert!(a.platform.is_grabbed());
+    assert!(a.platform.injected().is_empty());
+}

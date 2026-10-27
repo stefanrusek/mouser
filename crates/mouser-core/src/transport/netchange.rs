@@ -15,6 +15,7 @@
 //!    address with one round trip, on the configured port;
 //! 3. and connections this computer accepted are dialled again (`redial`).
 
+use crate::lock::LockExt;
 use std::collections::BTreeSet;
 use std::net::{IpAddr, SocketAddr};
 
@@ -62,8 +63,8 @@ impl Ctx {
     pub(crate) fn on_network_change(self: &Arc<Self>) {
         let interfaces = self.platform.interfaces();
         let physical = physical_addrs(&interfaces);
-        let moved = std::mem::replace(&mut self.core.lock().unwrap().physical, physical.clone())
-            != physical;
+        let moved =
+            std::mem::replace(&mut self.core.guard().physical, physical.clone()) != physical;
         self.discovery.interfaces_changed(interfaces);
         if moved {
             self.transport.rebind();

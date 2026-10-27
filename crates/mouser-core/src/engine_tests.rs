@@ -4,7 +4,10 @@ use mouser_proto::control::{Empty, Method};
 use mouser_testkit::VirtualPlatform;
 use serde_json::json;
 
-use crate::testing::{Lab, call, call_err, status};
+use crate::EngineEvent;
+use crate::crossing::state::Control;
+use crate::lock::LockExt;
+use crate::testing::*;
 use crate::{Engine, EngineParams};
 
 #[tokio::test]
@@ -76,4 +79,130 @@ async fn events_without_a_control_topic_are_available_in_process() {
     );
     assert!(node.engine.layout().placements.is_empty());
     assert!(node.engine.needs_review().is_empty());
+}
+
+/// The next `Fault` event within 10 s.
+async fn fault_at(events: &mut tokio::sync::broadcast::Receiver<EngineEvent>) -> String {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let EngineEvent::Fault { r#where } = events.recv().await.unwrap() {
+                return r#where;
+            }
+        }
+    })
+    .await
+    .expect("the fault is reported")
+}
+
+#[tokio::test]
+async fn a_panic_in_a_reconcile_tick_recovers_and_the_next_tick_still_runs() {
+    use mouser_testkit::Injected;
+    use std::sync::atomic::Ordering;
+    let lab = Lab::new();
+    let (alpha, knobs) = lab.start_flaky("Alpha").await;
+    let nodes = desk_from(vec![alpha, lab.start("Beta").await]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    push_right(a);
+    injected_where(&b.platform, "entry", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    assert!(a.platform.pointer_hidden());
+    let mut events = a.engine.events();
+
+    knobs.panic_secure_input.store(true, Ordering::SeqCst);
+
+    assert_eq!(fault_at(&mut events).await, "reconcile");
+    // Recovered: control is back, the pointer is shown, Beta let go.
+    eventually("control to come back", || async {
+        a.engine.ctx.crossing.guard().session.control == Control::Local
+    })
+    .await;
+    assert!(!a.platform.pointer_hidden());
+    eventually("Beta to stop receiving", || async {
+        b.engine.ctx.crossing.guard().receiving.is_none()
+    })
+    .await;
+    // The loop carried on: pause, the panic key and crossing all work.
+    assert_eq!(connected(a).await, 1);
+    push_right(a);
+    eventually("crossing to work again", || async {
+        a.engine.ctx.crossing.guard().session.remote().is_some()
+    })
+    .await;
+    let _: Empty = call(a, Method::ActivePause, json!({})).await;
+    eventually("pause to bring control back", || async {
+        a.engine.ctx.crossing.guard().session.control == Control::Local
+    })
+    .await;
+    assert!(!a.platform.pointer_hidden());
+}
+
+#[tokio::test]
+async fn persist_returns_an_error_when_state_json_is_not_writable_and_the_state_is_kept() {
+    use mouser_proto::control::Desk;
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let path = node.engine.ctx.state_path();
+    // A directory where the file belongs cannot be written to.
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    {
+        let core = node.engine.ctx.core.guard();
+        assert!(node.engine.ctx.persist(&core).is_err());
+    }
+    // Nothing panics and the in-memory state is kept: the desk exists.
+    let desk: Desk = call(&node, Method::DeskCreate, json!({"name": "Home office"})).await;
+    {
+        let core = node.engine.ctx.core.guard();
+        assert_eq!(core.state.desk.as_ref().unwrap().desk_id, desk.desk_id);
+    }
+    assert_eq!(status(&node).await.computer.name, "Alpha");
+}
+
+#[tokio::test]
+async fn shutdown_while_remote_returns_locally_releases_and_closes_every_link() {
+    use mouser_platform::LocalInput;
+    use mouser_testkit::Injected;
+    const A: u32 = 0x0007_0004;
+    let lab = Lab::new();
+    let (alpha, knobs) = lab.start_flaky("Alpha").await;
+    let mut nodes = desk_from(vec![alpha, lab.start("Beta").await]).await;
+    let beta = nodes.pop().unwrap();
+    let alpha = nodes.pop().unwrap();
+    push_right(&alpha);
+    injected_where(&beta.platform, "entry", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    alpha.platform.send_input(LocalInput::Key {
+        usage: A,
+        down: true,
+    });
+    injected_where(&beta.platform, "the held key", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: true,
+        }
+    })
+    .await;
+    assert!(alpha.platform.pointer_hidden());
+
+    let (platform, grabs) = (alpha.platform.clone(), knobs.grabs.clone());
+    alpha.engine.shutdown().await;
+
+    assert!(!platform.pointer_hidden(), "the pointer is shown again");
+    assert_eq!(grabs.guard().last(), Some(&false));
+    // Beta lets go of what Alpha held and sees the link close.
+    injected_where(&beta.platform, "the release", |i| {
+        *i == Injected::Key {
+            usage: A,
+            down: false,
+        }
+    })
+    .await;
+    eventually("Beta to see Alpha leave", || async {
+        connected(&beta).await == 0 && beta.engine.ctx.crossing.guard().receiving.is_none()
+    })
+    .await;
 }

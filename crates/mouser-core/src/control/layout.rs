@@ -8,6 +8,7 @@
 //! can be sent back with edits. The layout is validated before anything
 //! changes; then it takes a new epoch and goes to every desk-mate.
 
+use crate::lock::LockExt;
 use std::sync::Arc;
 
 use mouser_proto::control::RpcError;
@@ -34,7 +35,7 @@ pub struct LayoutSetParams {
 impl Ctx {
     /// `layout.get`.
     pub(crate) fn get_layout(&self) -> Value {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         self.layout_value(&core)
     }
 
@@ -53,7 +54,7 @@ impl Ctx {
 
     /// `layout.set`: refuse an invalid layout and keep the previous one.
     pub(crate) fn set_layout(self: &Arc<Self>, params: LayoutSetParams) -> Result<Value, RpcError> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if core.state.desk.is_none() {
             return Err(invalid("This computer is not on a desk"));
         }

@@ -8,6 +8,7 @@
 //! repeats `Hello` and `DeskAuth`, and the new connection replaces the old
 //! one, resuming the session.
 
+use crate::lock::LockExt;
 use std::sync::Arc;
 
 use crate::engine::{Ctx, Phase};
@@ -16,7 +17,7 @@ impl Ctx {
     /// Our address changed: every desk-mate whose connection we accepted
     /// is to be dialled again.
     pub(crate) fn redial_accepted(self: &Arc<Self>) {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let accepted: Vec<_> = core
             .peers
             .iter()
@@ -35,7 +36,7 @@ impl Ctx {
     /// network is tried again on the next tick.
     pub(crate) fn redial_pending(self: &Arc<Self>) {
         let found = self.discovery.found();
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let pending: Vec<_> = core.redial.iter().copied().collect();
         for peer in pending {
             let waiting = core

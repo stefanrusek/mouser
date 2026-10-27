@@ -8,6 +8,7 @@
 //! connection (a rediscovery, a re-dial, the peer dialling us) returns it to
 //! *connected* and clears the problem.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -76,7 +77,7 @@ impl Ctx {
     pub(crate) fn check_liveness(&self) {
         let now = Instant::now();
         let mut changed = false;
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let gone: Vec<ComputerId> = core
             .absent
             .keys()

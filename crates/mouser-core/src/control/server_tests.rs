@@ -219,3 +219,53 @@ async fn a_client_that_disconnects_is_forgotten() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn a_panic_in_one_request_is_an_internal_error_and_the_server_keeps_serving() {
+    use mouser_platform::{Os, PlatformInfo, SessionType};
+    use mouser_proto::control::Empty;
+    use mouser_testkit::VirtualPlatform;
+
+    use crate::EngineEvent;
+    use crate::testing::{call, call_err, status};
+
+    let platform = VirtualPlatform::new();
+    platform.set_info(PlatformInfo {
+        os: Os::Windows,
+        version: "virtual".into(),
+        session: SessionType::Native,
+        limitations: Vec::new(),
+    });
+    platform.set_secure_attention_supported(true);
+    let lab = Lab::new();
+    let node = lab.start_with("Alpha", platform, |_| {}).await;
+    let mut events = node.engine.events();
+
+    // Over the socket, as the CLI sees it.
+    let mut socket = client(&node).await;
+    node.platform.panic_on_next_inject();
+    let err = socket
+        .call(Method::SendCad, Some(json!({})))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, -32603);
+    assert_eq!(
+        events.recv().await.unwrap(),
+        EngineEvent::Fault {
+            r#where: "control".into()
+        }
+    );
+    // The same connection and the in-process handle keep serving.
+    let value = socket.call(Method::Status, None).await.unwrap();
+    assert_eq!(value["computer"]["name"], "Alpha");
+    assert_eq!(status(&node).await.computer.name, "Alpha");
+    let _: Empty = call(&node, Method::SendCad, json!({})).await;
+
+    // In process, as the app sees it.
+    node.platform.panic_on_next_inject();
+    assert_eq!(
+        call_err(&node, Method::SendCad, json!({})).await.code,
+        -32603
+    );
+    assert_eq!(status(&node).await.computer.name, "Alpha");
+}

@@ -179,3 +179,40 @@ async fn a_computer_joining_the_desk_is_logged() {
     })
     .await;
 }
+
+#[test]
+fn a_log_that_cannot_be_opened_drops_every_record() {
+    let dir = tempfile::tempdir().unwrap();
+    // A file where the log directory belongs.
+    std::fs::write(dir.path().join("logs"), b"in the way").unwrap();
+    let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
+    log.record(LogLevel::Info, "peer.connected", None, None);
+    assert!(log.enabled());
+    // Turning logging on later is no different.
+    let off = Log::new(dir.path(), ME, "Alpha".into(), false, 1);
+    off.apply(true, 1, "Alpha");
+    off.record(LogLevel::Info, "peer.connected", None, None);
+    assert!(off.enabled());
+    assert!(!log.path().exists());
+}
+
+#[test]
+fn a_record_that_cannot_rotate_the_file_is_dropped_and_logging_recovers() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = Log::new(dir.path(), ME, "Alpha".into(), true, 1);
+    log.record(LogLevel::Info, "peer.connected", None, None);
+    log.set_max_bytes(10);
+    // The previous file cannot be replaced: a directory is in its place.
+    let rotated = dir.path().join("logs").join("mouser.log.1");
+    std::fs::create_dir(&rotated).unwrap();
+    std::fs::write(rotated.join("keep"), b"x").unwrap();
+    log.record(LogLevel::Info, "peer.disconnected", None, None);
+    assert_eq!(lines(&log.path()).len(), 1, "the record was dropped");
+    // Once it can rotate, the next record is written.
+    std::fs::remove_dir_all(&rotated).unwrap();
+    log.record(LogLevel::Info, "problem.raised", None, None);
+    assert!(rotated.is_file());
+    let written = lines(&log.path());
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0]["event"], "problem.raised");
+}

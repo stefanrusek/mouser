@@ -9,8 +9,10 @@ pub mod desk;
 pub mod discovery;
 pub mod engine;
 pub mod engine_headless;
+pub(crate) mod faults;
 pub mod identity;
 pub mod layout;
+pub(crate) mod lock;
 pub mod logging;
 pub mod paths;
 pub mod portable;
@@ -26,6 +28,10 @@ pub mod transport;
 mod engine_headless_tests;
 #[cfg(test)]
 mod engine_tests;
+#[cfg(test)]
+mod faults_tests;
+#[cfg(test)]
+mod lock_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]

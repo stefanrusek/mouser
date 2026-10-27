@@ -8,6 +8,7 @@ pub mod peer_status;
 pub mod permissions;
 pub mod secure_input;
 
+use crate::lock::LockExt;
 use std::sync::{Arc, Mutex};
 
 use mouser_proto::control::{FixAction, Notification, Problem, ProblemKind, Topic};
@@ -113,7 +114,7 @@ impl Problems {
         fix: Option<FixAction>,
     ) -> bool {
         let problem_id = format!("{}:{subject}", kind_name(kind));
-        let mut all = self.all.lock().unwrap();
+        let mut all = self.all.guard();
         if all
             .iter()
             .any(|p| p.problem_id == problem_id && p.cleared_at.is_none())
@@ -145,7 +146,7 @@ impl Problems {
 
     /// Clear the open problem called `problem_id`; returns whether there was one.
     pub fn clear_id(&self, problem_id: &str) -> bool {
-        let mut all = self.all.lock().unwrap();
+        let mut all = self.all.guard();
         let Some(problem) = all
             .iter_mut()
             .find(|p| p.problem_id == problem_id && p.cleared_at.is_none())
@@ -162,7 +163,7 @@ impl Problems {
 
     /// Problems not yet cleared.
     pub fn open(&self) -> Vec<Problem> {
-        let all = self.all.lock().unwrap();
+        let all = self.all.guard();
         all.iter()
             .filter(|p| p.cleared_at.is_none())
             .cloned()

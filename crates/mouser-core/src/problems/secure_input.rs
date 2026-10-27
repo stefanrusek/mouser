@@ -2,6 +2,7 @@
 //! Mouser from typing on that computer. The desk user is told which one, on
 //! that computer and on every desk-mate; the connection stays up.
 
+use crate::lock::LockExt;
 use mouser_proto::control::ProblemKind;
 use mouser_proto::ids::ComputerId;
 use mouser_proto::wire::SecureInputHolder;
@@ -42,7 +43,7 @@ impl Ctx {
     pub(crate) fn sync_secure_input(&self) {
         let holder = self.platform.secure_input();
         let name = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             if core.secure_holder == holder {
                 return;
             }

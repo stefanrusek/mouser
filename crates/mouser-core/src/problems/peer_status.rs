@@ -3,6 +3,7 @@
 //! when it joins the desk and whenever any of them changes, so the health
 //! panel on any computer shows every computer's state.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 
 use mouser_proto::ids::ComputerId;
@@ -41,7 +42,7 @@ impl Ctx {
     /// Send the desk-mates our status if it is not what they last heard.
     pub(crate) fn sync_peer_status(&self) {
         let status = self.peer_status();
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if core.status_sent.as_ref() == Some(&status) {
             return;
         }
@@ -58,7 +59,7 @@ impl Ctx {
         peer: ComputerId,
         status: PeerStatus,
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         if !Self::authed(&core, peer) {
             return Err("Status from a computer that is not on the desk".into());
         }

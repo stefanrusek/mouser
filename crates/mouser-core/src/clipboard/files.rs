@@ -7,6 +7,7 @@
 //! are written under a directory of their own and the clipboard then holds
 //! those local copies.
 
+use crate::lock::LockExt;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -48,7 +49,7 @@ impl Inbox {
         if remaining == 0 {
             return Ok(Some(top_level(dir, items)));
         }
-        self.0.lock().unwrap().insert(
+        self.0.guard().insert(
             id,
             Incoming {
                 dir: dir.to_path_buf(),
@@ -68,14 +69,14 @@ impl Inbox {
         mut stream: quinn::RecvStream,
     ) -> std::io::Result<Option<Vec<PathBuf>>> {
         let path = {
-            let transfers = self.0.lock().unwrap();
+            let transfers = self.0.guard();
             let incoming = transfers.get(&id).expect("a transfer we expect");
             incoming.dir.join(&incoming.items[index].relative_path)
         };
         let mut file = tokio::fs::File::create(&path).await?;
         tokio::io::copy(&mut stream, &mut file).await?;
         file.flush().await?;
-        let mut transfers = self.0.lock().unwrap();
+        let mut transfers = self.0.guard();
         let incoming = transfers.get_mut(&id).expect("a transfer we expect");
         incoming.remaining -= 1;
         if incoming.remaining > 0 {

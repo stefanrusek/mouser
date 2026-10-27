@@ -6,6 +6,7 @@
 //! applied to the running engine, and, for the desk-shared keys, replicated
 //! to the desk with a new epoch.
 
+use crate::lock::LockExt;
 use std::sync::{Arc, MutexGuard};
 
 use mouser_proto::config::{Config, DESK_SHARED_KEYS};
@@ -23,8 +24,7 @@ use crate::state::Membership;
 impl Ctx {
     /// `config.get`: the value at `key`, or the whole config.
     pub(crate) fn get_config(&self, key: Option<&str>) -> Result<Value, RpcError> {
-        let tree =
-            serde_json::to_value(&self.core.lock().unwrap().config).expect("config serializes");
+        let tree = serde_json::to_value(&self.core.guard().config).expect("config serializes");
         match key {
             None => Ok(tree),
             Some(key) => config::lookup(&tree, key)
@@ -36,7 +36,7 @@ impl Ctx {
     /// `config.set`: change one key, or refuse with `key: reason` and keep
     /// the previous value.
     pub(crate) fn set_config(self: &Arc<Self>, key: &str, value: Value) -> Result<(), RpcError> {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         let (next, hotkeys) =
             config::with_value(&core.config, key, value).map_err(|e| invalid(e.to_string()))?;
         let shared = DESK_SHARED_KEYS.contains(&key);
@@ -66,7 +66,7 @@ impl Ctx {
             &self.display_name_in(&core),
         );
         {
-            let mut crossing = self.crossing.lock().unwrap();
+            let mut crossing = self.crossing.guard();
             crossing.buttons = Buttons45::from_config(&core.config.mouse.buttons_4_5);
             crossing.targeted_paste = targeted_paste;
             crossing.quickjump = quickjump;

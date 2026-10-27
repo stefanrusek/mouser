@@ -62,9 +62,11 @@ impl LocalState {
         }
     }
 
-    pub fn save(&self, path: &Path) {
+    /// Write `path`; a file that cannot be written is the caller's to keep
+    /// going without.
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
         let json = serde_json::to_vec_pretty(self).expect("state serializes");
-        std::fs::write(path, json).expect("state.json writable");
+        std::fs::write(path, json)
     }
 }
 

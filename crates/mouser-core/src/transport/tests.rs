@@ -163,13 +163,34 @@ async fn datagrams_are_read_through_the_link() {
 }
 
 #[tokio::test]
-async fn a_malformed_frame_is_fatal() {
+async fn an_unknown_variant_is_skipped_and_the_link_stays_up() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let (mut send, _recv) = dialed.open_bi().await.unwrap();
+    // A frame whose message index no build of this version knows, then a
+    // known message.
+    send.write_all(&[0, 0, 0, 1, 0x7f]).await.unwrap();
+    send.write_all(&encode_frame(&ControlMessage::Panic))
+        .await
+        .unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Panic)
+    );
+    assert!(acceptor.conn.close_reason().is_none());
+}
+
+#[tokio::test]
+async fn a_malformed_frame_closes_the_link_with_reason_protocol() {
     let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
     let (mut send, _recv) = dialed.open_bi().await.unwrap();
     send.write_all(&[0, 0, 0, 2, 0xff, 0xff]).await.unwrap();
     let mut acceptor = Link::accepted(accepted).await.unwrap();
-    let task = tokio::spawn(async move { acceptor.reader.recv::<ControlMessage>().await });
-    assert!(task.await.unwrap_err().is_panic());
+    assert_eq!(acceptor.reader.recv::<ControlMessage>().await, None);
+    match dialed.closed().await {
+        ConnectionError::ApplicationClosed(close) => assert_eq!(&close.reason[..], b"protocol"),
+        other => panic!("closed by the peer with a reason, not {other:?}"),
+    }
 }
 
 #[tokio::test]

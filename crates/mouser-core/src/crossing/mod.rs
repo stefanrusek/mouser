@@ -9,6 +9,7 @@
 //! [`DeskMap`] snapshot, rebuilt by [`Ctx::refresh_map`] whenever it changes.
 
 pub mod buttons;
+pub mod capture_lost;
 pub mod controller;
 pub mod corners;
 pub mod fullscreen;
@@ -19,17 +20,22 @@ pub mod r#override;
 pub mod panic;
 pub mod pause;
 pub mod receiver;
+pub mod recover;
 pub mod sas;
 pub mod state;
 
 #[cfg(test)]
 mod buttons_tests;
 #[cfg(test)]
+mod capture_lost_tests;
+#[cfg(test)]
 mod controller_tests;
 #[cfg(test)]
 mod corners_tests;
 #[cfg(test)]
 mod fullscreen_tests;
+#[cfg(test)]
+mod input_thread_tests;
 #[cfg(test)]
 mod loss_tests;
 #[cfg(test)]
@@ -45,20 +51,20 @@ mod pause_tests;
 #[cfg(test)]
 mod receiver_tests;
 #[cfg(test)]
+mod recover_tests;
+#[cfg(test)]
 mod sas_tests;
 #[cfg(test)]
 mod state_tests;
-#[cfg(test)]
-mod v2_placeholder_tests;
 
+use crate::lock::LockExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::mpsc;
 
 use bytes::Bytes;
 use mouser_platform::{
-    Error, FileDrag, InputCapture, InputInject, LocalInput, PermissionKind, PermissionState,
-    Platform,
+    FileDrag, InputCapture, InputInject, LocalInput, PermissionKind, PermissionState, Platform,
 };
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, DisplayId, EdgeOptions, Os};
@@ -69,6 +75,7 @@ use tokio::sync::{Notify, broadcast};
 use crate::clipboard::Command;
 use crate::clipboard::targeted::{Chord, paste_chord};
 use crate::engine::{Core, Ctx, EngineEvent, Outgoing, Phase};
+use crate::faults::run_unit;
 use crate::layout::edges::{self, Placed};
 use crate::problems::Problems;
 use buttons::Buttons45;
@@ -246,9 +253,10 @@ impl Crossing {
         }
     }
 
-    /// Give control back and stop capturing.
+    /// Quitting: give control back (the computer driven releases what it
+    /// was sent) and stop capturing.
     pub fn stop(&mut self) {
-        self.return_local(controller::Return::Release, None);
+        self.return_local(controller::Return::Quit, None);
         self.end_receiving();
         if let Some(mut io) = self.io.take() {
             io.capture.stop();
@@ -264,16 +272,10 @@ const INPUT_PERMISSIONS: [PermissionKind; 4] = [
     PermissionKind::RemoteDesktopPortal,
 ];
 
-/// `Err(Unsupported)` means the platform cannot do it (and says so in its
-/// limitations); anything else is a failure.
+/// `None` when the platform cannot do it (`Unsupported`, which it also says
+/// in its limitations) or the system refused: neither is a crash.
 pub(crate) fn supported<T>(result: mouser_platform::Result<T>) -> Option<T> {
-    match result {
-        Ok(value) => Some(value),
-        Err(e) => {
-            assert_eq!(e, Error::Unsupported, "input is unavailable");
-            None
-        }
-    }
+    result.ok()
 }
 
 impl Ctx {
@@ -313,13 +315,13 @@ impl Ctx {
             wires,
             paused,
         };
-        self.crossing.lock().unwrap().set_map(map);
+        self.crossing.guard().set_map(map);
     }
 
     /// Start capturing and injecting once the platform allows it; called at
     /// start and on every reconcile tick until it has started.
     pub(crate) fn try_start_input(self: &Arc<Self>) {
-        if self.crossing.lock().unwrap().io.is_some() {
+        if self.crossing.guard().io.is_some() {
             return;
         }
         let blocked = self
@@ -340,17 +342,23 @@ impl Ctx {
         };
         let (tx, rx) = mpsc::channel::<LocalInput>();
         capture.start(tx).expect("input capture starts");
-        self.crossing.lock().unwrap().io = Some(Io { capture, inject });
+        self.crossing.guard().io = Some(Io { capture, inject });
         let crossing = self.crossing.clone();
         std::thread::Builder::new()
             .name("mouser-input".into())
             .spawn(move || {
                 // Ends when the capture stops and drops its sender.
                 for input in rx {
-                    crossing
-                        .lock()
-                        .unwrap()
-                        .local_input(input, std::time::Instant::now());
+                    let mut crossing = crossing.guard();
+                    let events = crossing.events.clone();
+                    // A fault in one event returns control here and the
+                    // thread keeps handling the next.
+                    let handled = run_unit(&events, "mouser-input", || {
+                        crossing.local_input(input, std::time::Instant::now())
+                    });
+                    if handled.is_err() {
+                        crossing.recover_after_fault();
+                    }
                 }
             })
             .expect("input thread starts");
@@ -358,7 +366,7 @@ impl Ctx {
 
     /// Return control, release everything and stop capturing.
     pub(crate) fn stop_input(&self) {
-        self.crossing.lock().unwrap().stop();
+        self.crossing.guard().stop();
     }
 }
 

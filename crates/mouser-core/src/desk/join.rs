@@ -5,6 +5,7 @@
 //! desk key and desk state. That payload ("sealed" in the wire contract) rides
 //! inside the QUIC connection, whose TLS keys are bound to the two device keys.
 
+use crate::lock::LockExt;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -90,7 +91,7 @@ impl Ctx {
         name: String,
         os: Os,
     ) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let my_desk = core.state.desk.as_ref().map(|d| d.desk_id);
         let entry = core.peers.get(&peer).expect("peer registered");
         if entry.phase != Phase::Greeted
@@ -145,7 +146,7 @@ impl Ctx {
 
     /// `join.pending`.
     pub(crate) fn pending_joins(&self) -> Vec<PendingJoinItem> {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         let desk_name = core
             .state
             .desk
@@ -170,7 +171,7 @@ impl Ctx {
 
     /// `join.decide`: the owner's one-click answer.
     pub(crate) fn decide(self: &Arc<Self>, request_id: u64, approve: bool) -> Result<(), RpcError> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let request = core
             .requests
             .take(request_id)
@@ -212,7 +213,7 @@ impl Ctx {
         for (_, other) in core.peers.iter().filter(|(_, p)| p.phase == Phase::Authed) {
             other.send(ControlMessage::DeskState(state.clone()));
         }
-        self.persist(&core);
+        let _ = self.persist(&core);
         drop(core);
         self.notify_status();
         Ok(())
@@ -227,7 +228,7 @@ impl Ctx {
         moving: bool,
     ) -> Result<JoinPending, RpcError> {
         {
-            let core = self.core.lock().unwrap();
+            let core = self.core.guard();
             let refusal = match (&core.state.membership, moving) {
                 (Membership::Pending(_), _) => {
                     Some("a join request is already waiting for an answer")
@@ -298,10 +299,10 @@ impl Ctx {
         name: Option<String>,
     ) {
         {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             core.state.membership = Membership::Pending(desk_id);
             core.pending = Some(PendingJoin { name });
-            self.persist(&core);
+            let _ = self.persist(&core);
         }
         self.adopt(link, hello, Some(desk_id), true);
     }
@@ -309,7 +310,7 @@ impl Ctx {
     /// The join did not complete: back to what we were before, and say so.
     pub(crate) fn fail_pending(&self, message: &str) {
         let desk_id = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             let Membership::Pending(desk_id) = core.state.membership else {
                 return;
             };
@@ -318,7 +319,7 @@ impl Ctx {
                 None => Membership::Unjoined,
             };
             core.pending = None;
-            self.persist(&core);
+            let _ = self.persist(&core);
             desk_id
         };
         self.problems.raise(
@@ -338,12 +339,12 @@ impl Ctx {
         approved: bool,
         sealed: Option<Vec<u8>>,
     ) -> Result<(), String> {
-        let phase = self.core.lock().unwrap().peers.get(&peer).map(|p| p.phase);
+        let phase = self.core.guard().peers.get(&peer).map(|p| p.phase);
         match (phase, approved) {
             (Some(Phase::AwaitingDecision), false) => {
                 let label = self.pending_label();
                 self.fail_pending(&format!("This computer was not admitted to {label}."));
-                self.core.lock().unwrap().peers[&peer].close();
+                self.core.guard().peers[&peer].close();
                 Ok(())
             }
             (Some(Phase::AwaitingDecision), true) => {
@@ -358,7 +359,7 @@ impl Ctx {
     }
 
     fn pending_label(&self) -> String {
-        let core = self.core.lock().unwrap();
+        let core = self.core.guard();
         core.pending
             .as_ref()
             .and_then(|p| p.name.clone())
@@ -368,7 +369,7 @@ impl Ctx {
     /// We were admitted: become a member (leaving the previous desk if moving).
     fn joined(self: &Arc<Self>, peer: ComputerId, sealed: Sealed) {
         let desk_id = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.guard();
             let desk_id = core.peers[&peer]
                 .hello
                 .desk_id
@@ -399,11 +400,11 @@ impl Ctx {
             });
             core.pending = None;
             self.adopt_shared_config(&mut core);
-            self.persist(&core);
+            let _ = self.persist(&core);
             core.peers.get_mut(&peer).expect("peer registered").phase = Phase::Greeted;
             self.send_auth(&core, peer);
             self.sync_layout(&mut core);
-            self.persist(&core);
+            let _ = self.persist(&core);
             self.refresh_map(&core);
             desk_id
         };
@@ -416,7 +417,7 @@ impl Ctx {
 
     /// A member rotated the desk key and sent the new desk state.
     fn rekeyed(self: &Arc<Self>, sealed: Sealed) -> Result<(), String> {
-        let mut core = self.core.lock().unwrap();
+        let mut core = self.core.guard();
         let desk = core.state.desk.as_mut().expect("authed peers imply a desk");
         if sealed.state.supersedes(&desk.state) {
             let id = desk.desk_id;

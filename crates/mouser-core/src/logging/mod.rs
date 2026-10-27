@@ -4,6 +4,7 @@
 //! `diagnostics.max_log_mb`: the full file becomes `mouser.log.1`, replacing
 //! the previous one, and a new `mouser.log` starts.
 
+use crate::lock::LockExt;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -56,7 +57,9 @@ impl Log {
             }),
         };
         if enabled {
-            log.open(&mut log.inner.lock().unwrap());
+            // A file that cannot be opened drops the records: there is
+            // nowhere to report it.
+            let _ = log.open(&mut log.inner.guard());
         }
         log
     }
@@ -67,30 +70,30 @@ impl Log {
     }
 
     pub fn enabled(&self) -> bool {
-        self.inner.lock().unwrap().enabled
+        self.inner.guard().enabled
     }
 
     pub fn set_max_bytes(&self, bytes: u64) {
-        self.inner.lock().unwrap().max_bytes = bytes;
+        self.inner.guard().max_bytes = bytes;
     }
 
-    fn open(&self, inner: &mut Inner) {
-        std::fs::create_dir_all(self.path.parent().expect("log has a directory"))
-            .expect("log directory");
+    fn open(&self, inner: &mut Inner) -> std::io::Result<()> {
+        inner.file = None;
+        std::fs::create_dir_all(self.path.parent().expect("log has a directory"))?;
         let file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&self.path)
-            .expect("log file opens");
-        inner.size = file.metadata().expect("log file has metadata").len();
+            .open(&self.path)?;
+        inner.size = file.metadata()?.len();
         inner.file = Some(file);
+        Ok(())
     }
 
     /// The config changed: follow its logging switch, size limit and the
     /// computer's name. Turning logging on or off is itself recorded.
     pub fn apply(&self, enabled: bool, max_mb: u32, name: &str) {
         let was = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.guard();
             inner.max_bytes = megabytes(max_mb);
             inner.name = name.to_string();
             inner.enabled
@@ -99,14 +102,14 @@ impl Log {
             return;
         }
         if enabled {
-            let mut inner = self.inner.lock().unwrap();
-            self.open(&mut inner);
+            let mut inner = self.inner.guard();
+            let _ = self.open(&mut inner);
             inner.enabled = true;
             drop(inner);
             self.record(LogLevel::Info, "logging.enabled", None, None);
         } else {
             self.record(LogLevel::Info, "logging.disabled", None, None);
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.guard();
             inner.enabled = false;
             inner.file = None;
         }
@@ -120,7 +123,7 @@ impl Log {
         peer: Option<ComputerId>,
         fields: Option<serde_json::Map<String, serde_json::Value>>,
     ) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.guard();
         if !inner.enabled {
             return;
         }
@@ -143,11 +146,16 @@ impl Log {
             // Windows cannot rename over an existing file.
             let rotated = self.path.with_extension("log.1");
             let _ = std::fs::remove_file(&rotated);
-            std::fs::rename(&self.path, &rotated).expect("log rotates");
-            self.open(&mut inner);
+            if std::fs::rename(&self.path, &rotated).is_err() {
+                return;
+            }
+            let _ = self.open(&mut inner);
         }
-        let file = inner.file.as_mut().expect("log is open while enabled");
-        file.write_all(line.as_bytes()).expect("log file writable");
+        // A file that is not open or not writable drops the record.
+        let Some(file) = inner.file.as_mut() else {
+            return;
+        };
+        let _ = file.write_all(line.as_bytes());
         inner.size += len;
     }
 }

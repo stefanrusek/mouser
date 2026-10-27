@@ -129,12 +129,9 @@ impl Crossing {
                 Control::Remote(_) => self.return_local(Return::Release, Some(desktop)),
                 Control::Local => {
                     self.pointer = desktop;
-                    self.io
-                        .as_mut()
-                        .expect("input is running")
-                        .capture
-                        .warp(desktop.0, desktop.1)
-                        .expect("pointer can be placed");
+                    // A refused warp is skipped.
+                    let io = self.io.as_mut().expect("input is running");
+                    let _ = io.capture.warp(desktop.0, desktop.1);
                 }
             }
         } else if self.session.remote() == Some(owner) {
