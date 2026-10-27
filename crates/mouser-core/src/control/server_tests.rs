@@ -291,12 +291,12 @@ async fn a_panic_in_one_request_is_an_internal_error_and_the_server_keeps_servin
 
 #[cfg(windows)]
 mod service_pipe {
-    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::io::AsRawHandle;
 
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
-        SDDL_REVISION_1, SE_FILE_OBJECT,
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SDDL_REVISION_1,
+        SE_FILE_OBJECT,
     };
     use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
 
@@ -304,17 +304,18 @@ mod service_pipe {
     use crate::control::SERVICE_PIPE;
     use mouser_proto::wire::ComputerMode;
 
-    /// The DACL of the pipe `name`, as SDDL.
+    /// The DACL of the pipe `name`, as SDDL (read through a client's end).
     fn dacl_of(name: &str) -> String {
-        let wide: Vec<u16> = std::ffi::OsStr::new(name)
-            .encode_wide()
-            .chain(Some(0))
-            .collect();
+        let pipe = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(name)
+            .expect("the pipe takes a client");
         let mut descriptor = std::ptr::null_mut();
-        // SAFETY: `wide` is NUL-terminated; the descriptor is freed below.
+        // SAFETY: `pipe` is open; the descriptor is freed below.
         let status = unsafe {
-            GetNamedSecurityInfoW(
-                wide.as_ptr(),
+            GetSecurityInfo(
+                pipe.as_raw_handle(),
                 SE_FILE_OBJECT,
                 DACL_SECURITY_INFORMATION,
                 std::ptr::null_mut(),
