@@ -520,10 +520,10 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 17: US4-cli — As a desk owner, I want to tailor hotkeys, names and pointer behavior from the Mouser window (P2)
 
-- [ ] T370 [P] [US4-cli] Write tests in `apps/mouser-cli/tests/contract_cli_desk.rs`: `mouser desk rename <computer> <name>` calls `desk.rename`, where `<computer>` is a name or an id; an unknown computer exits 3; afterwards `mouser status` shows the new name (Story 4 sc. 3)
-- [ ] T371 [US4-cli] Implement `desk rename` in `apps/mouser-cli/src/desk.rs`
-- [ ] T372 [US4-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T373 [US4-cli] Commit: phase boundary "US4-cli" (5.3)
+- [X] T370 [P] [US4-cli] Write tests in `apps/mouser-cli/tests/contract_cli_desk.rs`: `mouser desk rename <computer> <name>` calls `desk.rename`, where `<computer>` is a name or an id; an unknown computer exits 3; afterwards `mouser status` shows the new name (Story 4 sc. 3)
+- [X] T371 [US4-cli] Implement `desk rename` in `apps/mouser-cli/src/desk.rs`
+- [X] T372 [US4-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T373 [US4-cli] Commit: phase boundary "US4-cli" (5.3)
 
 #### Phase 18: US5-cli — As a desk user, I want to control a Windows computer at its login screen, elevation prompts and administrator applications (P2)
 

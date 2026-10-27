@@ -259,3 +259,56 @@ async fn arguments_that_name_nothing_exit_3() {
     assert!(already.stderr.contains("leave the current desk first"));
     lab.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_changes_a_computers_name_by_name_or_id() {
+    let lab = Lab::new();
+    let alpha = lab.add("Alpha").await;
+    let beta = lab.add("Beta").await;
+    create_desk(&alpha, "Home office").await;
+    let joined = join_approved(&alpha, &beta, &["desk", "join", "Home office"]).await;
+    assert_eq!(joined.code, 0, "{}", joined.stderr);
+    alpha
+        .wait_status("Beta is a member", |s| s.computers.len() == 2)
+        .await;
+
+    let by_name = alpha
+        .mouser(&["desk", "rename", "Beta", "Workstation"])
+        .await;
+    assert_eq!(
+        (by_name.code, by_name.stdout.as_str()),
+        (0, "Renamed Beta to Workstation\n")
+    );
+    let status = alpha
+        .wait_status("renamed", |s| {
+            s.computers.iter().any(|c| c.name == "Workstation")
+        })
+        .await;
+    assert_eq!(status.computers.len(), 2);
+
+    let beta_id = beta.id().to_string();
+    let by_id = alpha
+        .mouser(&["--json", "desk", "rename", &beta_id, "Laptop"])
+        .await;
+    assert_eq!(by_id.json(), serde_json::json!({}));
+    alpha
+        .wait_status("renamed again", |s| {
+            s.computers.iter().any(|c| c.name == "Laptop")
+        })
+        .await;
+    lab.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_of_an_unknown_computer_exits_3() {
+    let lab = Lab::new();
+    let alpha = lab.add("Alpha").await;
+    create_desk(&alpha, "Home office").await;
+    let out = alpha.mouser(&["desk", "rename", "Nobody", "X"]).await;
+    assert_eq!(out.code, 3);
+    assert!(out.stderr.contains("no computer named \"Nobody\""));
+    let nobody = lab.offline("Nobody");
+    let out = nobody.mouser(&["desk", "rename", "Beta", "X"]).await;
+    assert_eq!(out.code, 2);
+    lab.shutdown().await;
+}

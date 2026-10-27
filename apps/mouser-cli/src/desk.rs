@@ -26,6 +26,13 @@ pub enum DeskCommand {
         /// A computer name or id.
         computer: String,
     },
+    /// Rename a computer on the desk.
+    Rename {
+        /// A computer name or id.
+        computer: String,
+        /// The new name.
+        name: String,
+    },
 }
 
 pub async fn desks(mouser: &mut Mouser) -> Result<(), Failure> {
@@ -51,6 +58,7 @@ pub async fn run(mouser: &mut Mouser, action: DeskCommand) -> Result<(), Failure
             Ok(())
         }
         DeskCommand::Remove { computer } => remove(mouser, &computer).await,
+        DeskCommand::Rename { computer, name } => rename(mouser, &computer, &name).await,
     }
 }
 
@@ -142,26 +150,36 @@ fn joined_text(desk: &StatusDesk) -> String {
     format!("Joined desk \"{}\" [{}]", desk.name, desk.id)
 }
 
+/// The id of the computer the owner named, by id or by desk name.
+async fn computer_id(mouser: &mut Mouser, computer: &str) -> Result<ComputerId, Failure> {
+    if let Ok(id) = computer.parse::<ComputerId>() {
+        return Ok(id);
+    }
+    let value = mouser.call(Method::Status, json!({})).await?;
+    let status: Status = decode(value)?;
+    status
+        .computers
+        .iter()
+        .find(|c| c.name == computer)
+        .map(|c| c.id)
+        .ok_or_else(|| Failure::Invalid(format!("no computer named \"{computer}\" is on the desk")))
+}
+
 async fn remove(mouser: &mut Mouser, computer: &str) -> Result<(), Failure> {
-    let id = match computer.parse::<ComputerId>() {
-        Ok(id) => id,
-        Err(_) => {
-            let value = mouser.call(Method::Status, json!({})).await?;
-            let status: Status = decode(value)?;
-            status
-                .computers
-                .iter()
-                .find(|c| c.name == computer)
-                .map(|c| c.id)
-                .ok_or_else(|| {
-                    Failure::Invalid(format!("no computer named \"{computer}\" is on the desk"))
-                })?
-        }
-    };
+    let id = computer_id(mouser, computer).await?;
     let value = mouser
         .call(Method::DeskRemoveMember, json!({ "computer_id": id }))
         .await?;
     mouser.print(&value, || format!("Removed {computer} from the desk"));
+    Ok(())
+}
+
+async fn rename(mouser: &mut Mouser, computer: &str, name: &str) -> Result<(), Failure> {
+    let id = computer_id(mouser, computer).await?;
+    let value = mouser
+        .call(Method::DeskRename, json!({ "computer": id, "name": name }))
+        .await?;
+    mouser.print(&value, || format!("Renamed {computer} to {name}"));
     Ok(())
 }
 
