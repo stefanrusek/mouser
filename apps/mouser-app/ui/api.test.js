@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EVENT, LANDING_EVENT, NAVIGATE_EVENT, QUICKJUMP_EVENT, makeApi } from './api.js';
+import { EVENT, LANDING_EVENT, NAVIGATE_EVENT, QUICKJUMP_EVENT, makeApi, withOrigin } from './api.js';
 import { boot } from './boot.js';
 import { button, errorText, guarded } from './dom.js';
 import { Window } from 'happy-dom';
@@ -31,6 +31,7 @@ test('calls go through the control command, other commands by name', async () =>
   await api.portable();
   await api.hideWindow();
   await api.allowLoginScreen();
+  await api.hotkeyRefusals();
   assert.deepEqual(tauri.invoked, [
     ['control', { request: { method: 'status', params: null } }],
     ['control', { request: { method: 'desk.create', params: { name: 'Home' } } }],
@@ -44,6 +45,7 @@ test('calls go through the control command, other commands by name', async () =>
     ['is_portable', undefined],
     ['hide_window', undefined],
     ['allow_login_screen', undefined],
+    ['hotkey_refusals', undefined],
   ]);
 });
 
@@ -117,4 +119,17 @@ test('buttons and guarded actions', async () => {
   target.textContent = 'kept';
   await guarded(target, async () => {}, { clear: false })();
   assert.equal(target.textContent, 'kept');
+});
+
+test('every config.set the UI sends carries origin "app"', async () => {
+  const tauri = fakeTauri();
+  const api = makeApi(tauri);
+  await api.call('config.set', { key: 'hotkeys.panic', value: 'F9*3' });
+  await api.call('config.get', { key: 'hotkeys.panic' });
+  assert.deepEqual(tauri.invoked, [
+    ['control', { request: { method: 'config.set', params: { key: 'hotkeys.panic', value: 'F9*3', origin: 'app' } } }],
+    ['control', { request: { method: 'config.get', params: { key: 'hotkeys.panic' } } }],
+  ]);
+  assert.deepEqual(withOrigin('config.set', { key: 'a', value: 1 }), { key: 'a', value: 1, origin: 'app' });
+  assert.deepEqual(withOrigin('status', null), null);
 });

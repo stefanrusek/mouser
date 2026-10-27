@@ -10,6 +10,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::host::Host;
+use crate::hotkeys::Hotkeys;
 use crate::notify::{self, Notifier};
 use crate::overlay;
 use crate::quickjump_windows;
@@ -30,6 +31,11 @@ pub fn handle<R: Runtime>(
         // Kept before it is announced, so a window that opens now still sees it.
         app.state::<Host>().remember_transfer(note.params.clone());
     }
+    if note.method == Topic::Config {
+        // Registered before the windows hear of it, so a window that asks which
+        // hotkeys were refused sees the outcome of this change.
+        app.state::<Arc<Hotkeys>>().on_config(&note.params);
+    }
     app.emit(EVENT, &note).expect("UI windows can be notified");
     match note.method {
         Topic::Status => {
@@ -39,7 +45,6 @@ pub fn handle<R: Runtime>(
             tray.update_status(status);
         }
         Topic::JoinRequest => windows::navigate(app, windows::DESK),
-        // v2 placeholder: T322 (the app lane wires config updates)
         Topic::Config => {}
         Topic::Problem => app.state::<Host>().toast(&note, notifier),
         Topic::Transfer => {

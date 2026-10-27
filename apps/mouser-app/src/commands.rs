@@ -1,6 +1,7 @@
 //! The commands the UI windows call. Everything else the UI needs goes
 //! through `control`, which is the control API, method for method.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -43,20 +44,6 @@ pub async fn call(
     }
 }
 
-/// [`call`], then pick up any hotkey the call may have changed.
-pub async fn call_and_sync(
-    control: &ControlHandle,
-    hotkeys: &Arc<Hotkeys>,
-    method: &str,
-    params: Option<Value>,
-) -> Result<Value, RpcError> {
-    let result = call(control, method, params).await;
-    if method == "config.set" {
-        hotkeys.sync();
-    }
-    result
-}
-
 /// Open the operating system's screen for granting `kind`.
 pub fn open_settings(host: &Host, kind: PermissionKind) -> Result<(), String> {
     host.platform()
@@ -96,12 +83,14 @@ pub struct ControlRequest {
 }
 
 #[tauri::command]
-pub async fn control(
-    host: State<'_, Host>,
-    hotkeys: State<'_, Arc<Hotkeys>>,
-    request: ControlRequest,
-) -> Result<Value, RpcError> {
-    call_and_sync(&host.control(), &hotkeys, &request.method, request.params).await
+pub async fn control(host: State<'_, Host>, request: ControlRequest) -> Result<Value, RpcError> {
+    call(&host.control(), &request.method, request.params).await
+}
+
+/// The hotkeys the operating system refused to register, by name, with its reason.
+#[tauri::command]
+pub fn hotkey_refusals(hotkeys: State<'_, Arc<Hotkeys>>) -> BTreeMap<String, String> {
+    hotkeys.refusals()
 }
 
 #[tauri::command]

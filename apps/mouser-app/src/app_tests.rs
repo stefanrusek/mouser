@@ -61,11 +61,14 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
     eventually(|| *events.lock().unwrap() == 6).await;
 }
 
-// v2 placeholder: T322
 #[tokio::test(flavor = "multi_thread")]
-async fn a_config_notification_reaches_the_windows_and_does_nothing_else() {
+async fn a_config_notification_reaches_the_windows_and_registers_hotkeys_again() {
     let f = fixture().await;
+    let set = crate::hotkeys_tests::hotkeys_for(f.host.control());
+    set.hotkeys.sync();
+    set.config.lock().unwrap().hotkeys.enable_disable = "Ctrl+Alt+P".into();
     let app = app_with(f.host);
+    app.manage(set.hotkeys.clone());
     let handle_ = app.handle().clone();
     let port = FakeTray::default();
     let tray = TrayController::new(Box::new(port.clone()), Os::MacOs, Appearance::Light);
@@ -74,8 +77,17 @@ async fn a_config_notification_reaches_the_windows_and_does_nothing_else() {
     let seen = events.clone();
     handle_.listen(EVENT, move |_| *seen.lock().unwrap() += 1);
 
-    handle(&handle_, &tray, &notifier, note(Topic::Config, json!({})));
+    handle(
+        &handle_,
+        &tray,
+        &notifier,
+        note(
+            Topic::Config,
+            json!({"key": "hotkeys.enable_disable", "old": "a", "new": "b", "origin": "cli"}),
+        ),
+    );
     eventually(|| *events.lock().unwrap() == 1).await;
+    assert_eq!(set.shortcuts.replaced.lock().unwrap().len(), 2);
     assert!(port.views.lock().unwrap().is_empty());
     assert!(notifier.shown.lock().unwrap().is_empty());
 }

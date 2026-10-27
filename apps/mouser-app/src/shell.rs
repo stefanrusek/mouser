@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, Runtime, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -39,21 +39,29 @@ impl<R: Runtime> Notifier for LiveNotifier<R> {
 struct LiveShortcuts<R: Runtime>(AppHandle<R>);
 
 impl<R: Runtime> Shortcuts for LiveShortcuts<R> {
-    fn replace(&self, bindings: &[(String, Hotkey)], press: Press) {
+    fn replace(&self, bindings: &[(String, Hotkey)], press: Press) -> Vec<(Hotkey, String)> {
         let shortcuts = self.0.global_shortcut();
         shortcuts
             .unregister_all()
             .expect("old hotkeys can be released");
+        let mut refused = Vec::new();
         for (accelerator, hotkey) in bindings {
             let (hotkey, press) = (*hotkey, press.clone());
-            shortcuts
-                .on_shortcut(accelerator.as_str(), move |_app, _shortcut, event| {
+            let registered =
+                shortcuts.on_shortcut(accelerator.as_str(), move |_app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         press(hotkey);
                     }
-                })
-                .unwrap_or_else(|e| panic!("hotkey {accelerator} can be registered: {e}"));
+                });
+            // The system may refuse a key another application holds (FR-002).
+            if let Err(e) = registered {
+                refused.push((
+                    hotkey,
+                    format!("{accelerator} could not be registered: {e}"),
+                ));
+            }
         }
+        refused
     }
 }
 
@@ -170,6 +178,7 @@ pub fn run() {
             commands::collect_logs,
             commands::transfer_resolve,
             commands::hide_window,
+            commands::hotkey_refusals,
             portable::is_portable,
             #[cfg(target_os = "macos")]
             crate::login_screen::allow_login_screen
@@ -225,18 +234,10 @@ pub fn run() {
             )
             .build()?;
             overlay::create(&handle);
-            let forward = handle.clone();
             let hotkeys = Hotkeys::new(
                 Box::new(LiveShortcuts(handle.clone())),
                 control.clone(),
                 Box::new(move || mouser_core::config::load_or_create(&config_dir)),
-                // QuickJump and targeted paste are acted on by the engine
-                // once those stories land; the window layer only reports them.
-                Arc::new(move |hotkey| {
-                    forward
-                        .emit("mouser://hotkey", hotkey.name())
-                        .expect("hotkey press can be announced");
-                }),
             );
             hotkeys.sync();
             app.manage(hotkeys);

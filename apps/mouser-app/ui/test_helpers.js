@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { withOrigin } from './api.js';
 
 export function loadPage(name) {
   const html = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
@@ -30,6 +31,7 @@ export function fakeApi(answers = {}) {
     emitNavigate: (route) => navigations.forEach((handler) => handler({ route })),
     emit: (method, params) => listeners.forEach((handler) => handler({ jsonrpc: '2.0', method, params })),
     call: async (method, params) => {
+      params = withOrigin(method, params);
       calls.push([method, params]);
       const answer = answers[method];
       const value = typeof answer === 'function' ? answer(params) : answer;
@@ -47,6 +49,7 @@ export function fakeApi(answers = {}) {
     },
     transfers: async () => answers.transfers ?? [],
     takeArrangerEdge: async () => answers.arrangerEdge ?? null,
+    hotkeyRefusals: async () => answers.hotkey_refusals ?? {},
     portable: async () => answers.portable ?? false,
     hideWindow: async () => record('hide_window', []),
     allowLoginScreen: async () => {

@@ -5,11 +5,14 @@ export const LANDING_EVENT = 'mouser://landing';
 export const QUICKJUMP_EVENT = 'mouser://quickjump';
 export const NAVIGATE_EVENT = 'mouser://navigate';
 
+// What a call sends: a setting changed from this window says so (`setting.changed` records it).
+export const withOrigin = (method, params) => (method === 'config.set' ? { ...params, origin: 'app' } : params);
+
 export function makeApi(tauri) {
   const { invoke } = tauri.core;
   return {
     // Call a control-API method by name (contracts/control-api.md).
-    call: (method, params = null) => invoke('control', { request: { method, params } }),
+    call: (method, params = null) => invoke('control', { request: { method, params: withOrigin(method, params) } }),
     openPermissionSettings: (kind) => invoke('open_permission_settings', { kind }),
     // Run the fix of an open problem (the engine acknowledges it; the app opens whatever screen it needs).
     fix: (problemId, fix) => invoke('fix', { problemId, fix }),
@@ -28,6 +31,8 @@ export function makeApi(tauri) {
     hideWindow: () => invoke('hide_window'),
     // macOS: stage this computer's keys and install the login-window agent, after one administrator prompt.
     allowLoginScreen: () => invoke('allow_login_screen'),
+    // The hotkeys the operating system refused to register: {<hotkey name>: reason}.
+    hotkeyRefusals: () => invoke('hotkey_refusals'),
     // handler receives {method: topic, params}; resolves to an unlisten function.
     onNotification: (handler) => tauri.event.listen(EVENT, (event) => handler(event.payload)),
     // handler receives {x, y}: where the pointer landed, in the overlay window's own pixels.

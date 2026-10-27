@@ -1,10 +1,25 @@
-// Settings: the mouse buttons, Advanced (port, allowlist) and, on a Mac,
-// control at the login screen. Hotkeys, names and the rest are added by Story 4.
+// Settings: computer names, hotkeys, the switches (landing highlight, Command
+// as Control, start at login, notifications), the mouse buttons, Advanced
+// (port, allowlist) and, on a Mac, control at the login screen.
 
-import { BUTTON_CHOICES } from '../input_settings.js';
 import { button, el, guarded, show } from '../dom.js';
+import * as hotkeys from './settings_hotkeys.js';
+import * as names from './settings_names.js';
 
 const BUTTONS = 'mouse.buttons_4_5';
+
+// What buttons 4 and 5 can do on the other computers.
+export const BUTTON_CHOICES = [
+  ['passthrough', 'Pass through unchanged'],
+  ['back_forward', 'Back and Forward'],
+];
+
+const SWITCHES = [
+  ['crossing.landing_highlight', 'Highlight where the pointer lands on another computer'],
+  ['keyboard.command_as_control', 'Use Command as Control on Windows and Linux'],
+  ['general.start_at_login', 'Start Mouser when I log in'],
+  ['general.notifications', 'Show notifications'],
+];
 
 // The allowlist textarea's lines as a list of network ranges.
 export function parseAllowlist(text) {
@@ -50,10 +65,21 @@ export function create({ doc, api }) {
   );
   loginSection.hidden = true;
   const errorLine = el(doc, 'p', { class: 'error', role: 'alert' });
+  const switchesNote = el(doc, 'p', { class: 'switches-note hint', role: 'alert' });
+  const boxes = SWITCHES.map(([key, label]) => {
+    const box = el(doc, 'input', { type: 'checkbox', 'data-setting': key });
+    box.addEventListener('change', () => saveSwitch(key, box.checked));
+    return [key, el(doc, 'label', { class: 'choice' }, box, ` ${label}`), box];
+  });
+  const namesSection = names.create({ doc, api });
+  const hotkeysSection = hotkeys.create({ doc, api });
   const element = el(
     doc,
     'div',
     { class: 'settings' },
+    namesSection.element,
+    hotkeysSection.element,
+    el(doc, 'section', {}, el(doc, 'h2', {}, 'Behavior'), ...boxes.map(([, label]) => label), switchesNote),
     el(
       doc,
       'section',
@@ -72,6 +98,10 @@ export function create({ doc, api }) {
     await api.call('config.set', { key: BUTTONS, value });
     buttonsNote.textContent = 'Saved.';
   });
+  const saveSwitch = guarded(switchesNote, async (key, value) => {
+    await api.call('config.set', { key, value });
+    switchesNote.textContent = 'Saved.';
+  });
   const allowLogin = guarded(loginNote, async () => {
     await api.allowLoginScreen();
     loginNote.textContent = 'Done. This Mac can now be controlled at the login screen.';
@@ -86,6 +116,7 @@ export function create({ doc, api }) {
         return el(doc, 'label', { class: 'choice' }, input, ` ${label}`);
       }),
     );
+    for (const [key, , box] of boxes) box.checked = await api.call('config.get', { key });
     allowlist.value = (await api.call('config.get', { key: 'advanced.allowlist' })).join('\n');
     port.value = String(await api.call('config.get', { key: 'advanced.port' }));
   });
@@ -111,16 +142,18 @@ export function create({ doc, api }) {
       errorLine,
       async (status) => {
         const macos = status.computers.find((c) => c.connection === 'self').os === 'macos';
+        namesSection.update(status);
         show(loginSection, macos && !(await api.portable()));
       },
       { clear: false },
     ),
     note(note) {
       if (note.method === 'config') load();
+      hotkeysSection.note(note);
     },
     open(part) {
       const node = element.querySelector(`[data-setting="${part}"]`);
-      (node.querySelector('input') ?? node).focus();
+      (node.querySelector('input, button') ?? node).focus();
     },
   };
 }

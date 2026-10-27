@@ -434,26 +434,26 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: `node --test` passes `acc_v2_us4.test.js`; Rust tests show hotkeys re-registered on every `config` notification and an OS refusal reported, not panicking.
 
-- [ ] T309 [US4-app] Write UI acceptance tests `apps/mouser-app/ui/acc_v2_us4.test.js`, one test per Story 4 scenario 1–6 as seen in the window, named with its Given/When/Then text verbatim from spec.md
-- [ ] T310 [P] [US4-app] Write UI tests `apps/mouser-app/ui/key_recorder.test.js`: recording a chord captures the pressed modifiers + key as an accelerator string; recording the panic key captures one key plus a press count 1–5 as `<Key>*<count>`; Esc cancels recording
-- [ ] T311 [US4-app] Implement `apps/mouser-app/ui/key_recorder.js`
-- [ ] T312 [P] [US4-app] Write UI tests `apps/mouser-app/ui/sections/settings_names.test.js`: every desk computer's friendly name is editable from this window and saving calls `desk.rename {computer, name}` (1–64 characters, trimmed; an invalid name shows the error next to the field) (Story 4 sc. 3)
-- [ ] T313 [US4-app] Implement friendly names in `apps/mouser-app/ui/sections/settings_names.js`
-- [ ] T314 [P] [US4-app] Write UI tests `apps/mouser-app/ui/sections/settings_hotkeys.test.js`: panic key, QuickJump, enable/disable and targeted-paste recorders call `config.set` with `origin: "app"`; a hotkey the OS refused shows the refusal next to that hotkey (Story 4 sc. 1–2)
-- [ ] T315 [US4-app] Implement `apps/mouser-app/ui/sections/settings_hotkeys.js`
-- [ ] T316 [P] [US4-app] Write UI tests `apps/mouser-app/ui/sections/settings.test.js`: Settings shows the landing highlight toggle, "Use Command as Control on Windows and Linux", mouse buttons 4/5, start at login, notifications and Advanced (port, allowlist), each writing its config key with `origin: "app"`; `#settings/<key>` focuses that control (Story 4 sc. 4–6)
-- [ ] T317 [US4-app] Implement `apps/mouser-app/ui/sections/settings.js` composing `settings_names.js` and `settings_hotkeys.js`
-- [ ] T318 [US4-app] Delete `apps/mouser-app/ui/input_settings.html`, `apps/mouser-app/ui/input_settings.js` and `apps/mouser-app/ui/input_settings.test.js` (content moved to Settings)
-- [ ] T319 [P] [US4-app] Write UI tests in `apps/mouser-app/ui/api.test.js`: every `config.set` the UI sends carries `origin: "app"`
-- [ ] T320 [US4-app] Add `origin: "app"` in `apps/mouser-app/ui/api.js`
-- [ ] T321 [P] [US4-app] Write unit tests in `apps/mouser-app/src/hotkeys_tests.rs`: a `config` topic notification for any `hotkeys.*` key from any origin (app, cli, file, desk_mate) re-registers OS hotkeys (`commands.rs:47-58` re-registers only after a UI `config.set` today)
-- [ ] T322 [US4-app] Re-register hotkeys from the `config` topic in `apps/mouser-app/src/hotkeys.rs` and remove the re-registration from `apps/mouser-app/src/commands.rs`
-- [ ] T323 [P] [US4-app] Write unit tests in `apps/mouser-app/src/hotkeys_tests.rs`: a hotkey the OS refuses to register is reported to the UI for display next to that hotkey and nothing panics (`shell.rs:91`; FR-002)
-- [ ] T324 [US4-app] Report registration refusals in `apps/mouser-app/src/hotkeys.rs` and remove the panic in `apps/mouser-app/src/shell.rs`
-- [ ] T325 [P] [US4-app] Write unit tests in `apps/mouser-app/src/hotkeys_tests.rs`: only `hotkeys.enable_disable` is registered with the OS; QuickJump and targeted paste are not (core detects both in the captured stream)
-- [ ] T326 [US4-app] Delete the dead QuickJump and targeted-paste OS registrations (`shell.rs:262-266`) from `apps/mouser-app/src/hotkeys.rs` and `apps/mouser-app/src/shell.rs`
-- [ ] T327 [US4-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T328 [US4-app] Commit: phase boundary "US4-app" (5.3)
+- [X] T309 [US4-app] Write UI acceptance tests `apps/mouser-app/ui/acc_v2_us4.test.js`, one test per Story 4 scenario 1–6 as seen in the window, named with its Given/When/Then text verbatim from spec.md
+- [X] T310 [P] [US4-app] Write UI tests `apps/mouser-app/ui/key_recorder.test.js`: recording a chord captures the pressed modifiers + key as an accelerator string; recording the panic key captures one key plus a press count 1–5 as `<Key>*<count>`; Esc cancels recording
+- [X] T311 [US4-app] Implement `apps/mouser-app/ui/key_recorder.js`
+- [X] T312 [P] [US4-app] Write UI tests `apps/mouser-app/ui/sections/settings_names.test.js`: every desk computer's friendly name is editable from this window and saving calls `desk.rename {computer, name}` (1–64 characters, trimmed; an invalid name shows the error next to the field) (Story 4 sc. 3)
+- [X] T313 [US4-app] Implement friendly names in `apps/mouser-app/ui/sections/settings_names.js`
+- [X] T314 [P] [US4-app] Write UI tests `apps/mouser-app/ui/sections/settings_hotkeys.test.js`: panic key, QuickJump, enable/disable and targeted-paste recorders call `config.set` with `origin: "app"`; a hotkey the OS refused shows the refusal next to that hotkey (Story 4 sc. 1–2)
+- [X] T315 [US4-app] Implement `apps/mouser-app/ui/sections/settings_hotkeys.js`
+- [X] T316 [P] [US4-app] Write UI tests `apps/mouser-app/ui/sections/settings.test.js`: Settings shows the landing highlight toggle, "Use Command as Control on Windows and Linux", mouse buttons 4/5, start at login, notifications and Advanced (port, allowlist), each writing its config key with `origin: "app"`; `#settings/<key>` focuses that control (Story 4 sc. 4–6)
+- [X] T317 [US4-app] Implement `apps/mouser-app/ui/sections/settings.js` composing `settings_names.js` and `settings_hotkeys.js`
+- [X] T318 [US4-app] Delete `apps/mouser-app/ui/input_settings.html`, `apps/mouser-app/ui/input_settings.js` and `apps/mouser-app/ui/input_settings.test.js` (content moved to Settings)
+- [X] T319 [P] [US4-app] Write UI tests in `apps/mouser-app/ui/api.test.js`: every `config.set` the UI sends carries `origin: "app"`
+- [X] T320 [US4-app] Add `origin: "app"` in `apps/mouser-app/ui/api.js`
+- [X] T321 [P] [US4-app] Write unit tests in `apps/mouser-app/src/hotkeys_tests.rs`: a `config` topic notification for any `hotkeys.*` key from any origin (app, cli, file, desk_mate) re-registers OS hotkeys (`commands.rs:47-58` re-registers only after a UI `config.set` today)
+- [X] T322 [US4-app] Re-register hotkeys from the `config` topic in `apps/mouser-app/src/hotkeys.rs` and remove the re-registration from `apps/mouser-app/src/commands.rs`
+- [X] T323 [P] [US4-app] Write unit tests in `apps/mouser-app/src/hotkeys_tests.rs`: a hotkey the OS refuses to register is reported to the UI for display next to that hotkey and nothing panics (`shell.rs:91`; FR-002)
+- [X] T324 [US4-app] Report registration refusals in `apps/mouser-app/src/hotkeys.rs` and remove the panic in `apps/mouser-app/src/shell.rs`
+- [X] T325 [P] [US4-app] Write unit tests in `apps/mouser-app/src/hotkeys_tests.rs`: only `hotkeys.enable_disable` is registered with the OS; QuickJump and targeted paste are not (core detects both in the captured stream)
+- [X] T326 [US4-app] Delete the dead QuickJump and targeted-paste OS registrations (`shell.rs:262-266`) from `apps/mouser-app/src/hotkeys.rs` and `apps/mouser-app/src/shell.rs`
+- [X] T327 [US4-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T328 [US4-app] Commit: phase boundary "US4-app" (5.3)
 
 #### Phase 13: US5-app — As a desk user, I want to control a Windows computer at its login screen, elevation prompts and administrator applications (P2)
 

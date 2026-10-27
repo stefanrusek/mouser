@@ -9,7 +9,7 @@ use tauri::test::{
 };
 use tauri::webview::InvokeRequest;
 
-use crate::commands::{FileManager, call, call_and_sync, open_settings, reveal, run_fix};
+use crate::commands::{FileManager, call, open_settings, reveal, run_fix};
 use crate::hotkeys_tests::hotkeys_for;
 use crate::support_tests::{
     NoSettingsScreen, app_with, fixture, fixture_on, has_window, status_of,
@@ -212,7 +212,8 @@ async fn the_ui_reaches_all_the_commands_over_ipc() {
             crate::commands::transfer_resolve,
             crate::commands::hide_window,
             crate::commands::reveal_in_file_manager,
-            crate::commands::collect_logs
+            crate::commands::collect_logs,
+            crate::commands::hotkey_refusals
         ])
         .build(mock_context(noop_assets()))
         .unwrap();
@@ -267,6 +268,8 @@ async fn the_ui_reaches_all_the_commands_over_ipc() {
 
     ipc("hide_window", json!({})).unwrap();
 
+    assert_eq!(ipc("hotkey_refusals", json!({})).unwrap(), json!({}));
+
     ipc("reveal_in_file_manager", json!({"path": "/tmp/bundle.zip"})).unwrap();
     assert_eq!(recorder.0.lock().unwrap().len(), 1);
 
@@ -274,24 +277,6 @@ async fn the_ui_reaches_all_the_commands_over_ipc() {
     let bundle = ipc("collect_logs", json!({})).unwrap();
     assert!(bundle["path"].as_str().unwrap().ends_with(".zip"));
     assert_eq!(bundle["computers"][0]["name"], "Desk Mac");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn saving_a_setting_picks_up_changed_hotkeys() {
-    let f = fixture().await;
-    let set = hotkeys_for(f.host.control());
-    set.hotkeys.sync();
-    set.config.lock().unwrap().hotkeys.quickjump = "Ctrl+Alt+K".into();
-    let control = f.host.control();
-
-    call_and_sync(&control, &set.hotkeys, "status", None)
-        .await
-        .unwrap();
-    assert_eq!(set.shortcuts.replaced.lock().unwrap().len(), 1);
-
-    // Whether or not the engine accepts the setting, the hotkeys follow config.
-    let _ = call_and_sync(&control, &set.hotkeys, "config.set", None).await;
-    assert_eq!(set.shortcuts.replaced.lock().unwrap().len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread")]

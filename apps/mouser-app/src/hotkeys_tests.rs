@@ -5,7 +5,8 @@ use mouser_proto::config::Config;
 use mouser_proto::control::EngineState;
 
 use crate::hotkeys::{Hotkey, Hotkeys, Press, Shortcuts};
-use crate::support_tests::{eventually, fixture, status_of};
+use crate::support_tests::{fixture, status_of};
+use serde_json::json;
 
 type Replacement = Vec<(String, Hotkey)>;
 
@@ -14,12 +15,15 @@ type Replacement = Vec<(String, Hotkey)>;
 pub struct FakeShortcuts {
     pub replaced: Arc<Mutex<Vec<Replacement>>>,
     press: Arc<Mutex<Option<Press>>>,
+    /// What the pretend operating system refuses to register.
+    pub refuse: Arc<Mutex<Vec<(Hotkey, String)>>>,
 }
 
 impl Shortcuts for FakeShortcuts {
-    fn replace(&self, bindings: &[(String, Hotkey)], press: Press) {
+    fn replace(&self, bindings: &[(String, Hotkey)], press: Press) -> Vec<(Hotkey, String)> {
         self.replaced.lock().unwrap().push(bindings.to_vec());
         *self.press.lock().unwrap() = Some(press);
+        self.refuse.lock().unwrap().clone()
     }
 }
 
@@ -36,25 +40,21 @@ pub struct Setup {
     pub hotkeys: Arc<Hotkeys>,
     pub shortcuts: FakeShortcuts,
     pub config: Arc<Mutex<Config>>,
-    pub forwarded: Arc<Mutex<Vec<Hotkey>>>,
 }
 
 pub fn hotkeys_for(control: ControlHandle) -> Setup {
     let shortcuts = FakeShortcuts::default();
     let config = Arc::new(Mutex::new(Config::default()));
-    let forwarded = Arc::new(Mutex::new(Vec::new()));
-    let (read, sink) = (config.clone(), forwarded.clone());
+    let read = config.clone();
     let hotkeys = Hotkeys::new(
         Box::new(shortcuts.clone()),
         control,
         Box::new(move || read.lock().unwrap().clone()),
-        Arc::new(move |hotkey| sink.lock().unwrap().push(hotkey)),
     );
     Setup {
         hotkeys,
         shortcuts,
         config,
-        forwarded,
     }
 }
 
@@ -83,16 +83,13 @@ fn binding(accelerator: &str, hotkey: Hotkey) -> (String, Hotkey) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_three_accelerators_from_config_are_registered_with_the_system() {
+async fn only_enable_disable_is_registered_with_the_system() {
     let s = setup().await;
     s.hotkeys.sync();
+    // QuickJump and targeted paste are detected by core in the captured stream.
     assert_eq!(
         *s.shortcuts.replaced.lock().unwrap(),
-        vec![vec![
-            binding("Ctrl+Alt+Shift+M", Hotkey::EnableDisable),
-            binding("Ctrl+Alt+Shift+J", Hotkey::QuickJump),
-            binding("Ctrl+Alt+Shift+V", Hotkey::TargetedPaste),
-        ]]
+        vec![vec![binding("Ctrl+Alt+Shift+M", Hotkey::EnableDisable)]]
     );
 }
 
@@ -105,26 +102,69 @@ async fn unchanged_config_leaves_the_registration_alone() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_change_in_config_registers_the_new_accelerators() {
+async fn a_change_in_config_registers_the_new_accelerator() {
     let s = setup().await;
     s.hotkeys.sync();
-    {
-        let mut config = s.config.lock().unwrap();
-        config.hotkeys.quickjump = "Ctrl+Alt+K".into();
-        config.hotkeys.enable_disable = "Ctrl+Alt+P".into();
-        config.hotkeys.targeted_paste = "Ctrl+Alt+B".into();
-    }
+    s.config.lock().unwrap().hotkeys.enable_disable = "Ctrl+Alt+P".into();
     s.hotkeys.sync();
     let replaced = s.shortcuts.replaced.lock().unwrap();
     assert_eq!(replaced.len(), 2);
     assert_eq!(
         replaced[1],
-        vec![
-            binding("Ctrl+Alt+P", Hotkey::EnableDisable),
-            binding("Ctrl+Alt+K", Hotkey::QuickJump),
-            binding("Ctrl+Alt+B", Hotkey::TargetedPaste),
-        ]
+        vec![binding("Ctrl+Alt+P", Hotkey::EnableDisable)]
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_config_notification_for_any_hotkey_key_from_any_origin_registers_again() {
+    let s = setup().await;
+    s.hotkeys.sync();
+    for (i, origin) in ["app", "cli", "file", "desk_mate"].into_iter().enumerate() {
+        s.config.lock().unwrap().hotkeys.enable_disable = format!("Ctrl+Alt+{i}");
+        s.hotkeys.on_config(&json!({
+            "key": "hotkeys.quickjump", "old": "x", "new": "y", "origin": origin
+        }));
+        assert_eq!(
+            s.shortcuts.replaced.lock().unwrap().len(),
+            i + 2,
+            "{origin}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_config_notification_for_another_key_leaves_the_registration_alone() {
+    let s = setup().await;
+    s.hotkeys.sync();
+    s.config.lock().unwrap().hotkeys.enable_disable = "Ctrl+Alt+P".into();
+    s.hotkeys.on_config(&json!({
+        "key": "advanced.port", "old": 1, "new": 2, "origin": "cli"
+    }));
+    assert_eq!(s.shortcuts.replaced.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_hotkey_the_system_refuses_is_reported_and_nothing_panics() {
+    let s = setup().await;
+    assert!(s.hotkeys.refusals().is_empty());
+    s.shortcuts.refuse.lock().unwrap().push((
+        Hotkey::EnableDisable,
+        "Ctrl+Alt+Shift+M is already used by another application".into(),
+    ));
+    s.hotkeys.sync();
+    assert_eq!(
+        s.hotkeys.refusals(),
+        std::collections::BTreeMap::from([(
+            "enable_disable".to_string(),
+            "Ctrl+Alt+Shift+M is already used by another application".to_string()
+        )])
+    );
+
+    // A later registration that the system accepts clears the refusal.
+    s.shortcuts.refuse.lock().unwrap().clear();
+    s.config.lock().unwrap().hotkeys.enable_disable = "Ctrl+Alt+P".into();
+    s.hotkeys.sync();
+    assert!(s.hotkeys.refusals().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -156,25 +196,7 @@ async fn the_enable_disable_hotkey_pauses_and_then_resumes() {
     assert!(active, "the hotkey resumed the engine");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn quickjump_and_targeted_paste_are_handed_on() {
-    let s = setup().await;
-    s.hotkeys.sync();
-    // Each OS press is handled on its own task, so two presses issued with no
-    // gap have no defined order; a person's key presses are never that close.
-    s.shortcuts.pressed(Hotkey::QuickJump);
-    eventually(|| s.forwarded.lock().unwrap().len() == 1).await;
-    s.shortcuts.pressed(Hotkey::TargetedPaste);
-    eventually(|| s.forwarded.lock().unwrap().len() == 2).await;
-    assert_eq!(
-        *s.forwarded.lock().unwrap(),
-        vec![Hotkey::QuickJump, Hotkey::TargetedPaste]
-    );
-}
-
 #[test]
-fn each_hotkey_has_a_name_for_the_ui() {
+fn the_hotkey_has_a_name_for_the_ui() {
     assert_eq!(Hotkey::EnableDisable.name(), "enable_disable");
-    assert_eq!(Hotkey::QuickJump.name(), "quickjump");
-    assert_eq!(Hotkey::TargetedPaste.name(), "targeted_paste");
 }
