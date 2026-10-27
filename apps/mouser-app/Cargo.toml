@@ -48,3 +48,7 @@ tauri = { version = "=2.12.5", features = ["tray-icon", "image-png", "macos-priv
 tempfile = "3"
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "time"] }
 cucumber = "=0.23.0"
+
+[[test]]
+name = "acc_v2_us6"
+harness = false

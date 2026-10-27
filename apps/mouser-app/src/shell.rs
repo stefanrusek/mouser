@@ -117,43 +117,33 @@ impl commands::FileManager for Spawner {
     }
 }
 
-/// Resolves when the system asks Mouser to stop: Ctrl-C or SIGTERM.
-#[cfg(unix)]
-async fn stop_signal() {
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .expect("SIGTERM can be awaited");
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
-        _ = term.recv() => {}
-    }
-}
-
-/// Resolves when the system asks Mouser to stop: Ctrl-C, the console closing
-/// or the computer shutting down.
-#[cfg(windows)]
-async fn stop_signal() {
-    let mut close = tokio::signal::windows::ctrl_close().expect("console close can be awaited");
-    let mut shutdown = tokio::signal::windows::ctrl_shutdown().expect("shutdown can be awaited");
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
-        _ = close.recv() => {}
-        _ = shutdown.recv() => {}
-    }
-}
-
 /// Run Mouser headless (no window, no tray) until it is told to stop.
 pub fn run_headless() {
-    tauri::async_runtime::block_on(crate::headless::run(
-        platform_select::create(),
-        crate::headless::machine_dir(platform_select::current_os()),
-        mouser_core::control::default_path(),
-        gethostname::gethostname()
-            .into_string()
-            .expect("computer name is valid UTF-8"),
-        env!("CARGO_PKG_VERSION").to_string(),
-        crate::mode::select(&std::env::args().collect::<Vec<_>>(), false, false),
-        stop_signal(),
-    ));
+    let args: Vec<String> = std::env::args().collect();
+    let os = platform_select::current_os();
+    let paths = mouser_core::paths::Paths::resolve(
+        &std::env::current_exe().expect("the executable has a path"),
+        os,
+        &mouser_core::paths::Env::from_process(),
+    );
+    let mode = crate::mode::select(&args, false, false);
+    tauri::async_runtime::block_on(async {
+        crate::headless::run(
+            crate::headless::params(
+                platform_select::create(),
+                os,
+                crate::headless::data_dir(os, mode, &paths),
+                mouser_core::control::default_path(),
+                gethostname::gethostname()
+                    .into_string()
+                    .expect("computer name is valid UTF-8"),
+                env!("CARGO_PKG_VERSION").to_string(),
+                mode,
+            ),
+            crate::headless::stop_signal(),
+        )
+        .await;
+    });
 }
 
 /// Run Mouser until the owner quits it.

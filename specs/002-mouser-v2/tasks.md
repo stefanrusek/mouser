@@ -488,13 +488,13 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: `cargo test -p mouser-app --test acc_v2_us6` passes on the Windows and Ubuntu runners.
 
-- [ ] T351 [US6-app] Write the acceptance runner `apps/mouser-app/tests/acc_v2_us6.rs` (cucumber 0.23 was added in Foundational T018; add the `[[test]] name = "acc_v2_us6", harness = false` entry in `apps/mouser-app/Cargo.toml`; `fail_on_skipped()`) reading the feature file at `../../crates/mouser-core/tests/features/v2_us6.feature`, with steps in `apps/mouser-app/tests/steps/v2_us6.rs` that start the headless host over `VirtualPlatform` alongside a second in-process engine
-- [ ] T352 [P] [US6-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: `--headless` on Windows and Linux no longer refuses (supersedes 001 T516); it uses the current user's folder, or `MouserData/` when portable; no window and no tray are created; on Linux `--headless --machine` uses `/var/lib/mouser`
-- [ ] T353 [US6-app] Remove the refusal (`headless.rs:22-27`) and implement folder selection in `apps/mouser-app/src/headless.rs`
-- [ ] T354 [P] [US6-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: SIGTERM and Ctrl-C run `Engine::shutdown` before exit on all three OSes
-- [ ] T355 [US6-app] Implement signal handling in `apps/mouser-app/src/headless.rs`
-- [ ] T356 [US6-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T357 [US6-app] Commit: phase boundary "US6-app" (5.3)
+- [X] T351 [US6-app] Write the acceptance runner `apps/mouser-app/tests/acc_v2_us6.rs` (cucumber 0.23 was added in Foundational T018; add the `[[test]] name = "acc_v2_us6", harness = false` entry in `apps/mouser-app/Cargo.toml`; `fail_on_skipped()`) reading the feature file at `../../crates/mouser-core/tests/features/v2_us6.feature`, with steps in `apps/mouser-app/tests/steps/v2_us6.rs` that start the headless host over `VirtualPlatform` alongside a second in-process engine
+- [X] T352 [P] [US6-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: `--headless` on Windows and Linux no longer refuses (supersedes 001 T516); it uses the current user's folder, or `MouserData/` when portable; no window and no tray are created; on Linux `--headless --machine` uses `/var/lib/mouser`
+- [X] T353 [US6-app] Remove the refusal (`headless.rs:22-27`) and implement folder selection in `apps/mouser-app/src/headless.rs`
+- [X] T354 [P] [US6-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: SIGTERM and Ctrl-C run `Engine::shutdown` before exit on all three OSes
+- [X] T355 [US6-app] Implement signal handling in `apps/mouser-app/src/headless.rs`
+- [X] T356 [US6-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T357 [US6-app] Commit: phase boundary "US6-app" (5.3)
 
 ### Lane: cli
 

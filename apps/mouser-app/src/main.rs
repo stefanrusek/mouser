@@ -1,7 +1,6 @@
 // Release builds on Windows are GUI-subsystem programs: without this the exe is
-// a console program and every launch opens a console window. Consequently the
-// `--headless` refusal printed to stderr is not visible on Windows; the exit
-// code (2) is the signal. Debug builds keep the console for development.
+// a console program and every launch opens a console window. Debug builds keep
+// the console for development.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // Returning the code, rather than `std::process::exit`, lets the process end
@@ -21,12 +20,6 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
     if mouser_app::headless::is_headless(&args) {
-        if let Err(refusal) =
-            mouser_app::headless::check_supported(mouser_app::platform_select::current_os())
-        {
-            eprintln!("{refusal}");
-            return std::process::ExitCode::from(2);
-        }
         mouser_app::shell::run_headless();
     } else {
         mouser_app::shell::run();
