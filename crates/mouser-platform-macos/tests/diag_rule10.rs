@@ -10,7 +10,7 @@ unsafe extern "C" {
     fn CGDisplayShowCursor(d: u32) -> i32;
     fn _CGSDefaultConnection() -> i32;
     fn CGSSetConnectionProperty(c: i32, t: i32, k: *const c_void, v: *const c_void) -> i32;
-    fn CGSGetConnectionProperty(c: i32, t: i32, k: *const c_void, v: *mut *const c_void) -> i32;
+    fn CGSCopyConnectionProperty(c: i32, t: i32, k: *const c_void, v: *mut *const c_void) -> i32;
     fn CGSGetCursorScale(c: i32, s: *mut f32) -> i32;
     fn CGSCurrentCursorSeed() -> i32;
     fn CGWindowListCopyWindowInfo(o: u32, w: u32) -> *const c_void;
@@ -50,7 +50,7 @@ fn flush_candidates() {
     run("getprop", &|| unsafe {
         let c = _CGSDefaultConnection();
         let mut out: *const c_void = std::ptr::null();
-        CGSGetConnectionProperty(c, c, key().as_concrete_TypeRef() as _, &mut out);
+        CGSCopyConnectionProperty(c, c, key().as_concrete_TypeRef() as _, &mut out);
     });
     run("cursorscale", &|| unsafe {
         let mut s = 0f32;
