@@ -40,8 +40,8 @@ Cargo workspace at repo root, unchanged from 001: `crates/mouser-{proto,platform
 - [X] T006 Write a unit test in `xtask/src/gate_tests.rs` (module declared from `xtask/src/gate.rs`): the coverage exclusion regex `EXCLUDE` matches `apps/mouser-service-win/src/winapi_sys.rs` and `apps\mouser-service-win\src\winapi_sys.rs`, and matches no other file under `apps/mouser-service-win/src/` (`winapi.rs`, `session.rs`, `main.rs`) (owner decision OD-5)
 - [X] T007 Add `winapi_sys\.rs` to `EXCLUDE` in `xtask/src/gate.rs` (line 9) with the comment `// OD-5: SYSTEM-only WinApi pass-through, verified by probe P2 and Story 7 R8/R9 (debt)`
 - [X] T008 [P] Create `specs/002-mouser-v2/evidence/quickstart.md` with one table row per quickstart.md §8 check (R1, R1w, R2–R10, R10a, R11, R12) and per §3–§7 scenario (including §6 rows 5a–5j), columns: check, outcome (`PENDING`), hardware and OS, Mouser version, date, who ran it, bundle file name, defect (Story 7)
-- [ ] T009 Gate: `cargo fetch --locked && cargo xtask bootstrap && cargo xtask gate --all --lane setup` green on all three CI runners (`macos-14`, `windows-2025`, `ubuntu-24.04`) and the uploaded artifact contains `specs/002-mouser-v2/evidence/setup.jsonl`; not run locally on the owner's Mac (plan "Gates by phase")
-- [ ] T010 Commit: phase boundary "Setup" (5.3)
+- [X] T009 Gate: `cargo fetch --locked && cargo xtask bootstrap && cargo xtask gate --all --lane setup` green on all three CI runners (`macos-14`, `windows-2025`, `ubuntu-24.04`) and the uploaded artifact contains `specs/002-mouser-v2/evidence/setup.jsonl`; not run locally on the owner's Mac (plan "Gates by phase")
+- [X] T010 Commit: phase boundary "Setup" (5.3)
 
 ---
 
@@ -140,8 +140,8 @@ Cargo workspace at repo root, unchanged from 001: `crates/mouser-{proto,platform
 - [X] T073 [P] Write `crates/mouser-platform-windows/tests/features/v2_us1_guard.feature` with Story 1 acceptance scenario 6, Given/When/Then verbatim from spec.md, as the Windows backend observes it (the computer the desk user is at hid its pointer for a crossing, then its Mouser process is ended from outside)
 - [X] T074 [P] Write `crates/mouser-platform-windows/tests/features/v2_us3_watchdog.feature` with Story 3 acceptance scenario 16, Given/When/Then verbatim from spec.md, as the Windows backend observes it (another low-level hook installed after Mouser's swallows Mouser's probes while real input keeps arriving; `watch_problems` reports nothing about the hold on the mouse and keyboard)
 - [X] T075 Verify lane disjointness: `python3 xtask/scripts/lane_disjointness.py specs/002-mouser-v2/tasks.md` prints `RESULT: disjoint` (every lane's backticked path set, root files included, is pairwise disjoint and disjoint from `specs/002-mouser-v2/contracts/`, the frozen crates, the three features directories and the root `Cargo.toml` / `Cargo.lock`); record the output (5.2; verification only)
-- [ ] T076 Gate: `cargo xtask gate --packages mouser-proto,mouser-platform,mouser-testkit --lane foundational` exits 0 on all three CI runners, and `cargo test --workspace --no-run` compiles on all three
-- [ ] T077 Commit: phase boundary "Foundational" (5.3)
+- [X] T076 Gate: `cargo xtask gate --packages mouser-proto,mouser-platform,mouser-testkit --lane foundational` exits 0 on all three CI runners, and `cargo test --workspace --no-run` compiles on all three
+- [X] T077 Commit: phase boundary "Foundational" (5.3)
 
 **Checkpoint**: Contracts frozen. All lanes may start (each also waiting on the probe its first phase names).
 
