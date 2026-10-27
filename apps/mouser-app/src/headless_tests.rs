@@ -5,7 +5,7 @@ use mouser_platform::Os;
 use mouser_proto::wire::ComputerMode;
 use mouser_testkit::VirtualPlatform;
 
-use crate::headless::{data_dir, is_headless, machine_dir, params, run, secrets_dir, stop_signal};
+use crate::headless::{data_dir, is_headless, machine_dir, params, run, secrets_dir};
 use crate::support_tests::{control_path_in, free_port};
 
 fn args(list: &[&str]) -> Vec<String> {
@@ -157,7 +157,8 @@ async fn headless_logging(mode: ComputerMode, check: impl FnOnce(&std::path::Pat
             stopped.await.unwrap();
         },
     ));
-    crate::support_tests::eventually(|| control.exists()).await;
+    let served = crate::support_tests::served_at(&control, mode);
+    crate::support_tests::eventually(|| served.exists()).await;
     check(dir.path());
     stop.send(()).unwrap();
     task.await.unwrap();
@@ -191,6 +192,7 @@ async fn headless_start_installs_the_panic_hook_on_the_engines_log() {
 /// shut down (the control endpoint is removed by `Engine::shutdown`).
 #[cfg(unix)]
 async fn shuts_down_on(signal: &str) {
+    use crate::headless::stop_signal;
     let _one_at_a_time = crate::support_tests::one_at_a_time().await;
     let dir = tempfile::tempdir().unwrap();
     let mut config = mouser_proto::config::Config::default();
@@ -285,7 +287,8 @@ async fn the_machine_service_keeps_its_secrets_in_the_machine_directory() {
             stopped.await.unwrap();
         },
     ));
-    crate::support_tests::eventually(|| control.exists() && secrets_dir(dir.path()).is_dir()).await;
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists() && secrets_dir(dir.path()).is_dir()).await;
     stop.send(()).unwrap();
     task.await.unwrap();
 }

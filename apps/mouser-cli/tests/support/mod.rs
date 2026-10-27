@@ -16,6 +16,7 @@ use mouser_core::{ControlClient, Engine, EngineParams};
 use mouser_proto::config::Config;
 use mouser_proto::control::{Method, Status};
 use mouser_proto::ids::ComputerId;
+use mouser_proto::wire::ComputerMode;
 use mouser_testkit::{SimNet, SimNode, VirtualPlatform};
 use serde_json::{Value, json};
 use tokio::process::{Child, Command};
@@ -235,8 +236,13 @@ impl Node {
 
     /// Call a parameterless method directly over the control socket.
     pub async fn call(&self, method: Method) -> Value {
+        self.call_with(method, json!({})).await
+    }
+
+    /// Call `method` with `params` directly over the control socket.
+    pub async fn call_with(&self, method: Method, params: Value) -> Value {
         let mut client = ControlClient::connect(&self.control_path).await.unwrap();
-        client.call(method, Some(json!({}))).await.unwrap()
+        client.call(method, Some(params)).await.unwrap()
     }
 
     /// Poll `status` until `pred` holds.
@@ -275,14 +281,55 @@ pub struct Lab {
     net: SimNet,
     registry: Arc<Registry>,
     engines: Mutex<Vec<Engine>>,
+    /// This lab's turn; see [`turn`].
+    _turn: std::fs::File,
+}
+
+/// Labs take turns with a lab that runs the installed service: the service's
+/// pipe is machine-wide and the CLI talks to the service while it runs
+/// (Windows), so meanwhile no other lab's CLI reaches its own computer. Labs
+/// hold this lock file shared; a lab with the service holds it alone.
+fn turn() -> std::fs::File {
+    std::fs::File::create(std::env::temp_dir().join("mouser-cli-service.lock"))
+        .expect("the lock file can be created")
+}
+
+/// Where an engine in `mode` serves the control API.
+#[cfg(unix)]
+fn served_at(control: PathBuf, _mode: ComputerMode) -> PathBuf {
+    control
+}
+
+/// Where an engine in `mode` serves the control API: the service's engine
+/// serves the service's pipe.
+#[cfg(windows)]
+fn served_at(control: PathBuf, mode: ComputerMode) -> PathBuf {
+    match mode {
+        ComputerMode::Service => PathBuf::from(mouser_core::control::SERVICE_PIPE),
+        _ => control,
+    }
 }
 
 impl Lab {
     pub fn new() -> Self {
+        let turn = turn();
+        turn.lock_shared().expect("labs take turns");
+        Self::taking(turn)
+    }
+
+    /// A lab that runs the installed service: it runs alone (see [`turn`]).
+    pub fn alone() -> Self {
+        let turn = turn();
+        turn.lock().expect("labs take turns");
+        Self::taking(turn)
+    }
+
+    fn taking(turn: std::fs::File) -> Self {
         Self {
             net: SimNet::new(),
             registry: Arc::new(Registry::default()),
             engines: Mutex::new(Vec::new()),
+            _turn: turn,
         }
     }
 
@@ -336,6 +383,7 @@ impl Lab {
             own: Mutex::new(None),
         }));
         tune_params(&mut params);
+        node.control_path = served_at(node.control_path, params.mode);
         node.sim = sim;
         let engine = Engine::start(params).await;
         node.id = Some(engine.computer_id());
