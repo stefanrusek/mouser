@@ -193,7 +193,7 @@ In v1, headless mode (no window, no tray) works only on macOS and refuses to sta
 - A computer is renamed while another desk computer is offline: that computer shows the new name once it reconnects (Story 4, scenario 3).
 - An elevation prompt appears on a Windows computer while the pointer is on another computer: the desk user crosses to it and operates it (Story 5, scenario 2).
 - A desk computer is mid-update to a newer version: it shows both versions until the update completes (Story 3, scenario 8).
-- A desk-mate goes offline while this computer is paused: the icon shows paused and the unexpectedly-disconnected state together (Story 3, scenarios 13 and 14).
+- A desk-mate goes offline while this computer is paused: the icon shows paused and the unexpectedly-disconnected state together (Story 3, scenarios 14 and 15).
 - Mouser is opened again (a second launch) on a Windows computer where portable Mouser was restarted as administrator: the running Mouser's window comes to the front; where Windows does not let the second launch reach the running Mouser, the second launch says that Mouser is already running as administrator on this computer and that its window opens from the menu-bar or tray icon, and then closes; no second Mouser keeps running (Story 5, scenario 7; 001 single-instance behaviour).
 
 ## Requirements *(mandatory)*
