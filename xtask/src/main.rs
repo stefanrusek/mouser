@@ -1,4 +1,5 @@
 mod bootstrap;
+mod feature_dir;
 mod gate;
 
 use clap::{Parser, Subcommand};

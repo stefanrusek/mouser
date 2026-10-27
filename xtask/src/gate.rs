@@ -2,11 +2,13 @@ use clap::Args as ClapArgs;
 use serde_json::json;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::Path;
 use std::process::Command;
 
+use crate::feature_dir;
+
 const UI_DIR: &str = "apps/mouser-app/ui";
-const EXCLUDE: &str = "(mouser-testkit|xtask|spikes|probes|/gen/|e2e)";
+// OD-5: SYSTEM-only WinApi pass-through, verified by probe P2 and Story 7 R8/R9 (debt)
+const EXCLUDE: &str = "(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\\.rs)";
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -53,8 +55,8 @@ fn record(lane: &str, cmd: &mut Command, label: &str) -> bool {
         "stderr": stderr,
         "timestamp_utc": chrono::Utc::now().to_rfc3339(),
     });
-    let dir = Path::new("specs/001-mouser-v1/evidence");
-    fs::create_dir_all(dir).expect("evidence dir");
+    let dir = feature_dir::evidence_dir();
+    fs::create_dir_all(&dir).expect("evidence dir");
     let mut f = OpenOptions::new()
         .create(true)
         .append(true)
@@ -167,3 +169,7 @@ pub fn run(args: Args) -> i32 {
     }
     i32::from(!ok)
 }
+
+#[cfg(test)]
+#[path = "gate_tests.rs"]
+mod tests;

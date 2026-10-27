@@ -40,8 +40,13 @@ jobs:
       - name: Gate
         shell: bash
         run: cargo xtask gate --packages ${{ matrix.packages }} --lane ci-${{ matrix.lane }}
+      - name: Read feature directory
+        id: feature
+        if: always()
+        shell: bash
+        run: echo "dir=$(jq -r .feature_directory .specify/feature.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: evidence-${{ matrix.lane }}
-          path: specs/001-mouser-v1/evidence/
+          path: ${{ steps.feature.outputs.dir }}/evidence/
