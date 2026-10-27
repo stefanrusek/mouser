@@ -157,7 +157,8 @@ async fn headless_logging(mode: ComputerMode, check: impl FnOnce(&std::path::Pat
             stopped.await.unwrap();
         },
     ));
-    crate::support_tests::eventually(|| control.exists()).await;
+    let served = crate::support_tests::served_at(&control, mode);
+    crate::support_tests::eventually(|| served.exists()).await;
     check(dir.path());
     stop.send(()).unwrap();
     task.await.unwrap();
@@ -286,7 +287,8 @@ async fn the_machine_service_keeps_its_secrets_in_the_machine_directory() {
             stopped.await.unwrap();
         },
     ));
-    crate::support_tests::eventually(|| control.exists() && secrets_dir(dir.path()).is_dir()).await;
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists() && secrets_dir(dir.path()).is_dir()).await;
     stop.send(()).unwrap();
     task.await.unwrap();
 }

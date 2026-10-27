@@ -104,6 +104,30 @@ pub(crate) fn control_path_in(dir: &tempfile::TempDir) -> std::path::PathBuf {
     std::path::PathBuf::from(format!(r"\\.\pipe\mouser-app-test-{unique}"))
 }
 
+/// Where an engine in `mode` that was given `control` serves the control API.
+#[cfg(unix)]
+pub(crate) fn served_at(
+    control: &std::path::Path,
+    _mode: mouser_proto::wire::ComputerMode,
+) -> std::path::PathBuf {
+    control.to_path_buf()
+}
+
+/// Where an engine in `mode` that was given `control` serves the control API:
+/// the service's engine serves the service pipe.
+#[cfg(windows)]
+pub(crate) fn served_at(
+    control: &std::path::Path,
+    mode: mouser_proto::wire::ComputerMode,
+) -> std::path::PathBuf {
+    match mode {
+        mouser_proto::wire::ComputerMode::Service => {
+            std::path::PathBuf::from(mouser_core::control::SERVICE_PIPE)
+        }
+        _ => control.to_path_buf(),
+    }
+}
+
 /// A host running on a fresh virtual computer named "Desk Mac".
 pub async fn fixture() -> Fixture {
     let platform = VirtualPlatform::new();
