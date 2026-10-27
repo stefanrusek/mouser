@@ -1,0 +1,14 @@
+name: diag
+on:
+  push:
+    branches: [ci-rule10]
+jobs:
+  diag:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fetch --locked && cargo xtask bootstrap
+      - run: cargo llvm-cov -p mouser-platform-macos --text --output-path cov.txt || true
+      - run: awk '/capture.rs:$/{f=1} f' cov.txt | grep -E '^ *[0-9]+\| *0\|' | head -20; for i in 1 2 3; do cargo llvm-cov -p mouser-platform-macos --text --output-path cov$i.txt >/dev/null 2>&1; echo run $i; awk '/capture.rs:$/{f=1} /\.rs:$/ && !/capture.rs:$/{f=0} f' cov$i.txt | grep -E '^ *[0-9]+\| *0\|' ; done
