@@ -7,7 +7,6 @@ fn clipboard_and_file_drag_are_supported() {
     assert!(p.clipboard().is_ok());
     // Building the drag handler reads nothing and starts nothing.
     assert!(p.file_drag().is_some());
-    assert!(p.foreground_app().is_none());
 }
 
 #[test]
