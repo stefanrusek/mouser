@@ -513,10 +513,10 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 
 #### Phase 16: US3-cli — As a desk owner, I want one Mouser window where I can find everything (P2)
 
-- [ ] T366 [P] [US3-cli] Write tests in `apps/mouser-cli/tests/contract_cli_status.rs`: `mouser status` text shows each computer's friendly name, version and mode and the tray connection state; `mouser status --json` validates against the `mouser-proto` schema `schemas/status.schema.json` (v2) (Story 3 sc. 4, 8)
-- [ ] T367 [US3-cli] Update the text output in `apps/mouser-cli/src/status.rs`
-- [ ] T368 [US3-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
-- [ ] T369 [US3-cli] Commit: phase boundary "US3-cli" (5.3)
+- [X] T366 [P] [US3-cli] Write tests in `apps/mouser-cli/tests/contract_cli_status.rs`: `mouser status` text shows each computer's friendly name, version and mode and the tray connection state; `mouser status --json` validates against the `mouser-proto` schema `schemas/status.schema.json` (v2) (Story 3 sc. 4, 8)
+- [X] T367 [US3-cli] Update the text output in `apps/mouser-cli/src/status.rs`
+- [X] T368 [US3-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli`
+- [X] T369 [US3-cli] Commit: phase boundary "US3-cli" (5.3)
 
 #### Phase 17: US4-cli — As a desk owner, I want to tailor hotkeys, names and pointer behavior from the Mouser window (P2)
 

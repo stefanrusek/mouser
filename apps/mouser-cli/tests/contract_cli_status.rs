@@ -4,10 +4,12 @@
 
 use crate::support::Lab;
 use mouser_proto::control::Status;
+use mouser_proto::wire::ComputerMode;
+use mouser_testkit::VirtualPlatform;
 
 fn validator() -> jsonschema::Validator {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../specs/001-mouser-v1/contracts/status.schema.json"
+        "../../../crates/mouser-proto/schemas/status.schema.json"
     ))
     .unwrap();
     jsonschema::validator_for(&schema).unwrap()
@@ -46,11 +48,23 @@ async fn status_json_validates_against_the_schema() {
 #[tokio::test(flavor = "multi_thread")]
 async fn status_text_names_desk_connections_permissions_and_problems() {
     let lab = Lab::new();
-    let alpha = lab.add("Alpha").await;
+    let alpha = lab
+        .add_tuned(
+            "Alpha",
+            VirtualPlatform::new(),
+            |_| {},
+            |p| p.mouser_version = "0.3.0".into(),
+        )
+        .await;
     let nothing = alpha.mouser(&["status"]).await;
     assert_eq!(nothing.code, 0, "{}", nothing.stderr);
     assert!(nothing.stdout.starts_with("Alpha: active\n"));
     assert!(nothing.stdout.contains("Desk: none\n"));
+    assert!(
+        nothing.stdout.contains("Connection: alone\n"),
+        "{}",
+        nothing.stdout
+    );
     // The engine reports whatever the platform limits; the text lists exactly those.
     let reported = alpha.status().await.problems;
     let expected = if reported.is_empty() {
@@ -69,7 +83,17 @@ async fn status_text_names_desk_connections_permissions_and_problems() {
     assert!(nothing.stdout.contains("Missing permissions"));
 
     alpha.mouser(&["desk", "create", "Home office"]).await;
-    let beta = lab.add("Beta").await;
+    let beta = lab
+        .add_tuned(
+            "Beta",
+            VirtualPlatform::new(),
+            |_| {},
+            |p| {
+                p.mouser_version = "0.3.0".into();
+                p.mode = ComputerMode::Service;
+            },
+        )
+        .await;
     let join = beta.spawn(&["desk", "join", "Home office"]);
     let waiting = beta
         .wait_status("pending", |s| {
@@ -95,13 +119,27 @@ async fn status_text_names_desk_connections_permissions_and_problems() {
         .await;
     let desk_id = alpha.status().await.desk.unwrap().id;
 
+    alpha
+        .wait_status("Beta's mode reported", |s| {
+            s.computers.iter().all(|c| c.mode.is_some())
+        })
+        .await;
     let text = alpha.mouser(&["status"]).await.stdout;
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines[0], "Alpha: active");
     assert_eq!(lines[1], format!("Desk: Home office [{desk_id}]"));
-    assert_eq!(lines[2], "Computers:");
-    assert_eq!(lines[3], "  Alpha: this computer");
-    assert!(lines[4].starts_with("  Beta: connected, "), "{text}");
+    assert_eq!(lines[2], "Connection: connected");
+    assert_eq!(lines[3], "Computers:");
+    let version = "0.3.0";
+    assert_eq!(
+        lines[4],
+        format!("  Alpha: this computer, version {version}, installed")
+    );
+    assert!(lines[5].starts_with("  Beta: connected, "), "{text}");
+    assert!(
+        lines[5].contains(&format!(", version {version}, service, ")),
+        "{text}"
+    );
     assert!(
         lines.iter().any(|l| l.starts_with("Missing permissions")),
         "{text}"

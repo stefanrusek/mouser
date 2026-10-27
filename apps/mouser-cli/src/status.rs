@@ -39,14 +39,24 @@ fn text(status: &Status) -> String {
         }
         Some(desk) => format!("Desk: {} [{}]", desk.name, desk.id),
     });
+    lines.push(format!(
+        "Connection: {}",
+        name(&status.tray_summary.connection)
+    ));
     if !status.computers.is_empty() {
         lines.push("Computers:".into());
     }
     for computer in &status.computers {
+        let version = format!("version {}", computer.version);
+        let mode = computer
+            .mode
+            .map_or(String::new(), |m| format!(", {}", name(&m)));
         lines.push(match computer.connection {
-            ConnectionState::SelfComputer => format!("  {}: this computer", computer.name),
+            ConnectionState::SelfComputer => {
+                format!("  {}: this computer, {version}{mode}", computer.name)
+            }
             connection => format!(
-                "  {}: {}, {}, {} display(s)",
+                "  {}: {}, {}, {version}{mode}, {} display(s)",
                 computer.name,
                 name(&connection),
                 name(&computer.os),
@@ -97,10 +107,11 @@ mod tests {
     use std::collections::BTreeMap;
 
     use mouser_proto::control::{
-        ComputerRef, FixAction, Problem, ProblemKind, StatusComputer, StatusDesk,
+        ComputerRef, FixAction, Problem, ProblemKind, StatusComputer, StatusDesk, TrayConnection,
     };
     use mouser_proto::ids::{ComputerId, DeskId};
     use mouser_proto::model::{Os, PermissionKind};
+    use mouser_proto::wire::ComputerMode;
 
     use super::*;
 
@@ -161,7 +172,7 @@ mod tests {
     fn a_computer_alone_without_a_desk() {
         assert_eq!(
             text(&status(vec![], vec![])),
-            "Alpha: paused\nDesk: none\nMissing permissions: none\nProblems: none"
+            "Alpha: paused\nDesk: none\nConnection: alone\nMissing permissions: none\nProblems: none"
         );
     }
 
@@ -186,7 +197,8 @@ mod tests {
             .insert(PermissionKind::Accessibility, PermissionState::Missing);
         beta.permissions
             .insert(PermissionKind::InputMonitoring, PermissionState::Granted);
-        let gamma = computer("Gamma", ConnectionState::Connected, 1);
+        let mut gamma = computer("Gamma", ConnectionState::Connected, 1);
+        gamma.mode = Some(ComputerMode::Service);
         let stranger = ComputerId([99; 16]);
         let problems = vec![
             problem(
@@ -205,6 +217,7 @@ mod tests {
             ],
             problems,
         );
+        full.tray_summary.connection = TrayConnection::Disconnected;
         let desk_id = DeskId([7; 16]);
         full.desk = Some(StatusDesk {
             id: desk_id,
@@ -214,8 +227,10 @@ mod tests {
         assert_eq!(
             text(&full),
             format!(
-                "Alpha: paused\nDesk: Home [{desk_id}]\nComputers:\n  Alpha: this computer\n  \
-                 Beta: offline, macos, 2 display(s)\n  Gamma: connected, macos, 1 display(s)\n\
+                "Alpha: paused\nDesk: Home [{desk_id}]\nConnection: disconnected\nComputers:\n  \
+                 Alpha: this computer, version 0.1.0\n  \
+                 Beta: offline, macos, version 0.1.0, 2 display(s)\n  \
+                 Gamma: connected, macos, version 0.1.0, service, 1 display(s)\n\
                  Missing permissions:\n  Beta: accessibility\nProblems:\n  \
                  Beta: Beta needs Accessibility (fix: approve_join)\n  Gamma: Gamma is slow\n  \
                  {stranger}: unknown"
