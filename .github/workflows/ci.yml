@@ -34,13 +34,6 @@ jobs:
       - name: Gate
         shell: bash
         run: cargo xtask gate --packages ${{ matrix.packages }} --lane ci-${{ matrix.lane }}
-      - name: Missing lines
-        if: always()
-        shell: bash
-        run: |
-          export CARGO_LLVM_COV_TARGET_DIR=target/llvm-cov-ci-windows
-          cargo llvm-cov report --text --ignore-filename-regex '(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\.rs)' --output-path cov.txt 2>&1 | tail -5
-          awk '/control.server\.rs:$/{p=1;next} /^[A-Za-z]:.*\.rs:$/{p=0} p' cov.txt | tr -d '\r' | sed -n 1,200p
       - name: Read feature directory
         id: feature
         if: always()
