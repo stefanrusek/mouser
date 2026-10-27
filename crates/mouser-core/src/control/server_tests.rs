@@ -396,3 +396,45 @@ fn off_windows_the_default_path_is_always_the_users() {
         crate::control::server::default_path_with(false, &env)
     );
 }
+
+/// Shutdown ends the pipe at once: a pipe whose waiting instance has a
+/// connect in flight would otherwise take clients until the runtime has seen
+/// that connect cancelled.
+#[cfg(windows)]
+mod closing_the_pipe {
+    use super::super::server::{Listener, pipe_name};
+
+    /// A listener on its own pipe, already waiting for a client.
+    async fn waiting(dir: &tempfile::TempDir) -> (Listener, std::path::PathBuf) {
+        let name = pipe_name(dir.path());
+        let mut listener = Listener::bind(dir.path(), false);
+        tokio::select! {
+            biased;
+            _ = listener.accept() => panic!("no client connected"),
+            () = std::future::ready(()) => {}
+        }
+        (listener, name)
+    }
+
+    #[tokio::test]
+    async fn once_dropped_the_listener_takes_no_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let (listener, name) = waiting(&dir).await;
+        drop(listener);
+        assert!(!name.exists());
+    }
+
+    #[tokio::test]
+    async fn a_client_that_got_in_first_keeps_the_pipe_from_waiting() {
+        let dir = tempfile::tempdir().unwrap();
+        let (listener, name) = waiting(&dir).await;
+        let first = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&name)
+            .expect("the waiting instance takes a client");
+        drop(listener);
+        assert!(!name.exists());
+        drop(first);
+    }
+}

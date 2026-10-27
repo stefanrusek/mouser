@@ -256,7 +256,7 @@ pub(crate) fn pipe_name(path: &Path) -> PathBuf {
 const SERVICE_PIPE_SDDL: &str = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;IU)";
 
 #[cfg(windows)]
-struct Listener {
+pub(crate) struct Listener {
     name: PathBuf,
     /// The pipe is the service's: it gets [`SERVICE_PIPE_SDDL`].
     service: bool,
@@ -321,7 +321,7 @@ impl Listener {
         pipe
     }
 
-    fn bind(path: &Path, service: bool) -> Self {
+    pub(crate) fn bind(path: &Path, service: bool) -> Self {
         let name = pipe_name(path);
         Self {
             next: Self::instance(&name, true, service),
@@ -330,7 +330,7 @@ impl Listener {
         }
     }
 
-    async fn accept(&mut self) -> Box<dyn Duplex> {
+    pub(crate) async fn accept(&mut self) -> Box<dyn Duplex> {
         self.next.connect().await.expect("control pipe accepts");
         let connected = std::mem::replace(
             &mut self.next,
