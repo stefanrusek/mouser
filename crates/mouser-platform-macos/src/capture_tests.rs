@@ -5,7 +5,7 @@ use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use mouser_platform::{InputCapture, LocalInput};
+use mouser_platform::{Error, InputCapture, LocalInput, Result};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -47,8 +47,9 @@ impl Cursor for FakeCursor {
     fn position(&self) -> (f64, f64) {
         (300.0, 200.0)
     }
-    fn warp(&self, x: f64, y: f64) {
+    fn warp(&self, x: f64, y: f64) -> Result<()> {
         self.log(format!("warp {x} {y}"));
+        Ok(())
     }
     fn associate(&self, on: bool) {
         self.log(format!("associate {on}"));
@@ -473,4 +474,11 @@ fn own_injected_events_and_pointer_echoes_do_not_release_held_modifiers() {
     handle(&state, 14, &moved(0));
     let got: Vec<LocalInput> = rx.try_iter().collect();
     assert_eq!(got, [meta(LEFT_META, true)]);
+}
+
+#[test]
+fn warping_to_a_point_on_no_display_is_an_error_not_a_panic() {
+    // Refused before any CoreGraphics call that could move the pointer.
+    let refused = crate::capture::SystemCursor.warp(10_000_000.0, 10_000_000.0);
+    assert!(matches!(refused, Err(Error::Os(_))));
 }

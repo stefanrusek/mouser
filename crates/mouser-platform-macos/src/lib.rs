@@ -13,6 +13,7 @@ mod displays;
 mod drag;
 mod dragwin;
 mod echo;
+mod foreground;
 mod fullscreen;
 mod inject;
 mod keymap;
@@ -157,8 +158,7 @@ impl Platform for MacPlatform {
     }
 
     fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
-        // v2: real foreground_app in platform-macos US1
-        None
+        foreground::foreground_app(&foreground::SystemProbe)
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
@@ -194,6 +194,8 @@ mod displays_tests;
 mod drag_tests;
 #[cfg(test)]
 mod echo_tests;
+#[cfg(test)]
+mod foreground_tests;
 #[cfg(test)]
 mod fullscreen_tests;
 #[cfg(test)]

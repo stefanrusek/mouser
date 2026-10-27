@@ -21,7 +21,7 @@ use crate::tap::{self, Create, Tap, Verdict};
 use core_graphics::display::{CGDisplay, CGPoint};
 use core_graphics::event::{CGEvent, EventField};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use mouser_platform::{InputCapture, LocalInput, Result};
+use mouser_platform::{Error, InputCapture, LocalInput, Result};
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -85,7 +85,8 @@ pub(crate) fn event_mask() -> u64 {
 /// testable without moving the real pointer.
 pub(crate) trait Cursor: Send + Sync {
     fn position(&self) -> (f64, f64);
-    fn warp(&self, x: f64, y: f64);
+    /// Fails when the point is on no display or the OS refuses.
+    fn warp(&self, x: f64, y: f64) -> Result<()>;
     fn associate(&self, on: bool);
     fn hide(&self);
     fn show(&self);
@@ -99,9 +100,14 @@ impl Cursor for SystemCursor {
         let at = CGEvent::new(source).unwrap().location();
         (at.x, at.y)
     }
-    fn warp(&self, x: f64, y: f64) {
-        CGDisplay::warp_mouse_cursor_position(CGPoint::new(x, y))
-            .expect("CGWarpMouseCursorPosition");
+    fn warp(&self, x: f64, y: f64) -> Result<()> {
+        let at = CGPoint::new(x, y);
+        let on_a_display = CGDisplay::display_count_with_point(at).is_ok_and(|count| count > 0);
+        if !on_a_display {
+            return Err(Error::Os(format!("({x}, {y}) is on no display")));
+        }
+        CGDisplay::warp_mouse_cursor_position(at)
+            .map_err(|code| Error::Os(format!("CGWarpMouseCursorPosition failed: {code}")))
     }
     fn associate(&self, on: bool) {
         CGDisplay::associate_mouse_and_mouse_cursor_position(on)
@@ -349,7 +355,7 @@ impl InputCapture for MacCapture {
         self.state.grabbed.store(grabbed, Ordering::SeqCst);
         if grabbed {
             let (x, y) = self.cursor.position();
-            self.cursor.warp(x, y);
+            self.cursor.warp(x, y)?;
             self.cursor.associate(false);
             self.cursor.hide();
         } else {
@@ -361,8 +367,7 @@ impl InputCapture for MacCapture {
 
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
         self.state.echo.record(x, y);
-        self.cursor.warp(x, y);
-        Ok(())
+        self.cursor.warp(x, y)
     }
 
     fn stop(&mut self) {
