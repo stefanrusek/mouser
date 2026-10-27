@@ -199,16 +199,25 @@ async fn the_pump_ends_when_the_engine_stops() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[should_panic(expected = "the app fell 2 notifications behind the engine")]
-async fn falling_behind_the_engine_is_a_bug() {
+async fn falling_behind_the_engine_resyncs_the_tray_and_windows_from_status() {
     let f = fixture().await;
     let app = app_with(f.host);
-    let (tray, _port, _notifier, dynamic) = pump_parts();
+    let handle_ = app.handle().clone();
+    let seen = Arc::new(std::sync::Mutex::new(0));
+    let sink = seen.clone();
+    handle_.listen(EVENT, move |_| *sink.lock().unwrap() += 1);
+    let (tray, port, notifier, dynamic) = pump_parts();
     let (sender, receiver) = tokio::sync::broadcast::channel(1);
     for _ in 0..3 {
         sender.send(problem_note(false)).unwrap();
     }
-    pump(app.handle().clone(), tray, dynamic, receiver).await;
+    drop(sender);
+    pump(handle_, tray, dynamic, receiver).await;
+    // The tray was redrawn from the engine's status, not from a lost note.
+    assert_eq!(port.views.lock().unwrap().len(), 1);
+    // The windows got that status, then the one note still in the channel.
+    eventually(|| *seen.lock().unwrap() == 2).await;
+    assert_eq!(notifier.shown.lock().unwrap().len(), 1);
 }
 
 fn landing() -> mouser_core::EngineEvent {
@@ -309,16 +318,33 @@ async fn the_event_pump_ends_when_the_engine_stops() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[should_panic(expected = "the app fell 2 engine events behind the engine")]
-async fn falling_behind_on_engine_events_is_a_bug() {
+async fn falling_behind_on_engine_events_carries_on_with_the_ones_still_there() {
     let f = fixture().await;
     let app = app_with(f.host);
-    let (_tray, _port, _notifier, dynamic) = pump_parts();
+    let (_tray, _port, notifier, dynamic) = pump_parts();
     let (sender, receiver) = tokio::sync::broadcast::channel(1);
     for _ in 0..3 {
         sender.send(review()).unwrap();
     }
+    drop(sender);
     pump_events(app.handle().clone(), dynamic, receiver).await;
+    assert_eq!(notifier.shown.lock().unwrap().len(), 1);
+}
+
+// v2 placeholder: no Phase 9 task owns this (core logs the fault; the app has nothing to add)
+#[tokio::test(flavor = "multi_thread")]
+async fn a_fault_in_the_engine_needs_nothing_from_the_app() {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let notifier = FakeNotifier::default();
+    handle_event(
+        app.handle(),
+        &notifier,
+        mouser_core::EngineEvent::Fault {
+            r#where: "reconcile".into(),
+        },
+    );
+    assert!(notifier.shown.lock().unwrap().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]

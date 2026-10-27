@@ -71,7 +71,22 @@ pub async fn pump<R: Runtime>(
                 );
             }
             Err(RecvError::Closed) => break,
-            Err(RecvError::Lagged(n)) => panic!("the app fell {n} notifications behind the engine"),
+            Err(RecvError::Lagged(_)) => {
+                // Whatever was missed, the status says where things stand now.
+                let control = app.state::<Host>().control();
+                let status = current_status(&control).await;
+                let note = Notification {
+                    jsonrpc: "2.0".into(),
+                    method: Topic::Status,
+                    params: serde_json::to_value(status).expect("status serializes"),
+                };
+                handle(
+                    &app,
+                    &tray,
+                    notify::gated(&control, notifier.as_ref()).await,
+                    note,
+                );
+            }
         }
     }
 }
@@ -102,6 +117,8 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
             });
         }
         EngineEvent::QuickJumpHide => quickjump_windows::hide(app),
+        // v2 placeholder: none (no Phase 9 task owns it; core logs the fault, nothing to show)
+        EngineEvent::Fault { .. } => {}
     }
 }
 
@@ -135,9 +152,8 @@ pub async fn pump_events<R: Runtime>(
                 );
             }
             Err(RecvError::Closed) => break,
-            Err(RecvError::Lagged(n)) => {
-                panic!("the app fell {n} engine events behind the engine")
-            }
+            // Engine events are one-off moments; there is nothing to rebuild.
+            Err(RecvError::Lagged(_)) => {}
         }
     }
 }

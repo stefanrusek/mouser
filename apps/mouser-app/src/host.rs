@@ -18,7 +18,7 @@ pub struct Host {
     control: ControlHandle,
     // Kept alive for the life of the app. `Engine` is `Send` but not `Sync`,
     // and Tauri state must be both.
-    _engine: Mutex<Engine>,
+    engine: Mutex<Option<Engine>>,
     platform: Arc<dyn Platform>,
     /// The latest `transfer` notification of each transfer, first seen first.
     transfers: Mutex<Vec<Value>>,
@@ -66,7 +66,7 @@ impl Host {
         mouser_platform_windows::set_diagnostics(Some(crate::diagnostics::debug_to(engine.log())));
         Self {
             control: engine.control(),
-            _engine: Mutex::new(engine),
+            engine: Mutex::new(Some(engine)),
             platform,
             transfers: Mutex::new(Vec::new()),
             arranger_edge: Mutex::new(None),
@@ -118,10 +118,21 @@ impl Host {
         dir: &std::path::Path,
         machine: &mut dyn mouser_platform::SecretStore,
     ) {
-        self._engine
+        self.engine
             .lock()
             .unwrap()
+            .as_ref()
+            .expect("the engine is running")
             .export_machine_scope(dir, machine);
+    }
+
+    /// Stop the engine: input first, then the links. The first call does it;
+    /// later calls (tray Quit, then the exit event) find it done.
+    pub async fn shutdown(&self) {
+        let engine = self.engine.lock().unwrap().take();
+        if let Some(engine) = engine {
+            engine.shutdown().await;
+        }
     }
 
     /// In-process access to the control API.

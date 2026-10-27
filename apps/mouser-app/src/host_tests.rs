@@ -78,3 +78,16 @@ async fn exporting_the_machine_scope_copies_the_identity_and_the_state() {
     );
     assert!(machine.path().join(mouser_core::state::FILE).exists());
 }
+
+#[test]
+fn shutting_the_host_down_stops_the_engine_once_however_often_it_is_asked() {
+    tauri::async_runtime::block_on(async {
+        let f = fixture().await;
+        let path = crate::support_tests::control_path_in(&f._dir);
+        assert!(path.exists());
+        f.host.shutdown().await;
+        assert!(!path.exists());
+        f.host.shutdown().await;
+        assert!(!path.exists());
+    });
+}

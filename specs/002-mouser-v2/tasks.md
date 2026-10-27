@@ -343,15 +343,15 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 - [ ] T231 [P] [US1-app] Write unit tests in `apps/mouser-app/src/app_tests.rs`: app start and headless start call `mouser_core::faults::install(log)` before the engine starts
 - [ ] T232 [US1-app] Install the panic hook at start in `apps/mouser-app/src/app.rs` and `apps/mouser-app/src/headless.rs`
-- [ ] T233 [P] [US1-app] Write unit tests in `apps/mouser-app/src/exit_tests.rs`: the `RunEvent::Exit` handler calls `Host::shutdown()` (covers `app.exit`, the updater restart and logoff/shutdown via `WM_ENDSESSION`) (research V4; Story 1 sc. 5)
-- [ ] T234 [US1-app] Implement the `RunEvent::Exit` handling in `apps/mouser-app/src/exit.rs` and wire it in `apps/mouser-app/src/shell.rs` in place of the `ExitRequested`-only handler at lines 348–353
-- [ ] T235 [P] [US1-app] Write unit tests in `apps/mouser-app/src/exit_tests.rs`: tray Quit calls `Host::shutdown()` *before* `app.exit(0)` (tauri#12310)
-- [ ] T236 [US1-app] Call `Host::shutdown()` before `app.exit(0)` for tray Quit in `apps/mouser-app/src/shell.rs` (line 306)
-- [ ] T237 [P] [US1-app] Write unit tests in `apps/mouser-app/src/host_tests.rs`: `Host::shutdown()` runs `Engine::shutdown()` exactly once even when called twice
-- [ ] T238 [US1-app] Make `Host::shutdown()` idempotent in `apps/mouser-app/src/host.rs`
-- [ ] T239 [P] [US1-app] Write unit tests in `apps/mouser-app/src/app_tests.rs`: a lagged engine broadcast receiver resyncs from `status` instead of panicking (`app.rs:72,137`; FR-002)
-- [ ] T240 [US1-app] Replace the lag panics in `apps/mouser-app/src/app.rs` with a resync from `status`
-- [ ] T241 [P] [US1-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--cursor-guard <pid>` is parsed before any Tauri initialisation and selects guard mode (Windows only; on other OSes the flag is rejected with exit code 3)
+- [X] T233 [P] [US1-app] Write unit tests in `apps/mouser-app/src/exit_tests.rs`: the `RunEvent::Exit` handler calls `Host::shutdown()` (covers `app.exit`, the updater restart and logoff/shutdown via `WM_ENDSESSION`) (research V4; Story 1 sc. 5)
+- [X] T234 [US1-app] Implement the `RunEvent::Exit` handling in `apps/mouser-app/src/exit.rs` and wire it in `apps/mouser-app/src/shell.rs` in place of the `ExitRequested`-only handler at lines 348–353
+- [X] T235 [P] [US1-app] Write unit tests in `apps/mouser-app/src/exit_tests.rs`: tray Quit calls `Host::shutdown()` *before* `app.exit(0)` (tauri#12310)
+- [X] T236 [US1-app] Call `Host::shutdown()` before `app.exit(0)` for tray Quit in `apps/mouser-app/src/shell.rs` (line 306)
+- [X] T237 [P] [US1-app] Write unit tests in `apps/mouser-app/src/host_tests.rs`: `Host::shutdown()` runs `Engine::shutdown()` exactly once even when called twice
+- [X] T238 [US1-app] Make `Host::shutdown()` idempotent in `apps/mouser-app/src/host.rs`
+- [X] T239 [P] [US1-app] Write unit tests in `apps/mouser-app/src/app_tests.rs`: a lagged engine broadcast receiver resyncs from `status` instead of panicking (`app.rs:72,137`; FR-002)
+- [X] T240 [US1-app] Replace the lag panics in `apps/mouser-app/src/app.rs` with a resync from `status`
+- [X] T241 [P] [US1-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--cursor-guard <pid>` is parsed before any Tauri initialisation and selects guard mode (Windows only; on other OSes the flag is rejected with exit code 3)
 - [ ] T242 [US1-app] Implement argument dispatch in `apps/mouser-app/src/args.rs` and in `apps/mouser-app/src/main.rs` call `mouser_platform_windows::cursor_guard::run(pid)` (signature frozen in contracts/platform-api-delta.md) for guard mode with no window (depends on Phase 19 T395 being merged)
 - [ ] T243 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
 - [ ] T244 [US1-app] Commit: phase boundary "US1-app" (5.3)

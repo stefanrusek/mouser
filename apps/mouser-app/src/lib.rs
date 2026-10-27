@@ -1,8 +1,10 @@
 //! Mouser's desktop app: a Tauri tray app hosting the engine and the UI.
 
 pub mod app;
+pub mod args;
 pub mod commands;
 pub mod diagnostics;
+pub mod exit;
 pub mod headless;
 pub mod host;
 pub mod hotkeys;
@@ -24,9 +26,13 @@ pub mod shell;
 #[cfg(test)]
 mod app_tests;
 #[cfg(test)]
+mod args_tests;
+#[cfg(test)]
 pub(crate) mod commands_tests;
 #[cfg(test)]
 mod diagnostics_tests;
+#[cfg(test)]
+mod exit_tests;
 #[cfg(test)]
 mod headless_tests;
 #[cfg(test)]

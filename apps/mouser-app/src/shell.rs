@@ -303,7 +303,7 @@ pub fn run() {
                             );
                         });
                     }
-                    tray::Action::Quit => app.exit(0),
+                    tray::Action::Quit => crate::exit::quit(app, || app.exit(0)),
                 })
                 .build(app)?;
             let controller = Arc::new(TrayController::new(
@@ -343,13 +343,12 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("Mouser can start")
-        .run(|_app, event| {
+        .run(|app, event| match event {
             // Closing the last window leaves Mouser running in the tray.
-            if let RunEvent::ExitRequested {
+            RunEvent::ExitRequested {
                 api, code: None, ..
-            } = event
-            {
-                api.prevent_exit();
-            }
+            } => api.prevent_exit(),
+            RunEvent::Exit => crate::exit::on_exit(app),
+            _ => {}
         });
 }
