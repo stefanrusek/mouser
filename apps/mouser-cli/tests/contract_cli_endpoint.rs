@@ -88,12 +88,22 @@ fn user_endpoint(home: &std::path::Path) -> (Endpoint, Vec<(&'static str, String
 
 #[cfg(windows)]
 fn user_endpoint(_home: &std::path::Path) -> (Endpoint, Vec<(&'static str, String)>) {
-    let user = format!("endpoint{}", std::process::id());
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static USERS: AtomicU32 = AtomicU32::new(0);
+    let user = format!(
+        "endpoint{}n{}",
+        std::process::id(),
+        USERS.fetch_add(1, Ordering::Relaxed)
+    );
     (
         Endpoint::at(std::path::Path::new(&format!(r"\\.\pipe\mouser-{user}"))),
         vec![("USERNAME", user)],
     )
 }
+
+/// The tests take turns: while one has the service's pipe (machine-wide)
+/// open, the other's CLI would connect to it.
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn short_tempdir() -> tempfile::TempDir {
     let mut builder = tempfile::Builder::new();
@@ -105,6 +115,7 @@ fn short_tempdir() -> tempfile::TempDir {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn without_a_service_the_cli_connects_to_the_users_endpoint() {
+    let _turn = ONE_AT_A_TIME.lock().await;
     let home = short_tempdir();
     let (endpoint, env) = user_endpoint(home.path());
     let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
@@ -114,6 +125,7 @@ async fn without_a_service_the_cli_connects_to_the_users_endpoint() {
 #[cfg(windows)]
 #[tokio::test(flavor = "multi_thread")]
 async fn with_the_service_pipe_present_the_cli_connects_to_it_not_to_the_users_pipe() {
+    let _turn = ONE_AT_A_TIME.lock().await;
     // The user's pipe exists too, and must not be the one chosen.
     let home = short_tempdir();
     let (_users, env) = user_endpoint(home.path());
