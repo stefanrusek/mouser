@@ -5,7 +5,7 @@ use std::fmt;
 
 use cucumber::{World, given, then, when};
 use mouser_platform::{Os, Platform, PlatformInfo, SessionType};
-use mouser_proto::control::{ConnectionState, ProblemKind, Status};
+use mouser_proto::control::{ConnectionState, Status};
 use mouser_proto::ids::ComputerId;
 use mouser_testkit::VirtualPlatform;
 
@@ -172,14 +172,7 @@ async fn looks_at_the_app(w: &mut PortableWorld) {
 )]
 async fn states_the_limitation(w: &mut PortableWorld) {
     let status = w.status.take().expect("status read");
-    assert!(
-        status
-            .problems
-            .iter()
-            .any(|p| p.kind == ProblemKind::PlatformLimitation && p.message == WINDOWS_LIMITATION),
-        "{:?}",
-        status.problems
-    );
+    assert_eq!(status.problems, [], "limitations are not problems");
     assert!(
         status.computers[0]
             .limitations

@@ -35,7 +35,7 @@ async fn a_refused_computer_is_announced_without_a_fix() {
 }
 
 #[tokio::test]
-async fn an_incompatible_version_offers_the_update_to_the_older_computer() {
+async fn an_incompatible_version_offers_no_update_where_there_is_none() {
     let lab = Lab::new();
     let a = lab.start("Alpha").await;
     let mut notes = a.engine.control().notifications();
@@ -43,7 +43,7 @@ async fn an_incompatible_version_offers_the_update_to_the_older_computer() {
     assert_notice(
         &recv_topic(&mut notes, Topic::Problem).await,
         "incompatible_version",
-        Some("open_update"),
+        None,
     );
 }
 
@@ -67,15 +67,14 @@ async fn what_a_desk_mate_reports_is_announced_here_once() {
     let mut notes = a.engine.control().notifications();
     admit(&a, &b).await;
     let beta = json!(b.engine.computer_id());
-    let mut kinds = Vec::new();
-    while kinds.len() < 2 {
+    // Its limitation is listed on it, not announced.
+    let note = loop {
         let note = recv_topic(&mut notes, Topic::Problem).await;
         if note["computer"] == beta {
-            kinds.push(note["kind"].as_str().unwrap().to_string());
+            break note;
         }
-    }
-    kinds.sort();
-    assert_eq!(kinds, ["missing_permission", "platform_limitation"]);
+    };
+    assert_eq!(note["kind"], "missing_permission");
     // Secure Input is announced by the notice Alpha raises for it, not twice.
     platform.set_secure_input(Some(SecureInputHolder {
         pid: 3,

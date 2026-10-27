@@ -9,6 +9,7 @@ use mouser_proto::control::{
 };
 use mouser_proto::model::{PermissionKind, PermissionState};
 
+use crate::control::tray_connection::tray_connection;
 use crate::engine::Ctx;
 use crate::state::Membership;
 
@@ -63,7 +64,7 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
     let now = std::time::Instant::now();
     let name = ctx.display_name_in(&core);
     let mut computers = vec![StatusComputer {
-        os_version: None,
+        os_version: Some(info.version.clone()),
         mode: Some(ctx.mode),
         id: ctx.me(),
         name: name.clone(),
@@ -86,8 +87,13 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
             let peer = core.peers.get(&member.computer_id);
             let connection = core.connection_of(member.computer_id, now);
             computers.push(StatusComputer {
+                // Not part of what desk-mates tell each other.
                 os_version: None,
-                mode: None,
+                // 0.2.x computers do not say how they run.
+                mode: peer
+                    .filter(|p| p.hello.speaks_v2())
+                    .and_then(|p| p.status.as_ref())
+                    .map(|s| s.mode),
                 id: member.computer_id,
                 name: member.display_name.clone(),
                 os: member.os,
@@ -154,11 +160,11 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
             problems.push(reported.clone());
         }
     }
+    let connection = tray_connection(&core, ctx.me(), now);
     drop(core);
-    // v2 placeholder: T192 (neutral tray summary)
     let tray_summary = mouser_proto::control::TraySummary {
         state,
-        connection: mouser_proto::control::TrayConnection::Alone,
+        connection,
         computers: computers.len() as u32,
         displays: computers.iter().map(|c| c.displays).sum(),
     };
@@ -168,7 +174,6 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         computer: ComputerRef { id: ctx.me(), name },
         state,
         desk,
-        // v2 placeholder: T192 (this computer when the pointer is local)
         active_computer: ctx.crossing.guard().active().unwrap_or(ctx.me()),
         computers,
         problems,

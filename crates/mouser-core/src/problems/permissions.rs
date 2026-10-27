@@ -27,7 +27,8 @@ impl Ctx {
                     Some(FixAction::OpenSystemSettings(wire)),
                 )
             } else {
-                self.problems.clear(ProblemKind::MissingPermission, subject)
+                self.problems
+                    .clear(ProblemKind::MissingPermission, subject, self.me())
             };
         }
         changed
@@ -53,7 +54,7 @@ impl Ctx {
                 Ok(())
             }
             Some(FixAction::OpenArrangerEdge) => {
-                self.problems.clear_id(problem_id);
+                self.problems.clear_id(problem_id, problem.computer);
                 Ok(())
             }
             _ => Err(format!("{problem_id} is fixed by the app, not the engine")),

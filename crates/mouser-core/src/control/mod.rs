@@ -8,6 +8,7 @@ pub mod logs;
 pub mod logs_stream;
 pub mod server;
 pub mod status;
+pub mod tray_connection;
 pub mod update;
 
 #[cfg(test)]
@@ -22,6 +23,8 @@ mod logs_tests;
 mod server_tests;
 #[cfg(test)]
 mod status_tests;
+#[cfg(test)]
+mod tray_connection_tests;
 #[cfg(test)]
 mod update_tests;
 

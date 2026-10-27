@@ -139,12 +139,7 @@ async fn a_computer_tells_its_desk_mates_its_permissions_limitations_and_problem
         ["Ctrl-Alt-Del cannot be sent to this computer."]
     );
     assert_eq!(status.secure_input_holder, None);
-    assert!(
-        status
-            .problems
-            .iter()
-            .any(|p| p.kind == ProblemKind::PlatformLimitation)
-    );
+    assert_eq!(status.problems, [], "limitations are not problems");
 }
 
 #[tokio::test]
@@ -153,11 +148,14 @@ async fn a_repeated_status_changes_nothing() {
     let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
     let (a, b) = (&nodes[0], &nodes[1]);
     let before = status(b).await.problems;
-    send_to(
-        a,
-        b,
-        mouser_proto::wire::ControlMessage::Status(a.engine.ctx.peer_status()),
-    );
+    let again = mouser_proto::wire::ControlMessage::Status(a.engine.ctx.peer_status());
+    send_to(a, b, again.clone());
     settle().await;
-    assert_eq!(status(b).await.problems, before);
+    // The first may differ from what Beta last heard (its mode, say); the
+    // same status again changes nothing.
+    let heard = status(b).await.problems;
+    send_to(a, b, again);
+    settle().await;
+    assert_eq!(status(b).await.problems, heard);
+    assert_eq!(heard, before);
 }

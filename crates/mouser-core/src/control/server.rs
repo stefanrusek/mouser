@@ -125,6 +125,7 @@ async fn dispatch(
         }
         Method::LayoutGet => Ok(ctx.get_layout()),
         Method::LayoutSet => ctx.set_layout(parse(params)?),
+        Method::LayoutKeepPlacement => ctx.keep_placement(parse(params)?),
         Method::ConfigGet => {
             let p: ConfigGetParams = parse(Some(params.unwrap_or_else(|| json!({}))))?;
             ctx.get_config(p.key.as_deref())

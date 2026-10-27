@@ -33,8 +33,8 @@ fn subject(display: &DisplayId, side: Side) -> String {
 }
 
 /// The edge crossed: its notice has done its job.
-pub fn crossed(problems: &Problems, display: &DisplayId, side: Side) {
-    problems.clear(ProblemKind::CrossingBlocked, &subject(display, side));
+pub fn crossed(problems: &Problems, me: ComputerId, display: &DisplayId, side: Side) {
+    problems.clear(ProblemKind::CrossingBlocked, &subject(display, side), me);
 }
 
 /// Raise the explanation for this edge unless it was already shown.

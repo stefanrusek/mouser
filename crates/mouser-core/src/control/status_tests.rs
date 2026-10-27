@@ -254,3 +254,95 @@ async fn a_member_that_upgraded_past_us_is_shown_as_incompatible() {
     })
     .await;
 }
+
+fn info_with_version(version: &str) -> mouser_platform::PlatformInfo {
+    mouser_platform::PlatformInfo {
+        os: mouser_platform::Os::MacOs,
+        version: version.into(),
+        session: mouser_platform::SessionType::Native,
+        limitations: vec![],
+    }
+}
+
+#[tokio::test]
+async fn this_computer_reports_its_os_version_mode_and_a_tray_summary() {
+    let lab = Lab::new();
+    let platform = VirtualPlatform::new();
+    platform.set_info(info_with_version("14.5"));
+    let node = lab.start_with("Alpha", platform, |_| {}).await;
+    let s = status(&node).await;
+    assert_valid(&s);
+    let me = &s.computers[0];
+    assert_eq!(me.os_version.as_deref(), Some("14.5"));
+    assert_eq!(me.mode, Some(mouser_proto::wire::ComputerMode::Installed));
+    assert_eq!(
+        s.tray_summary,
+        mouser_proto::control::TraySummary {
+            state: EngineState::Active,
+            connection: mouser_proto::control::TrayConnection::Alone,
+            computers: 1,
+            displays: 1,
+        }
+    );
+}
+
+#[tokio::test]
+async fn every_computer_has_its_version_and_mode_and_the_tray_counts_them() {
+    use mouser_proto::wire::ComputerMode;
+    let lab = Lab::new();
+    let mut nodes = Vec::new();
+    for (name, mode) in [
+        ("Alpha", ComputerMode::Portable),
+        ("Beta", ComputerMode::Headless),
+    ] {
+        nodes.push(
+            lab.start_released(
+                name,
+                |_| {},
+                |p| {
+                    p.mouser_version = "0.3.0".into();
+                    p.mode = mode;
+                },
+            )
+            .await,
+        );
+    }
+    let nodes = crate::testing::desk_from(nodes).await;
+    eventually("Beta's mode to arrive", || async {
+        status(&nodes[0])
+            .await
+            .computers
+            .iter()
+            .any(|c| c.name == "Beta" && c.mode.is_some())
+    })
+    .await;
+    let s = status(&nodes[0]).await;
+    assert_valid(&s);
+    let by_name = |name: &str| s.computers.iter().find(|c| c.name == name).unwrap();
+    assert_eq!(by_name("Alpha").mode, Some(ComputerMode::Portable));
+    assert_eq!(by_name("Beta").mode, Some(ComputerMode::Headless));
+    assert!(s.computers.iter().all(|c| c.version == "0.3.0"));
+    assert!(by_name("Beta").rtt_ms.is_some(), "the raw round trip time");
+    assert_eq!(s.tray_summary.computers, 2);
+    assert_eq!(s.tray_summary.displays, 2);
+    assert_eq!(
+        s.tray_summary.connection,
+        mouser_proto::control::TrayConnection::Connected
+    );
+}
+
+#[tokio::test]
+async fn the_active_computer_is_this_one_when_local_and_the_pointers_owner_when_not() {
+    let lab = Lab::new();
+    let nodes = crate::testing::desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    assert_eq!(status(a).await.active_computer, a.engine.computer_id());
+    assert_eq!(status(b).await.active_computer, b.engine.computer_id());
+    crate::testing::push_right(a);
+    eventually("the pointer to be on Beta", || async {
+        let s = status(a).await;
+        assert_valid(&s);
+        s.active_computer == b.engine.computer_id()
+    })
+    .await;
+}

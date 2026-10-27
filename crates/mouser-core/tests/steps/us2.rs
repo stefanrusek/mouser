@@ -750,12 +750,7 @@ async fn app_states_the_limitation(w: &mut CrossWorld) {
         "{:?}",
         status.computers[0].limitations
     );
-    assert!(
-        status
-            .problems
-            .iter()
-            .any(|p| { p.kind == ProblemKind::PlatformLimitation && p.message == IGNORED })
-    );
+    assert_eq!(status.problems, [], "a limitation is not a problem");
 }
 
 // ---- scenario 8: panic key ---------------------------------------------------------------------

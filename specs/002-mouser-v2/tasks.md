@@ -267,29 +267,29 @@ Package `crates/mouser-core`. Gate per phase: `cargo xtask gate --packages mouse
 - [X] T178 [US2-core] Write the contract test `crates/mouser-core/tests/contract_log_bundle.rs` (producer side): a three-node desk (one at 0.2.8, one with logging off) collects a bundle whose `bundle.json` validates against the `mouser-proto` schema `schemas/log-bundle.schema.json`, whose `included: false` entries all carry a `reason`, and which contains none of the never-present files
 - [X] T179 [US2-core] Write the privacy contract test `crates/mouser-core/tests/contract_log_privacy.rs` (SC-004): a two-node session with logging on in which the marker `MOUSER-MARKER-7f3a` is typed (as key events) and copied (as clipboard text and as a copied file name) on both nodes, then a bundle is collected; zero matches of the marker across every log file and every entry of the unzipped bundle
 - [X] T180 [US2-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T181 [US2-core] Commit: phase boundary "US2-core" (5.3)
+- [X] T181 [US2-core] Commit: phase boundary "US2-core" (5.3)
 
 #### Phase 6: US3-core — As a desk owner, I want one Mouser window where I can find everything (P2)
 
 **Independent test**: `cargo test -p mouser-core --test acc_v2_us3` passes: status v2 lists each problem once under its computer, limitations only in `computers[].limitations`, `tray_summary.connection` follows the rule, and `layout.keep_placement` clears the review.
 
-- [ ] T182 [US3-core] Write the acceptance runner `crates/mouser-core/tests/acc_v2_us3.rs` and steps `crates/mouser-core/tests/steps/v2_us3.rs` for every scenario in `tests/features/v2_us3.feature`
-- [ ] T183 [P] [US3-core] Write unit tests in `crates/mouser-core/src/problems/limitations_tests.rs`: start-up `PlatformInfo.limitations` are never raised as problems ("The ids `platform_limitation:<capability>` are never raised in v2"); they appear only in `status.computers[].limitations` of their own computer (FR-010; Story 3 sc. 6)
-- [ ] T184 [US3-core] Delete the `platform_limitation:<capability>` raise path in `crates/mouser-core/src/problems/limitations.rs` (lines 9–43 at bd97abe, including the T065 `Capability` mapping arms), keeping the listing, and delete the T064 placeholder mapping tests in `crates/mouser-core/src/problems/limitations_tests.rs`
-- [ ] T185 [P] [US3-core] Write unit tests in `crates/mouser-core/src/problems/peer_status_tests.rs`: problems with ids `platform_limitation:<capability>` arriving from a 0.2.x peer are dropped on merge; this computer sends `PeerStatus.mode` only to peers ≥ `V2_SINCE` and the 001 shape to older peers; a peer's `mode` appears in its `status.computers[].mode`
-- [ ] T186 [US3-core] Implement the merge filter and version-gated `PeerStatus` in `crates/mouser-core/src/problems/peer_status.rs`
-- [ ] T187 [P] [US3-core] Write unit tests in `crates/mouser-core/src/problems/tests.rs`: "Problems are unique per `(problem_id, computer)` everywhere"; the same `problem_id` on two computers is two problems, each attributed to its own computer; `status.problems[]` carries `problem_id` (Story 3 sc. 5)
-- [ ] T188 [US3-core] Key the registry and the status merge by `(problem_id, computer)` in `crates/mouser-core/src/problems/mod.rs`
-- [ ] T189 [P] [US3-core] Write unit tests in `crates/mouser-core/src/control/tray_connection_tests.rs` for `TrayConnection`: "no desk, or desk with no other member → alone"; "every non-removed member is connected (paused counts) → connected"; "≥1 non-removed member is reconnecting/offline/incompatible → disconnected"; pausing this computer does not change it; a removed member or leaving the desk never counts (Story 3 sc. 14–15; edge case paused + disconnected)
-- [ ] T190 [US3-core] Implement `TrayConnection` computation in `crates/mouser-core/src/control/tray_connection.rs`
-- [ ] T191 [P] [US3-core] Write unit tests in `crates/mouser-core/src/control/status_tests.rs`: `status` validates against status v2 — `tray_summary {state, connection, computers, displays}`, `active_computer` always filled (this computer's id when Local), `computers[].os_version`, `computers[].mode`, `computers[].version` for every computer, `rtt_ms` raw (Story 3 sc. 4, 8)
-- [ ] T192 [US3-core] Build status v2 in `crates/mouser-core/src/control/status.rs`
-- [ ] T193 [P] [US3-core] Write unit tests in `crates/mouser-core/src/control/layout_tests.rs`: `layout.keep_placement {computer}` clears `needs_review` for that computer's displays without moving them, replicates via DeskState, and writes `layout.changed change=kept_placement` (Story 3 sc. 11)
-- [ ] T194 [US3-core] Implement `layout.keep_placement` in `crates/mouser-core/src/control/layout.rs`
-- [ ] T195 [P] [US3-core] Write unit tests in `crates/mouser-core/src/session/handshake_tests.rs`: the `incompatible_version` problem names which computer to update; it carries fix `update_computer:<computer id>` only when the incompatible computer is this one and an update is available locally (Story 3 sc. 8)
-- [ ] T196 [US3-core] Add the `update_computer` fix in `crates/mouser-core/src/session/handshake.rs`
-- [ ] T197 [US3-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
-- [ ] T198 [US3-core] Commit: phase boundary "US3-core" (5.3)
+- [X] T182 [US3-core] Write the acceptance runner `crates/mouser-core/tests/acc_v2_us3.rs` and steps `crates/mouser-core/tests/steps/v2_us3.rs` for every scenario in `tests/features/v2_us3.feature`
+- [X] T183 [P] [US3-core] Write unit tests in `crates/mouser-core/src/problems/limitations_tests.rs`: start-up `PlatformInfo.limitations` are never raised as problems ("The ids `platform_limitation:<capability>` are never raised in v2"); they appear only in `status.computers[].limitations` of their own computer (FR-010; Story 3 sc. 6)
+- [X] T184 [US3-core] Delete the `platform_limitation:<capability>` raise path in `crates/mouser-core/src/problems/limitations.rs` (lines 9–43 at bd97abe, including the T065 `Capability` mapping arms), keeping the listing, and delete the T064 placeholder mapping tests in `crates/mouser-core/src/problems/limitations_tests.rs`
+- [X] T185 [P] [US3-core] Write unit tests in `crates/mouser-core/src/problems/peer_status_tests.rs`: problems with ids `platform_limitation:<capability>` arriving from a 0.2.x peer are dropped on merge; this computer sends `PeerStatus.mode` only to peers ≥ `V2_SINCE` and the 001 shape to older peers; a peer's `mode` appears in its `status.computers[].mode`
+- [X] T186 [US3-core] Implement the merge filter and version-gated `PeerStatus` in `crates/mouser-core/src/problems/peer_status.rs`
+- [X] T187 [P] [US3-core] Write unit tests in `crates/mouser-core/src/problems/tests.rs`: "Problems are unique per `(problem_id, computer)` everywhere"; the same `problem_id` on two computers is two problems, each attributed to its own computer; `status.problems[]` carries `problem_id` (Story 3 sc. 5)
+- [X] T188 [US3-core] Key the registry and the status merge by `(problem_id, computer)` in `crates/mouser-core/src/problems/mod.rs`
+- [X] T189 [P] [US3-core] Write unit tests in `crates/mouser-core/src/control/tray_connection_tests.rs` for `TrayConnection`: "no desk, or desk with no other member → alone"; "every non-removed member is connected (paused counts) → connected"; "≥1 non-removed member is reconnecting/offline/incompatible → disconnected"; pausing this computer does not change it; a removed member or leaving the desk never counts (Story 3 sc. 14–15; edge case paused + disconnected)
+- [X] T190 [US3-core] Implement `TrayConnection` computation in `crates/mouser-core/src/control/tray_connection.rs`
+- [X] T191 [P] [US3-core] Write unit tests in `crates/mouser-core/src/control/status_tests.rs`: `status` validates against status v2 — `tray_summary {state, connection, computers, displays}`, `active_computer` always filled (this computer's id when Local), `computers[].os_version`, `computers[].mode`, `computers[].version` for every computer, `rtt_ms` raw (Story 3 sc. 4, 8)
+- [X] T192 [US3-core] Build status v2 in `crates/mouser-core/src/control/status.rs`
+- [X] T193 [P] [US3-core] Write unit tests in `crates/mouser-core/src/control/layout_tests.rs`: `layout.keep_placement {computer}` clears `needs_review` for that computer's displays without moving them, replicates via DeskState, and writes `layout.changed change=kept_placement` (Story 3 sc. 11)
+- [X] T194 [US3-core] Implement `layout.keep_placement` in `crates/mouser-core/src/control/layout.rs`
+- [X] T195 [P] [US3-core] Write unit tests in `crates/mouser-core/src/session/handshake_tests.rs`: the `incompatible_version` problem names which computer to update; it carries fix `update_computer:<computer id>` only when the incompatible computer is this one and an update is available locally (Story 3 sc. 8)
+- [X] T196 [US3-core] Add the `update_computer` fix in `crates/mouser-core/src/session/handshake.rs`
+- [X] T197 [US3-core] Gate: `cargo xtask gate --packages mouser-core --lane core`
+- [X] T198 [US3-core] Commit: phase boundary "US3-core" (5.3)
 
 #### Phase 7: US4-core — As a desk owner, I want to tailor hotkeys, names and pointer behavior from the Mouser window (P2)
 

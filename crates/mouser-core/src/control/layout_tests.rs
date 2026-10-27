@@ -241,3 +241,51 @@ mod logged {
         );
     }
 }
+
+#[tokio::test]
+async fn keeping_a_placement_clears_its_review_without_moving_and_replicates() {
+    let lab = Lab::new();
+    let nodes = logged_desk_of(&lab, &["Alpha", "Beta", "Gamma"]).await;
+    let a = &nodes[0];
+    let (beta, gamma) = (nodes[1].engine.computer_id(), nodes[2].engine.computer_id());
+    let reviewing = |node: &TestNode, computer| {
+        node.engine
+            .needs_review()
+            .iter()
+            .any(|d| d.computer == computer)
+    };
+    assert!(reviewing(a, beta) && reviewing(a, gamma));
+    let (placed, epoch) = (a.engine.layout(), epoch_of(a));
+    let _: Empty = call(a, Method::LayoutKeepPlacement, json!({"computer": beta})).await;
+    assert!(!reviewing(a, beta), "Beta's review is over");
+    assert!(reviewing(a, gamma), "Gamma's is not");
+    assert_eq!(a.engine.layout(), placed, "nothing moved");
+    assert_eq!(epoch_of(a), epoch + 1);
+    for node in &nodes {
+        eventually("the new epoch everywhere", || async {
+            epoch_of(node) == epoch + 1
+        })
+        .await;
+        assert_eq!(node.engine.layout(), placed);
+    }
+    let me = a.engine.computer_id().to_string();
+    let record = logged(a, "layout.changed", |r| {
+        r["fields"]["change"] == "kept_placement"
+    })
+    .await;
+    assert_eq!(record["fields"]["by"], me.as_str());
+    assert_eq!(record["fields"]["computer"], beta.to_string().as_str());
+}
+
+#[tokio::test]
+async fn keeping_a_placement_off_a_desk_is_refused() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let err = call_err(
+        &node,
+        Method::LayoutKeepPlacement,
+        json!({"computer": node.engine.computer_id()}),
+    )
+    .await;
+    assert_eq!(err.code, -32602);
+}

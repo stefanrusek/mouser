@@ -40,7 +40,12 @@ pub fn to_wire(
 impl Ctx {
     /// Say in the log how the displays of `computer` changed from `before`
     /// to `after`.
-    fn log_display_changes(&self, computer: ComputerId, before: &[Display], after: &[Display]) {
+    pub(crate) fn log_display_changes(
+        &self,
+        computer: ComputerId,
+        before: &[Display],
+        after: &[Display],
+    ) {
         for (display, change) in changes(before, after) {
             self.log
                 .write(events::display_changed(computer, &display, change));
@@ -92,9 +97,6 @@ impl Ctx {
     pub(crate) fn on_local_displays(self: &Arc<Self>) {
         let mut core = self.core.guard();
         let displays = self.local_displays(&core);
-        if let Some(before) = core.state.displays.get(&self.me()) {
-            self.log_display_changes(self.me(), before, &displays);
-        }
         self.sync_layout(&mut core);
         let _ = self.persist(&core);
         self.refresh_map(&core);

@@ -320,10 +320,5 @@ async fn looks_at_the_app(_w: &mut BlockWorld) {
 async fn app_states_it(w: &mut BlockWorld) {
     let status = w.lab.node("Linux").status().await;
     assert!(status.computers[0].limitations.iter().any(|l| l == WAYLAND));
-    assert!(
-        status
-            .problems
-            .iter()
-            .any(|p| p.kind == ProblemKind::PlatformLimitation && p.message == WAYLAND)
-    );
+    assert_eq!(status.problems, [], "a limitation is not a problem");
 }

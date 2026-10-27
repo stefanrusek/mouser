@@ -157,6 +157,8 @@ pub(crate) enum Phase {
 
 pub(crate) enum Outgoing {
     Message(ControlMessage),
+    /// A `Status` in the shape 0.2.x computers read.
+    LegacyStatus(PeerStatus),
     /// Flush what is queued, then close the connection.
     Close,
 }
@@ -183,6 +185,16 @@ impl Peer {
     pub fn send(&self, msg: ControlMessage) {
         // A closed channel means the link already ended; its reader cleans up.
         let _ = self.out.send(Outgoing::Message(msg));
+    }
+
+    /// Tell this peer our status in the shape it reads: `mode` goes only to
+    /// computers that know it.
+    pub fn send_status(&self, status: &PeerStatus) {
+        let _ = self.out.send(if self.hello.speaks_v2() {
+            Outgoing::Message(ControlMessage::Status(status.clone()))
+        } else {
+            Outgoing::LegacyStatus(status.clone())
+        });
     }
 
     pub fn close(&self) {
@@ -561,7 +573,6 @@ impl Engine {
             ctx.reject_config(&rejection.reason);
             seen = rejection.text;
         }
-        ctx.raise_limitations();
         ctx.try_start_input();
         ctx.start_clipboard(clip_commands);
         ctx.start_transfers(xfer_commands);

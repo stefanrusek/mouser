@@ -93,7 +93,8 @@ impl Problems {
     }
 
     /// Raise a problem; returns false (and says nothing) if the same problem
-    /// (kind + subject) is already open.
+    /// (kind + subject) is already open for `computer`. The same id on two
+    /// computers is two problems.
     pub fn raise(
         &self,
         kind: ProblemKind,
@@ -106,7 +107,7 @@ impl Problems {
         let mut all = self.all.guard();
         if all
             .iter()
-            .any(|p| p.problem_id == problem_id && p.cleared_at.is_none())
+            .any(|p| p.problem_id == problem_id && p.computer == computer && p.cleared_at.is_none())
         {
             return false;
         }
@@ -115,7 +116,6 @@ impl Problems {
             kind,
             computer,
             message,
-            // v2 placeholder: T188
             app: None,
             fix,
             raised_at: now(),
@@ -128,18 +128,18 @@ impl Problems {
         true
     }
 
-    /// Clear an open problem; returns whether there was one.
-    pub fn clear(&self, kind: ProblemKind, subject: &str) -> bool {
-        self.clear_id(&format!("{}:{subject}", kind_name(kind)))
+    /// Clear the open problem about `computer`; returns whether there was one.
+    pub fn clear(&self, kind: ProblemKind, subject: &str, computer: ComputerId) -> bool {
+        self.clear_id(&format!("{}:{subject}", kind_name(kind)), computer)
     }
 
-    /// Clear the open problem called `problem_id`; returns whether there was one.
-    pub fn clear_id(&self, problem_id: &str) -> bool {
+    /// Clear the open problem called `problem_id` about `computer`; returns
+    /// whether there was one.
+    pub fn clear_id(&self, problem_id: &str, computer: ComputerId) -> bool {
         let mut all = self.all.guard();
-        let Some(problem) = all
-            .iter_mut()
-            .find(|p| p.problem_id == problem_id && p.cleared_at.is_none())
-        else {
+        let Some(problem) = all.iter_mut().find(|p| {
+            p.problem_id == problem_id && p.computer == computer && p.cleared_at.is_none()
+        }) else {
             return false;
         };
         problem.cleared_at = Some(now());

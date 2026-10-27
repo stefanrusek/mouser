@@ -2,8 +2,9 @@
 
 use mouser_proto::ids::{ComputerId, DeskId};
 use mouser_proto::model::Os;
-use mouser_proto::wire::{ControlMessage, is_compatible};
+use mouser_proto::wire::{ControlMessage, V2_SINCE, is_compatible};
 
+use crate::release::Version;
 use crate::transport::Link;
 
 /// What the other computer said about itself in its `Hello`.
@@ -18,6 +19,13 @@ pub struct PeerHello {
 }
 
 impl PeerHello {
+    /// Whether the peer is at least [`V2_SINCE`]: it knows the v2 messages
+    /// and fields, and a 0.2.x computer panics at them.
+    pub fn speaks_v2(&self) -> bool {
+        let since = Version::parse(V2_SINCE).expect("a version");
+        Version::parse(&self.mouser_version).is_ok_and(|v| v >= since)
+    }
+
     pub fn compatible_with(&self, my_protocol: u16) -> bool {
         is_compatible(self.protocol_version, my_protocol)
     }

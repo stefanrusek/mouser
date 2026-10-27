@@ -2,8 +2,10 @@ use mouser_platform::{
     Capability, Limitation, Os, PermissionKind as Kind, PermissionState as State, PlatformInfo,
     SecureInputHolder, SessionType,
 };
-use mouser_proto::control::{ConnectionState, ProblemKind};
+use mouser_proto::control::{ConnectionState, Desk, Method, Problem, ProblemKind};
+use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{PermissionKind, PermissionState};
+use mouser_proto::wire::{ComputerMode, ControlMessage, PeerStatus, encode_status_v1};
 use mouser_testkit::VirtualPlatform;
 
 use crate::testing::*;
@@ -151,4 +153,204 @@ async fn what_a_computer_reported_goes_when_it_disconnects() {
             && beta_row(&s).permissions.is_empty()
     })
     .await;
+}
+
+fn status_of(problems: Vec<Problem>) -> PeerStatus {
+    PeerStatus {
+        permissions: Default::default(),
+        limitations: vec![],
+        secure_input_holder: None,
+        problems,
+        mode: ComputerMode::Portable,
+    }
+}
+
+fn problem(id: &str, kind: ProblemKind, computer: ComputerId) -> Problem {
+    Problem {
+        problem_id: id.into(),
+        kind,
+        computer,
+        message: format!("message of {id}"),
+        app: None,
+        fix: None,
+        raised_at: "2026-01-01T00:00:00.000Z".into(),
+        cleared_at: None,
+    }
+}
+
+async fn node_with_desk(lab: &Lab) -> (TestNode, Desk) {
+    let node = lab.start_version("Alpha", "0.3.0", false).await;
+    let desk: Desk = call(
+        &node,
+        Method::DeskCreate,
+        serde_json::json!({"name": "Home"}),
+    )
+    .await;
+    (node, desk)
+}
+
+#[tokio::test]
+async fn start_up_limitation_problems_from_a_0_2_x_peer_are_dropped_on_merge() {
+    let lab = Lab::new();
+    let (node, desk) = node_with_desk(&lab).await;
+    let mut link = member_rogue_as(&node, &desk, 0x91, "0.2.8").await;
+    let rogue = crate::identity::Identity::from_seed([0x91; 32]).computer_id();
+    let kept = [
+        problem("secure_input:x", ProblemKind::SecureInput, rogue),
+        // What the platform noticed while running is not a start-up limitation.
+        problem(
+            "platform_limitation:platform_problem:00ff",
+            ProblemKind::PlatformLimitation,
+            rogue,
+        ),
+    ];
+    let mut all = vec![
+        problem(
+            "platform_limitation:capture",
+            ProblemKind::PlatformLimitation,
+            rogue,
+        ),
+        problem(
+            "platform_limitation:tray",
+            ProblemKind::PlatformLimitation,
+            rogue,
+        ),
+    ];
+    all.extend(kept.clone());
+    link.writer
+        .send_raw(&encode_status_v1(&status_of(all)))
+        .await;
+    eventually("the peer's problems to merge", || async {
+        status(&node)
+            .await
+            .problems
+            .iter()
+            .any(|p| p.problem_id == "secure_input:x")
+    })
+    .await;
+    let mut ids: Vec<_> = status(&node)
+        .await
+        .problems
+        .into_iter()
+        .map(|p| p.problem_id)
+        .collect();
+    ids.sort();
+    assert_eq!(
+        ids,
+        [
+            "platform_limitation:platform_problem:00ff",
+            "secure_input:x"
+        ]
+    );
+}
+
+/// The `Status` the node sends the rogue behind `link`.
+async fn status_sent(link: &mut crate::transport::Link) -> PeerStatus {
+    loop {
+        if let ControlMessage::Status(status) = link
+            .reader
+            .recv::<ControlMessage>()
+            .await
+            .expect("the node keeps the link")
+        {
+            return status;
+        }
+    }
+}
+
+#[tokio::test]
+async fn mode_goes_only_to_peers_from_0_3_0_and_the_001_shape_to_older_ones() {
+    let lab = Lab::new();
+    let node = lab
+        .start_released(
+            "Alpha",
+            |_| {},
+            |p| {
+                p.mouser_version = "0.3.0".into();
+                p.mode = ComputerMode::Headless;
+            },
+        )
+        .await;
+    node.platform
+        .set_permission(Kind::Accessibility, State::Missing);
+    let desk: Desk = call(
+        &node,
+        Method::DeskCreate,
+        serde_json::json!({"name": "Home"}),
+    )
+    .await;
+    let mut newer = member_rogue_as(&node, &desk, 0x92, "0.3.0").await;
+    let mut older = member_rogue_as(&node, &desk, 0x93, "0.2.8").await;
+    let current = status_sent(&mut newer).await;
+    assert_eq!(current.mode, ComputerMode::Headless);
+    assert_eq!(current.problems.len(), 1);
+    assert_eq!(current.problems[0].kind, ProblemKind::MissingPermission);
+    let legacy = status_sent(&mut older).await;
+    assert_eq!(legacy.to_v1(), current.to_v1());
+}
+
+#[tokio::test]
+async fn a_peers_mode_is_shown_from_0_3_0_and_unknown_for_0_2_x() {
+    let lab = Lab::new();
+    let mut nodes = Vec::new();
+    for (name, version, mode) in [
+        ("Alpha", "0.3.0", ComputerMode::Installed),
+        ("Beta", "0.3.0", ComputerMode::Service),
+        ("Gamma", "0.2.8", ComputerMode::PortableElevated),
+    ] {
+        nodes.push(
+            lab.start_released(
+                name,
+                |_| {},
+                |p| {
+                    p.mouser_version = version.into();
+                    p.mode = mode;
+                },
+            )
+            .await,
+        );
+    }
+    let nodes = desk_from(nodes).await;
+    let expected = [
+        ("Alpha", Some(ComputerMode::Installed)),
+        ("Beta", Some(ComputerMode::Service)),
+        ("Gamma", None),
+    ];
+    eventually("every mode to show", || async {
+        let s = status(&nodes[0]).await;
+        expected.iter().all(|(name, mode)| {
+            s.computers
+                .iter()
+                .any(|c| c.name == *name && c.mode == *mode)
+        })
+    })
+    .await;
+    // Gamma runs 0.2.x as far as Alpha can tell, whatever its status says.
+    settle().await;
+    let s = status(&nodes[0]).await;
+    assert_eq!(
+        s.computers.iter().find(|c| c.name == "Gamma").unwrap().mode,
+        None
+    );
+}
+
+#[tokio::test]
+async fn two_0_2_x_computers_still_exchange_problems_in_the_001_shape() {
+    let lab = Lab::new();
+    let a = lab.start_version("Alpha", "0.2.8", false).await;
+    let b = lab
+        .start_released("Beta", |_| {}, |p| p.mouser_version = "0.2.8".into())
+        .await;
+    b.platform
+        .set_permission(Kind::Accessibility, State::Missing);
+    let nodes = desk_from(vec![a, b]).await;
+    eventually("Beta's problem to arrive", || async {
+        let s = status(&nodes[0]).await;
+        s.problems.iter().any(|p| {
+            p.kind == ProblemKind::MissingPermission && p.computer == nodes[1].engine.computer_id()
+        })
+    })
+    .await;
+    let s = status(&nodes[0]).await;
+    assert_eq!(beta_row(&s).mode, None);
 }

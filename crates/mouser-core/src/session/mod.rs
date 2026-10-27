@@ -52,9 +52,13 @@ async fn write_loop(
     mut out: mpsc::UnboundedReceiver<Outgoing>,
     conn: quinn::Connection,
 ) {
-    while let Some(Outgoing::Message(msg)) = out.recv().await {
+    while let Some(outgoing) = out.recv().await {
         // A dead connection is noticed (and cleaned up) by the reader.
-        let _ = writer.send(&msg).await;
+        let _ = match outgoing {
+            Outgoing::Message(msg) => writer.send(&msg).await,
+            Outgoing::LegacyStatus(status) => writer.send_legacy_status(&status).await,
+            Outgoing::Close => break,
+        };
     }
     writer.finish().await;
     conn.close(0u32.into(), CloseReason::Done.bytes());
@@ -359,7 +363,7 @@ impl Ctx {
         }
         if compatible {
             self.problems
-                .clear(ProblemKind::IncompatibleVersion, &peer.to_string());
+                .clear(ProblemKind::IncompatibleVersion, &peer.to_string(), peer);
             let log = self.log.clone();
             reader.on_unknown(move |variant| log.write(events::wire_unknown(peer, variant)));
             self.spawn(read_loop(self.clone(), peer, link_id, conn.clone(), reader));
@@ -367,12 +371,14 @@ impl Ctx {
             self.spawn(file_loop(self.clone(), peer, conn.clone()));
         } else {
             let (text, mine_is_older) = incompatible_text;
+            // This computer can update itself when it has the update.
+            let update_here = self.core.guard().release.offered.is_some();
             self.problems.raise(
                 ProblemKind::IncompatibleVersion,
                 &peer.to_string(),
                 peer,
                 text.clone(),
-                mine_is_older.then_some(FixAction::OpenUpdate),
+                (mine_is_older && update_here).then_some(FixAction::UpdateComputer(self.me())),
             );
             if join.is_some() {
                 self.fail_pending(&text);
@@ -418,7 +424,7 @@ impl Ctx {
             )
         };
         self.problems
-            .clear(ProblemKind::SecureInput, &peer.to_string());
+            .clear(ProblemKind::SecureInput, &peer.to_string(), peer);
         self.drop_release_waiters(peer);
         self.drop_logs_waiters(peer);
         // No clipboard task means this platform shares no clipboard.

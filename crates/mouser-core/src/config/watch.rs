@@ -26,7 +26,7 @@ impl Ctx {
     pub(crate) fn reject_config(&self, reason: &str) {
         self.log.write(events::config_rejected(reason));
         self.problems
-            .clear(ProblemKind::PlatformLimitation, SUBJECT);
+            .clear(ProblemKind::PlatformLimitation, SUBJECT, self.me());
         self.problems.raise(
             ProblemKind::PlatformLimitation,
             SUBJECT,
@@ -66,7 +66,7 @@ impl Ctx {
             }
         };
         self.problems
-            .clear(ProblemKind::PlatformLimitation, SUBJECT);
+            .clear(ProblemKind::PlatformLimitation, SUBJECT, self.me());
         if next == core.config {
             return;
         }

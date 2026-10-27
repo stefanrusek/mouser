@@ -150,12 +150,11 @@ async fn limitation_texts(os: Os, portable_mode: bool) -> (Vec<String>, Vec<Stri
 
 #[tokio::test]
 async fn portable_windows_states_what_it_cannot_control() {
-    let (mut problems, mut listed) = limitation_texts(Os::Windows, true).await;
+    let (problems, mut listed) = limitation_texts(Os::Windows, true).await;
     let mut want = vec!["inject text".to_string(), WINDOWS_LIMITATION.to_string()];
     want.sort();
-    problems.sort();
     listed.sort();
-    assert_eq!(problems, want);
+    assert_eq!(problems, Vec::<String>::new());
     assert_eq!(listed, want);
 }
 
@@ -164,10 +163,7 @@ async fn only_portable_windows_adds_a_limitation() {
     let only = vec!["inject text".to_string()];
     assert_eq!(
         limitation_texts(Os::Windows, false).await,
-        (only.clone(), only.clone())
+        (vec![], only.clone())
     );
-    assert_eq!(
-        limitation_texts(Os::Linux, true).await,
-        (only.clone(), only)
-    );
+    assert_eq!(limitation_texts(Os::Linux, true).await, (vec![], only));
 }

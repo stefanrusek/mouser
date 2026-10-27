@@ -3,7 +3,7 @@
 //! and copies them to where they were dropped.
 
 use mouser_platform::Platform;
-use mouser_proto::control::{ProblemKind, Topic};
+use mouser_proto::control::Topic;
 use mouser_proto::wire::{ControlMessage, TransferId};
 use mouser_testkit::VirtualPlatform;
 
@@ -169,12 +169,12 @@ async fn a_platform_without_file_drag_reports_the_limitation_instead() {
     let node = lab
         .start_with("Linux box", VirtualPlatform::limited(), |_| {})
         .await;
-    let problems = node.engine.ctx.problems.open();
-    let limitation = problems
-        .iter()
-        .find(|p| p.kind == ProblemKind::PlatformLimitation && p.message.contains("dragged"))
-        .expect("the file drag limitation is reported");
-    assert_eq!(limitation.computer, node.engine.computer_id());
+    assert_eq!(node.engine.ctx.problems.open(), []);
+    let listed = node.engine.ctx.limitations();
+    assert!(
+        listed.iter().any(|l| l.text.contains("dragged")),
+        "the file drag limitation is listed"
+    );
     // Nobody can answer a question on a platform that asked none.
     node.engine.control().resolve_transfer("0000", true);
 }

@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use std::collections::BTreeSet;
 
-use mouser_proto::control::RpcError;
+use mouser_proto::control::{KeepPlacementParams, RpcError};
 use mouser_proto::ids::ComputerId;
 use mouser_proto::model::{Display, Layout};
 use mouser_proto::wire::ControlMessage;
@@ -147,5 +147,34 @@ impl Ctx {
         drop(core);
         self.notify_status();
         Ok(value)
+    }
+
+    /// `layout.keep_placement`: the owner accepts where `computer`'s displays
+    /// were put. Nothing moves; the review is over, and the desk hears of it
+    /// as a new layout epoch.
+    pub(crate) fn keep_placement(&self, params: KeepPlacementParams) -> Result<Value, RpcError> {
+        let mut core = self.core.guard();
+        let me = self.me();
+        let desk = core
+            .state
+            .desk
+            .as_mut()
+            .ok_or_else(|| invalid("This computer is not on a desk"))?;
+        desk.state.epoch += 1;
+        desk.state.author = me;
+        let state = desk.state.clone();
+        core.needs_review.retain(|d| d.computer != params.computer);
+        let _ = self.persist(&core);
+        self.log.write(events::layout_changed(
+            me,
+            params.computer,
+            LayoutChange::KeptPlacement,
+        ));
+        for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {
+            peer.send(ControlMessage::DeskState(state.clone()));
+        }
+        drop(core);
+        self.notify_status();
+        Ok(serde_json::json!({}))
     }
 }

@@ -152,3 +152,91 @@ async fn peer_connected_carries_the_version_and_os_of_the_peer() {
         })
     );
 }
+
+mod update_fix {
+    use std::collections::BTreeMap;
+
+    use mouser_proto::control::{FixAction, Problem, ProblemKind};
+    use mouser_proto::release::ReleaseManifest;
+
+    use crate::release::Offered;
+    use crate::testing::*;
+
+    fn offer(node: &TestNode) {
+        node.engine.ctx.core.lock().unwrap().release.offered = Some(Offered {
+            from: node.engine.computer_id(),
+            manifest: ReleaseManifest {
+                version: "0.9.0".into(),
+                notes: None,
+                pub_date: None,
+                min_protocol: None,
+                platforms: BTreeMap::new(),
+            },
+        });
+    }
+
+    async fn computer(lab: &Lab, name: &str, protocol: u16) -> TestNode {
+        lab.start_released(name, |_| {}, |p| p.protocol_version = protocol)
+            .await
+    }
+
+    async fn version_problem(node: &TestNode) -> Problem {
+        eventually("the version problem", || async {
+            status(node)
+                .await
+                .problems
+                .iter()
+                .any(|p| p.kind == ProblemKind::IncompatibleVersion)
+        })
+        .await;
+        status(node)
+            .await
+            .problems
+            .into_iter()
+            .find(|p| p.kind == ProblemKind::IncompatibleVersion)
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_computer_to_update_is_named_and_offered_as_one_action_when_an_update_is_here() {
+        let lab = Lab::new();
+        let older = computer(&lab, "Alpha", 1).await;
+        offer(&older);
+        let newer = computer(&lab, "Beta", 2).await;
+        let problem = version_problem(&older).await;
+        assert!(
+            problem.message.contains("Update Alpha"),
+            "{}",
+            problem.message
+        );
+        assert_eq!(
+            problem.fix,
+            Some(FixAction::UpdateComputer(older.engine.computer_id()))
+        );
+        // The newer computer is not the one to update.
+        assert_eq!(version_problem(&newer).await.fix, None);
+    }
+
+    #[tokio::test]
+    async fn there_is_no_action_when_no_update_is_here_or_the_other_one_is_older() {
+        let lab = Lab::new();
+        let newer = computer(&lab, "Beta", 2).await;
+        // An update here does not help when the other computer is the old one.
+        offer(&newer);
+        let older = computer(&lab, "Alpha", 1).await;
+        let problem = version_problem(&older).await;
+        assert!(
+            problem.message.contains("Update Alpha"),
+            "{}",
+            problem.message
+        );
+        assert_eq!(problem.fix, None, "no update here");
+        let problem = version_problem(&newer).await;
+        assert!(
+            problem.message.contains("Update Alpha"),
+            "{}",
+            problem.message
+        );
+        assert_eq!(problem.fix, None, "the other one is the old one");
+    }
+}

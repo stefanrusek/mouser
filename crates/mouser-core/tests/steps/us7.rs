@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{World, given, then, when};
 use mouser_platform::{Capability, Limitation, LocalInput, Os, PlatformInfo, SessionType};
-use mouser_proto::control::{ProblemKind, Topic};
+use mouser_proto::control::Topic;
 use mouser_testkit::{Injected, VirtualPlatform};
 use serde_json::Value;
 
@@ -318,14 +318,8 @@ async fn ended_quietly(w: &mut DragWorld) {
     assert!(w.shown().is_empty(), "{:?}", w.shown());
     assert!(w.lab.node("Alpha").events.all(Topic::Transfer).is_empty());
     for name in ["Alpha", "Beta"] {
-        // (Every virtual computer lists its standing platform limitations.)
         let problems = w.lab.node(name).status().await.problems;
-        assert!(
-            problems
-                .iter()
-                .all(|p| p.kind == ProblemKind::PlatformLimitation),
-            "{name}: {problems:?}"
-        );
+        assert_eq!(problems, [], "{name}");
     }
 }
 
@@ -367,10 +361,5 @@ async fn app_states_it(w: &mut DragWorld) {
         "{:?}",
         status.computers[0].limitations
     );
-    assert!(
-        status
-            .problems
-            .iter()
-            .any(|p| p.kind == ProblemKind::PlatformLimitation && p.message == LINUX)
-    );
+    assert_eq!(status.problems, [], "a limitation is not a problem");
 }

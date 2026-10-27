@@ -109,3 +109,7 @@ harness = false
 [[test]]
 name = "acc_v2_us2"
 harness = false
+
+[[test]]
+name = "acc_v2_us3"
+harness = false

@@ -26,7 +26,8 @@ impl Ctx {
         holder: Option<&SecureInputHolder>,
     ) {
         let subject = computer.to_string();
-        self.problems.clear(ProblemKind::SecureInput, &subject);
+        self.problems
+            .clear(ProblemKind::SecureInput, &subject, computer);
         if let Some(holder) = holder {
             self.problems.raise(
                 ProblemKind::SecureInput,

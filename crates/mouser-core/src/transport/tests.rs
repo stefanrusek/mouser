@@ -374,3 +374,92 @@ async fn a_skipped_unknown_variant_is_logged_as_wire_unknown_with_the_peer() {
     // The link stays up.
     assert!(link.conn.close_reason().is_none());
 }
+
+fn legacy_status() -> mouser_proto::wire::PeerStatus {
+    use mouser_proto::control::{Problem, ProblemKind};
+    mouser_proto::wire::PeerStatus {
+        permissions: Default::default(),
+        limitations: vec!["a limitation".into()],
+        secure_input_holder: None,
+        problems: vec![Problem {
+            problem_id: "secure_input:x".into(),
+            kind: ProblemKind::SecureInput,
+            computer: ComputerId([4; 16]),
+            message: "text".into(),
+            app: None,
+            fix: None,
+            raised_at: "2026-01-01T00:00:00.000Z".into(),
+            cleared_at: None,
+        }],
+        mode: mouser_proto::wire::ComputerMode::Portable,
+    }
+}
+
+#[tokio::test]
+async fn a_reader_reads_a_001_status_from_a_0_2_x_peer_and_the_frames_after_it() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let (mut send, _recv) = dialed.open_bi().await.unwrap();
+    let status = legacy_status();
+    let mut bytes = mouser_proto::wire::encode_status_v1(&status);
+    bytes.extend(mouser_proto::wire::encode_frame(&ControlMessage::Panic));
+    send.write_all(&bytes).await.unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Status(status))
+    );
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Panic)
+    );
+    assert!(!acceptor.reader.undecodable());
+}
+
+#[tokio::test]
+async fn a_writer_sends_a_status_in_the_001_shape_on_request() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let mut dialer = Link::open(dialed).await.unwrap();
+    let status = legacy_status();
+    dialer.writer.send_legacy_status(&status).await.unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Status(status))
+    );
+}
+
+#[tokio::test]
+async fn a_reader_still_reads_every_other_message_and_a_status_in_the_current_shape() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let mut dialer = Link::open(dialed).await.unwrap();
+    dialer.writer.send(&ControlMessage::Panic).await.unwrap();
+    let status = legacy_status();
+    dialer
+        .writer
+        .send(&ControlMessage::Status(status.clone()))
+        .await
+        .unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Panic)
+    );
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Status(status))
+    );
+}
+
+#[tokio::test]
+async fn a_001_status_without_problems_is_read_too() {
+    let (_ia, _ib, _a, _b, dialed, accepted) = connected().await;
+    let mut dialer = Link::open(dialed).await.unwrap();
+    let mut status = legacy_status();
+    status.problems.clear();
+    dialer.writer.send_legacy_status(&status).await.unwrap();
+    let mut acceptor = Link::accepted(accepted).await.unwrap();
+    assert_eq!(
+        acceptor.reader.recv::<ControlMessage>().await,
+        Some(ControlMessage::Status(status))
+    );
+}

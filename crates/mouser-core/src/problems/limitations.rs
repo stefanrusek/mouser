@@ -1,26 +1,10 @@
-//! Platform limitations (FR-001): every limitation the platform reports is
-//! shown as a problem in plain language.
+//! Platform limitations (FR-010): the ones the platform reports at start-up
+//! are listed on their computer (`status.computers[].limitations`) and never
+//! raised as problems. What the platform notices while running is a problem.
 
-use mouser_platform::Capability;
 use mouser_proto::control::ProblemKind;
 
 use crate::engine::Ctx;
-
-fn slug(capability: Capability) -> &'static str {
-    match capability {
-        Capability::Capture => "capture",
-        Capability::Inject => "inject",
-        Capability::Clipboard => "clipboard",
-        Capability::FileDrag => "file_drag",
-        Capability::SecureAttention => "secure_attention",
-        // v2: replaced in T184
-        Capability::Install => "install",
-        // v2: replaced in T184
-        Capability::LoginScreen => "login_screen",
-        // v2: replaced in T184
-        Capability::Tray => "tray",
-    }
-}
 
 /// FNV-1a (64-bit): a deterministic hash, stable across runs and versions.
 fn fnv1a(text: &str) -> u64 {
@@ -34,20 +18,6 @@ fn platform_problem_subject(text: &str) -> String {
 }
 
 impl Ctx {
-    /// Raise a `platform_limitation` problem for each limitation the
-    /// platform reports. They are facts about the platform, so once at start.
-    pub(crate) fn raise_limitations(&self) {
-        for limitation in self.limitations() {
-            self.problems.raise(
-                ProblemKind::PlatformLimitation,
-                slug(limitation.capability),
-                self.me(),
-                limitation.text,
-                None,
-            );
-        }
-    }
-
     /// Raise a problem the platform noticed by itself while running.
     pub(crate) fn raise_platform_problem(&self, text: String) {
         // Problems de-duplicate by id, so each distinct text gets its own.
@@ -66,6 +36,7 @@ impl Ctx {
         self.problems.clear(
             ProblemKind::PlatformLimitation,
             &platform_problem_subject(text),
+            self.me(),
         );
     }
 }

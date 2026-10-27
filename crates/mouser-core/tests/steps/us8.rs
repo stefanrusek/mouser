@@ -251,11 +251,8 @@ async fn a_notification_states_the_problem(w: &mut HealthWorld) {
             |p| p["kind"] == json!(ProblemKind::IncompatibleVersion),
         )
         .await;
-    assert_notice(
-        &version,
-        ProblemKind::IncompatibleVersion,
-        Some("open_update"),
-    );
+    // No update is at hand on this computer, so none is offered.
+    assert_notice(&version, ProblemKind::IncompatibleVersion, None);
 }
 
 // ---- scenario 4: diagnostic logging checkbox ---------------------------------------------

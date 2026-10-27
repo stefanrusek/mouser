@@ -7,18 +7,25 @@ use crate::lock::LockExt;
 use std::collections::BTreeMap;
 
 use mouser_proto::ids::ComputerId;
-use mouser_proto::wire::{ControlMessage, PeerStatus, SecureInputHolder};
+use mouser_proto::wire::{PeerStatus, SecureInputHolder};
 
 use crate::control::status::{permission_kind, permission_state};
 use crate::engine::{Ctx, Phase};
+
+/// The id of a start-up platform limitation raised as a problem by 0.2.x:
+/// `platform_limitation:<capability>`. What the platform notices while
+/// running (`platform_limitation:platform_problem:<hash>`) is a problem.
+fn is_start_up_limitation(problem_id: &str) -> bool {
+    problem_id.starts_with("platform_limitation:")
+        && !problem_id.starts_with("platform_limitation:platform_problem:")
+}
 
 impl Ctx {
     /// What this computer tells its desk-mates about itself. Problems about
     /// other computers are theirs to tell.
     pub(crate) fn peer_status(&self) -> PeerStatus {
         PeerStatus {
-            // v2 placeholder: T186
-            mode: mouser_proto::wire::ComputerMode::Portable,
+            mode: self.mode,
             permissions: self
                 .platform
                 .permissions()
@@ -48,7 +55,7 @@ impl Ctx {
         }
         core.status_sent = Some(status.clone());
         for peer in core.peers.values().filter(|p| p.phase == Phase::Authed) {
-            peer.send(ControlMessage::Status(status.clone()));
+            peer.send_status(&status);
         }
     }
 
@@ -63,6 +70,12 @@ impl Ctx {
         if !Self::authed(&core, peer) {
             return Err("Status from a computer that is not on the desk".into());
         }
+        // 0.2.x computers list their platform's limitations as problems;
+        // they are listed on the computer instead.
+        let mut status = status;
+        status
+            .problems
+            .retain(|p| !is_start_up_limitation(&p.problem_id));
         let entry = core.peers.get_mut(&peer).expect("authed");
         let name = entry.hello.display_name.clone();
         let old = entry.status.replace(status.clone());

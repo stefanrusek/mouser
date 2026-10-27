@@ -409,7 +409,7 @@ impl Ctx {
             desk_id
         };
         self.problems
-            .clear(ProblemKind::JoinRefused, &desk_id.to_string());
+            .clear(ProblemKind::JoinRefused, &desk_id.to_string(), self.me());
         self.announce();
         self.complete_first_run();
         self.notify_status();

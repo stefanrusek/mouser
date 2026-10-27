@@ -683,7 +683,7 @@ async fn each_shows_a_message(w: &mut DeskWorld) {
             "{name}: the older one is named: {text}"
         );
     }
-    // Only the older computer is offered the update.
+    // No update is at hand on either computer, so none is offered.
     let alpha = w.lab.node("Alpha").status().await;
     let version_fix = |status: &Status| {
         status
@@ -693,7 +693,7 @@ async fn each_shows_a_message(w: &mut DeskWorld) {
             .expect("a version problem")
             .fix
     };
-    assert_eq!(version_fix(&alpha), Some(FixAction::OpenUpdate));
+    assert_eq!(version_fix(&alpha), None);
     let beta = w.lab.node("Beta").status().await;
     assert_eq!(version_fix(&beta), None);
 }

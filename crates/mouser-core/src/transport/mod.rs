@@ -8,7 +8,10 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use mouser_proto::ids::{ComputerId, DevicePublicKey};
-use mouser_proto::wire::{FrameError, decode_frame, encode_frame};
+use mouser_proto::wire::{
+    ComputerMode, ControlMessage, FrameError, PeerStatus, decode_frame, decode_status_v1,
+    encode_frame, encode_status_v1,
+};
 use quinn::crypto::rustls::{QuicClientConfig, QuicServerConfig};
 use quinn::rustls::client::danger::{
     HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
@@ -321,6 +324,18 @@ pub fn peer_id(conn: &Connection) -> ComputerId {
     ComputerId::from_public_key(&key)
 }
 
+/// A `Status` frame as a 0.2.x computer writes it (no `mode`), read as the
+/// current message. A 001 status is never a whole current frame (the
+/// `mode` is missing, or a problem's fields do not line up), so the shapes
+/// cannot be mistaken for each other. The mode is unknown; whoever handles
+/// the status knows from the sender's version that it is not to be used.
+fn legacy_status<T: DeserializeOwned>(buf: &[u8]) -> Option<(T, usize)> {
+    let (status, used) = decode_status_v1(buf).ok()?;
+    let current = ControlMessage::Status(status.with_mode(ComputerMode::Portable));
+    let (msg, _) = decode_frame::<T>(&encode_frame(&current)).ok()?;
+    Some((msg, used))
+}
+
 /// Writes length-prefixed postcard frames.
 pub struct FrameWriter(SendStream);
 
@@ -334,6 +349,14 @@ impl FrameWriter {
 
     pub async fn send<T: Serialize>(&mut self, msg: &T) -> Result<(), quinn::WriteError> {
         self.0.write_all(&encode_frame(msg)).await
+    }
+
+    /// Write `status` as a 0.2.x computer reads it (no `mode`).
+    pub async fn send_legacy_status(
+        &mut self,
+        status: &PeerStatus,
+    ) -> Result<(), quinn::WriteError> {
+        self.0.write_all(&encode_status_v1(status)).await
     }
 
     /// Finish the stream and wait until the peer has received everything.
@@ -388,6 +411,10 @@ impl FrameReader {
                     continue;
                 }
                 Err(FrameError::Malformed) => {
+                    if let Some((msg, used)) = legacy_status(&self.buf) {
+                        self.buf.drain(..used);
+                        return Some(msg);
+                    }
                     self.malformed = true;
                     self.conn.close(
                         0u32.into(),

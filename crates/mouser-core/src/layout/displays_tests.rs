@@ -265,3 +265,39 @@ mod on_the_wire {
         }
     }
 }
+
+mod own_changes {
+    use mouser_platform::Platform;
+
+    use crate::lock::LockExt;
+    use crate::testing::*;
+
+    /// Another path that brings this computer's display list up to date (a
+    /// desk-mate's layout arriving, say) before the watcher has told the
+    /// engine about the change must not hide the change from the log.
+    #[tokio::test]
+    async fn a_change_noticed_by_another_path_first_is_still_logged_once() {
+        let lab = Lab::new();
+        let nodes = logged_desk_of(&lab, &["Alpha", "Beta"]).await;
+        let beta = &nodes[1];
+        let mut displays = beta.platform.displays().unwrap();
+        displays.push(screen("side", (1920.0, 0.0)));
+        {
+            // The engine's own lock is held, so the watcher's handler waits
+            // behind the other path.
+            let mut core = beta.engine.ctx.core.guard();
+            beta.platform.set_displays(displays);
+            beta.engine.ctx.sync_layout(&mut core);
+        }
+        logged(beta, "display.changed", |r| {
+            r["fields"]["change"] == "added"
+        })
+        .await;
+        settle().await;
+        let added = log_events(beta, "display.changed")
+            .into_iter()
+            .filter(|r| r["fields"]["change"] == "added")
+            .count();
+        assert_eq!(added, 1);
+    }
+}

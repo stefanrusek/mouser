@@ -227,7 +227,12 @@ impl Ctx {
     pub(crate) fn sync_layout(&self, core: &mut Core) {
         let me = self.me();
         let mine = self.local_displays(core);
-        core.state.displays.insert(me, mine);
+        // This is where this computer's own display list is brought up to
+        // date, from whichever path got here first, so the change is said
+        // here and nowhere else.
+        if let Some(before) = core.state.displays.insert(me, mine.clone()) {
+            self.log_display_changes(me, &before, &mine);
+        }
         let Some(desk) = core.state.desk.as_mut() else {
             return;
         };

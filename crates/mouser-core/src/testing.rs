@@ -517,6 +517,16 @@ impl Rogue {
         node: &TestNode,
         desk: Option<mouser_proto::ids::DeskId>,
     ) -> (crate::transport::Link, crate::session::handshake::PeerHello) {
+        self.dial_as(node, desk, "0.0.1").await
+    }
+
+    /// [`dial`](Self::dial) claiming to run Mouser `version`.
+    pub async fn dial_as(
+        &self,
+        node: &TestNode,
+        desk: Option<mouser_proto::ids::DeskId>,
+        version: &str,
+    ) -> (crate::transport::Link, crate::session::handshake::PeerHello) {
         let addr = SocketAddr::from(([127, 0, 0, 1], node.engine.local_addr().port()));
         let conn = self
             .transport
@@ -526,7 +536,7 @@ impl Rogue {
         let mut link = crate::transport::Link::open(conn).await.unwrap();
         let hello = mouser_proto::wire::ControlMessage::Hello {
             protocol_version: mouser_proto::wire::PROTOCOL_VERSION,
-            mouser_version: "0.0.1".into(),
+            mouser_version: version.into(),
             computer_id: self.identity.computer_id(),
             display_name: "Rogue".into(),
             os: mouser_proto::model::Os::Linux,
@@ -546,6 +556,17 @@ pub(crate) async fn member_rogue(
     desk: &mouser_proto::control::Desk,
     seed: u8,
 ) -> crate::transport::Link {
+    member_rogue_as(node, desk, seed, mouser_proto::wire::V2_SINCE).await
+}
+
+/// [`member_rogue`] (which runs the first version that speaks v2) claiming
+/// to run Mouser `version`.
+pub(crate) async fn member_rogue_as(
+    node: &TestNode,
+    desk: &mouser_proto::control::Desk,
+    seed: u8,
+    version: &str,
+) -> crate::transport::Link {
     let key: [u8; 32] = mouser_platform::Platform::secrets(&node.platform)
         .get(&crate::state::desk_key_name(&desk.desk_id))
         .unwrap()
@@ -553,7 +574,7 @@ pub(crate) async fn member_rogue(
         .try_into()
         .unwrap();
     let rogue = Rogue::new(seed);
-    let (mut link, _) = rogue.dial(node, Some(desk.desk_id)).await;
+    let (mut link, _) = rogue.dial_as(node, Some(desk.desk_id), version).await;
     assert!(matches!(
         link.reader
             .recv::<mouser_proto::wire::ControlMessage>()

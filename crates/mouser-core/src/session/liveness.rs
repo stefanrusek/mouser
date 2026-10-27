@@ -68,7 +68,7 @@ impl Ctx {
     pub(crate) fn mark_present(&self, core: &mut Core, peer: ComputerId) {
         core.absent.remove(&peer);
         self.problems
-            .clear(ProblemKind::PeerOffline, &peer.to_string());
+            .clear(ProblemKind::PeerOffline, &peer.to_string(), peer);
     }
 
     /// Raise `peer_offline` for computers absent past the grace period, and
@@ -88,7 +88,7 @@ impl Ctx {
             core.absent.remove(&peer);
             changed |= self
                 .problems
-                .clear(ProblemKind::PeerOffline, &peer.to_string());
+                .clear(ProblemKind::PeerOffline, &peer.to_string(), peer);
         }
         for (peer, absent) in &core.absent {
             if now.duration_since(absent.since) >= OFFLINE_GRACE {
