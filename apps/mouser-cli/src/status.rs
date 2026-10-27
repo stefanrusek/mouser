@@ -109,7 +109,9 @@ mod tests {
             id: ComputerId([name.as_bytes()[0]; 16]),
             name: name.into(),
             os: Os::Macos,
+            os_version: None,
             version: "0.1.0".into(),
+            mode: None,
             connection,
             rtt_ms: None,
             last_seen: None,
@@ -125,6 +127,7 @@ mod tests {
             kind: ProblemKind::MissingPermission,
             computer,
             message: message.into(),
+            app: None,
             fix,
             raised_at: "2026-01-01T00:00:00Z".into(),
             cleared_at: None,
@@ -133,6 +136,13 @@ mod tests {
 
     fn status(computers: Vec<StatusComputer>, problems: Vec<Problem>) -> Status {
         Status {
+            // v2 placeholder: T192
+            tray_summary: mouser_proto::control::TraySummary {
+                state: EngineState::Paused,
+                connection: mouser_proto::control::TrayConnection::Alone,
+                computers: 1,
+                displays: 1,
+            },
             version: "0.1.0".into(),
             computer: ComputerRef {
                 id: ComputerId([0; 16]),
@@ -140,7 +150,7 @@ mod tests {
             },
             state: EngineState::Paused,
             desk: None,
-            active_computer: None,
+            active_computer: ComputerId([0; 16]),
             computers,
             problems,
             logging: None,

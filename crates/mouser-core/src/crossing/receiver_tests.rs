@@ -334,7 +334,10 @@ async fn a_computer_that_cannot_inject_ignores_enter() {
     send_to(&nodes[0], &nodes[1], key(2, A, true));
     settle().await;
     assert!(nodes[1].platform.injected().is_empty());
-    assert_eq!(status(&nodes[1]).await.active_computer, None);
+    assert_eq!(
+        status(&nodes[1]).await.active_computer,
+        nodes[1].engine.computer_id()
+    );
 }
 
 #[tokio::test]

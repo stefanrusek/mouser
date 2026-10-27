@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::ids::{ComputerId, DeskId};
 use crate::model::{Layout, Os, PermissionKind, PermissionState};
+use crate::wire::ComputerMode;
 
 /// Problem kinds (data-model.md "Problem"); also `error.data.kind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -21,6 +22,7 @@ pub enum ProblemKind {
     CrossingBlocked,
     PeerOffline,
     PlatformLimitation,
+    ElevatedApp,
 }
 
 /// Suggested fix for a problem. Serialized as a string, e.g.
@@ -32,6 +34,9 @@ pub enum FixAction {
     OpenUpdate,
     CrossAnywayHint,
     OpenArrangerEdge,
+    RestartElevated(ComputerId),
+    KeepPlacement(ComputerId),
+    UpdateComputer(ComputerId),
 }
 
 /// Unrecognised [`FixAction`] string.
@@ -57,6 +62,9 @@ impl fmt::Display for FixAction {
             Self::OpenUpdate => f.write_str("open_update"),
             Self::CrossAnywayHint => f.write_str("cross_anyway_hint"),
             Self::OpenArrangerEdge => f.write_str("open_arranger_edge"),
+            Self::RestartElevated(id) => write!(f, "restart_elevated:{id}"),
+            Self::KeepPlacement(id) => write!(f, "keep_placement:{id}"),
+            Self::UpdateComputer(id) => write!(f, "update_computer:{id}"),
         }
     }
 }
@@ -68,6 +76,19 @@ impl FromStr for FixAction {
         if let Some(kind) = s.strip_prefix("open_system_settings:") {
             let kind = serde_json::from_value(Value::String(kind.into())).map_err(|_| err())?;
             return Ok(Self::OpenSystemSettings(kind));
+        }
+        let computer = |prefix: &str| -> Option<Result<ComputerId, ParseFixError>> {
+            s.strip_prefix(prefix)
+                .map(|id| id.parse().map_err(|_| err()))
+        };
+        if let Some(id) = computer("restart_elevated:") {
+            return id.map(Self::RestartElevated);
+        }
+        if let Some(id) = computer("keep_placement:") {
+            return id.map(Self::KeepPlacement);
+        }
+        if let Some(id) = computer("update_computer:") {
+            return id.map(Self::UpdateComputer);
         }
         match s {
             "approve_join" => Ok(Self::ApproveJoin),
@@ -101,6 +122,10 @@ pub struct Problem {
     pub computer: ComputerId,
     /// Plain-language text.
     pub message: String,
+    /// Program name only (FR-003); set for `elevated_app`. Always serialized
+    /// (`null` when absent): `Problem` also travels as postcard.
+    #[serde(default)]
+    pub app: Option<String>,
     pub fix: Option<FixAction>,
     /// RFC 3339 UTC.
     pub raised_at: String,
@@ -154,7 +179,13 @@ pub struct StatusComputer {
     pub id: ComputerId,
     pub name: String,
     pub os: Os,
+    /// Absent for 0.2.x peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os_version: Option<String>,
     pub version: String,
+    /// Absent for 0.2.x peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ComputerMode>,
     pub connection: ConnectionState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rtt_ms: Option<f64>,
@@ -162,6 +193,25 @@ pub struct StatusComputer {
     pub last_seen: Option<String>,
     pub permissions: BTreeMap<PermissionKind, PermissionState>,
     pub limitations: Vec<String>,
+    pub displays: u32,
+}
+
+/// Tray connection summary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayConnection {
+    Connected,
+    Alone,
+    Disconnected,
+}
+
+/// What the tray shows (status v2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraySummary {
+    pub state: EngineState,
+    pub connection: TrayConnection,
+    /// At least 1 (this computer).
+    pub computers: u32,
     pub displays: u32,
 }
 
@@ -178,7 +228,9 @@ pub struct Status {
     pub computer: ComputerRef,
     pub state: EngineState,
     pub desk: Option<StatusDesk>,
-    pub active_computer: Option<ComputerId>,
+    /// This computer's id when Local.
+    pub active_computer: ComputerId,
+    pub tray_summary: TraySummary,
     pub computers: Vec<StatusComputer>,
     pub problems: Vec<Problem>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -210,10 +262,15 @@ pub enum Method {
     UpdateCheck,
     UpdateApply,
     Subscribe,
+    LogsCollect,
+    LogsCollectStream,
+    DeskRename,
+    LayoutKeepPlacement,
+    ElevationRestart,
 }
 
 impl Method {
-    pub const ALL: [Method; 20] = [
+    pub const ALL: [Method; 25] = [
         Self::Status,
         Self::DesksDiscovered,
         Self::DeskCreate,
@@ -234,6 +291,11 @@ impl Method {
         Self::UpdateCheck,
         Self::UpdateApply,
         Self::Subscribe,
+        Self::LogsCollect,
+        Self::LogsCollectStream,
+        Self::DeskRename,
+        Self::LayoutKeepPlacement,
+        Self::ElevationRestart,
     ];
 
     /// The JSON-RPC method name.
@@ -259,6 +321,11 @@ impl Method {
             Self::UpdateCheck => "update.check",
             Self::UpdateApply => "update.apply",
             Self::Subscribe => "subscribe",
+            Self::LogsCollect => "logs.collect",
+            Self::LogsCollectStream => "logs.collect_stream",
+            Self::DeskRename => "desk.rename",
+            Self::LayoutKeepPlacement => "layout.keep_placement",
+            Self::ElevationRestart => "elevation.restart",
         }
     }
 
@@ -340,6 +407,7 @@ impl Response {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Topic {
+    Config,
     Problem,
     JoinRequest,
     Transfer,
@@ -439,11 +507,119 @@ pub struct ConfigGetParams {
     pub key: Option<String>,
 }
 
+/// Who made a `config.set` call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SetOrigin {
+    App,
+    #[default]
+    Cli,
+}
+
 /// `config.set` params.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigSetParams {
     pub key: String,
     pub value: Value,
+    /// Defaults to `cli`.
+    #[serde(default)]
+    pub origin: SetOrigin,
+}
+
+/// Where a setting change came from (`config` topic).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingOrigin {
+    App,
+    Cli,
+    File,
+    DeskMate,
+}
+
+/// `config` topic notification: one per changed key (data-model "Setting change").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SettingChange {
+    pub key: String,
+    pub old: Value,
+    pub new: Value,
+    pub origin: SettingOrigin,
+    /// The desk mate it came from, for `desk_mate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<ComputerId>,
+}
+
+/// Why a computer is not in a log bundle (log-bundle.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BundleReason {
+    Offline,
+    LoggingOff,
+    OlderVersion,
+}
+
+/// One computer of a log bundle, as `logs.collect` reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BundleComputer {
+    pub id: ComputerId,
+    pub name: String,
+    pub included: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<BundleReason>,
+}
+
+/// `logs.collect` params.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogsCollectParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dir: Option<String>,
+}
+
+/// `logs.collect` result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogsCollectResult {
+    pub path: String,
+    pub computers: Vec<BundleComputer>,
+}
+
+/// `logs.collect_stream` result, sent after the last `logs.chunk`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogsCollectStreamResult {
+    pub name: String,
+    pub size: u64,
+    pub sha256: String,
+    pub computers: Vec<BundleComputer>,
+}
+
+/// `logs.chunk` notification params: `seq` from 0, `data` base64 of at most
+/// 65536 bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogsChunk {
+    pub seq: u32,
+    pub data: String,
+}
+
+impl LogsChunk {
+    /// The notification's method name.
+    pub const METHOD: &'static str = "logs.chunk";
+}
+
+/// `desk.rename` params.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeskRenameParams {
+    pub computer: ComputerId,
+    pub name: String,
+}
+
+/// `layout.keep_placement` params.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeepPlacementParams {
+    pub computer: ComputerId,
+}
+
+/// `elevation.restart` params.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ElevationRestartParams {
+    pub computer: ComputerId,
 }
 
 /// `logging.set` params.

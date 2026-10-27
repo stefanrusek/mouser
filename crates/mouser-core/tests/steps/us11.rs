@@ -188,7 +188,7 @@ async fn the_pointer_jumped(w: &mut JumpWorld) {
     w.lab
         .node("Gamma")
         .wait_status("Gamma to be the active computer", |s| {
-            s.active_computer == Some(gamma)
+            s.active_computer == gamma
         })
         .await;
     let injected = w.platform("Gamma").injected();

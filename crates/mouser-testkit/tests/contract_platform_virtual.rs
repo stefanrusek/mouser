@@ -117,8 +117,8 @@ impl mouser_platform::Platform for NoGrab {
         self.0.watch_problems(tx)
     }
 
-    fn foreground_elevated(&self) -> bool {
-        self.0.foreground_elevated()
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        self.0.foreground_app()
     }
 
     fn secrets(&self) -> Box<dyn mouser_platform::SecretStore> {
@@ -180,4 +180,19 @@ fn contract_all_checks_listed() {
     for (_, check) in ALL {
         on_both(*check);
     }
+}
+
+#[test]
+fn contract_rule_10_pointer_visible() {
+    let full = VirtualPlatform::new();
+    rule_10_pointer_visible(&full, &|| full.pointer_hidden());
+    let limited = VirtualPlatform::limited();
+    rule_10_pointer_visible(&limited, &|| limited.pointer_hidden());
+    let wayland = NoGrab(VirtualPlatform::new());
+    rule_10_pointer_visible(&wayland, &|| wayland.0.pointer_hidden());
+}
+
+#[test]
+fn contract_rule_11_refusal_is_error() {
+    on_both(rule_11_refusal_is_error);
 }

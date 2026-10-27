@@ -349,7 +349,10 @@ impl FrameReader {
                     return Some(msg);
                 }
                 Err(FrameError::Incomplete) => {}
-                Err(FrameError::Malformed) => panic!("malformed frame from peer"),
+                // v2 placeholder: T102/T103
+                Err(FrameError::Malformed | FrameError::UnknownVariant(_)) => {
+                    panic!("malformed frame from peer")
+                }
             }
             let chunk = self.recv.read_chunk(usize::MAX, true).await.ok()??;
             self.buf.extend_from_slice(&chunk.bytes);

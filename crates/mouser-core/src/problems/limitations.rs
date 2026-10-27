@@ -13,6 +13,12 @@ fn slug(capability: Capability) -> &'static str {
         Capability::Clipboard => "clipboard",
         Capability::FileDrag => "file_drag",
         Capability::SecureAttention => "secure_attention",
+        // v2: replaced in T184
+        Capability::Install => "install",
+        // v2: replaced in T184
+        Capability::LoginScreen => "login_screen",
+        // v2: replaced in T184
+        Capability::Tray => "tray",
     }
 }
 

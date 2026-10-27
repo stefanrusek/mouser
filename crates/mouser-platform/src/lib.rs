@@ -68,6 +68,9 @@ pub enum Capability {
     Clipboard,
     FileDrag,
     SecureAttention,
+    Install,
+    LoginScreen,
+    Tray,
 }
 
 /// A platform limitation with plain-language text shown in the app (FR-001).
@@ -138,6 +141,25 @@ pub struct SecureInputHolder {
     pub app_name: String,
 }
 
+/// The application in front.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForegroundApp {
+    /// Executable file name, no path (FR-003).
+    pub name: String,
+    /// Runs elevated (high integrity level) or as SYSTEM.
+    pub admin: bool,
+    /// Integrity above Mouser's own: UIPI blocks Mouser.
+    pub outranks_mouser: bool,
+}
+
+/// Why capture can no longer see this computer's input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureLossReason {
+    ElevatedForeground,
+    OtherDesktop,
+    HooksSilent,
+}
+
 /// Where a drag begun with [`FileDrag::begin_incoming`] was dropped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropTarget(pub PathBuf);
@@ -185,8 +207,10 @@ pub trait Platform: Send + Sync + 'static {
     fn watch_problems(&self, _tx: Sender<PlatformProblem>) -> Result<WatchHandle> {
         Ok(WatchHandle::new(|| {}))
     }
-    /// Windows UIPI detection; `false` elsewhere.
-    fn foreground_elevated(&self) -> bool;
+    /// The application in front, when this platform can tell.
+    fn foreground_app(&self) -> Option<ForegroundApp> {
+        None
+    }
     /// Device key + desk keys (data-model.md).
     fn secrets(&self) -> Box<dyn SecretStore>;
     fn autostart(&self) -> Box<dyn Autostart>;
@@ -224,6 +248,10 @@ pub enum LocalInput {
         usage: u32,
         down: bool,
     },
+    /// Capture can no longer see this computer's input while grabbed. The
+    /// backend has ALREADY ungrabbed and shown the pointer before sending this
+    /// (rule 10).
+    CaptureLost(CaptureLossReason),
 }
 
 pub trait InputInject: Send {

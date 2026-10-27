@@ -1,4 +1,4 @@
-//! Behavioural-rule checks 1-9 of contracts/platform-api.md.
+//! Behavioural-rule checks 1-11 of contracts/platform-api.md.
 //!
 //! Every backend's `contract_platform_<os>.rs` (and the testkit's
 //! `contract_platform_virtual.rs`) calls the same checks. Each check panics on
@@ -248,4 +248,56 @@ pub fn rule_9_limitations(p: &dyn Platform) {
             "{c:?} is unsupported but not listed as a limitation"
         );
     }
+}
+
+/// Rule 10: after `stop()`, and after the capture is dropped while grabbed,
+/// the pointer is visible. `pointer_hidden` is the backend's own query (on
+/// `VirtualPlatform`, its recorded grab state). A platform that cannot grab
+/// has nothing to hide.
+pub fn rule_10_pointer_visible(p: &dyn Platform, pointer_hidden: &dyn Fn() -> bool) {
+    let Some(mut capture) = supported(p.capture()) else {
+        return;
+    };
+    let (tx, _rx) = channel();
+    capture.start(tx).unwrap();
+    if supported(capture.set_grabbed(true)).is_none() {
+        capture.stop();
+        return;
+    }
+    capture.stop();
+    assert!(!pointer_hidden(), "pointer hidden after stop");
+
+    let (tx, _rx) = channel();
+    capture.start(tx).unwrap();
+    capture.set_grabbed(true).unwrap();
+    drop(capture);
+    assert!(!pointer_hidden(), "pointer hidden after drop while grabbed");
+}
+
+/// Rule 11: when the OS refuses, inject and capture methods return `Err` and
+/// never panic. A button above 5 returns `Err(Os(_))` or `Ok(())`; `warp`
+/// outside every display returns `Err`.
+pub fn rule_11_refusal_is_error(p: &dyn Platform) {
+    if let Some(mut inject) = supported(p.inject()) {
+        let r = inject.button(6, true);
+        let acceptable = matches!(r, Ok(()) | Err(Error::Os(_)));
+        assert!(acceptable, "button above 5 returned {r:?}");
+    }
+    let Some(mut capture) = supported(p.capture()) else {
+        return;
+    };
+    let (tx, _rx) = channel();
+    capture.start(tx).unwrap();
+    let far = p
+        .displays()
+        .unwrap()
+        .iter()
+        .map(|d| d.origin.0 + d.logical_size.0)
+        .fold(0.0, f64::max)
+        + 1_000_000.0;
+    assert!(
+        capture.warp(far, far).is_err(),
+        "warp outside every display succeeded"
+    );
+    capture.stop();
 }

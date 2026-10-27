@@ -16,6 +16,8 @@ impl Ctx {
     /// other computers are theirs to tell.
     pub(crate) fn peer_status(&self) -> PeerStatus {
         PeerStatus {
+            // v2 placeholder: T186
+            mode: mouser_proto::wire::ComputerMode::Portable,
             permissions: self
                 .platform
                 .permissions()

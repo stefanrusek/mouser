@@ -48,6 +48,8 @@ mod receiver_tests;
 mod sas_tests;
 #[cfg(test)]
 mod state_tests;
+#[cfg(test)]
+mod v2_placeholder_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

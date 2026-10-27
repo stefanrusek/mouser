@@ -125,6 +125,8 @@ impl Problems {
             kind,
             computer,
             message,
+            // v2 placeholder: T188
+            app: None,
             fix,
             raised_at: now(),
             cleared_at: None,

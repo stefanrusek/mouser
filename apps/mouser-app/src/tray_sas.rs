@@ -14,7 +14,7 @@ pub const TITLE: &str = "Mouser could not send Ctrl-Alt-Del";
 /// Whether the computer the pointer is on (this one when the pointer is at
 /// home) is a Windows computer, the only kind that can receive the sequence.
 pub fn shows_send_cad(status: &Status) -> bool {
-    let active = status.active_computer.unwrap_or(status.computer.id);
+    let active = status.active_computer;
     status
         .computers
         .iter()

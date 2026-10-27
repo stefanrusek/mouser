@@ -50,7 +50,7 @@ async fn status_of_an_unjoined_computer_describes_this_computer() {
     assert_eq!(s.computer.id, node.engine.computer_id());
     assert_eq!(s.state, EngineState::Active);
     assert_eq!(s.desk, None);
-    assert_eq!(s.active_computer, None);
+    assert_eq!(s.active_computer, node.engine.computer_id());
     assert_eq!(s.computers.len(), 1);
     let me = &s.computers[0];
     assert_eq!(me.connection, ConnectionState::SelfComputer);

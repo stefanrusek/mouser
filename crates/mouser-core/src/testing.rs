@@ -869,8 +869,8 @@ impl mouser_platform::Platform for NoGrab {
         self.0.watch_problems(tx)
     }
 
-    fn foreground_elevated(&self) -> bool {
-        self.0.foreground_elevated()
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        self.0.foreground_app()
     }
 
     fn secrets(&self) -> Box<dyn mouser_platform::SecretStore> {
@@ -906,9 +906,9 @@ impl Lab {
 fn the_ungrabbable_computer_is_the_wrapped_one_in_every_other_way() {
     use mouser_platform::{PermissionKind, Platform};
     let inner = VirtualPlatform::new();
-    inner.set_foreground_elevated(true);
+    inner.set_foreground_app(None);
     let platform = NoGrab(inner.clone());
-    assert!(platform.foreground_elevated());
+    assert!(platform.foreground_app().is_none());
     platform
         .open_permission_settings(PermissionKind::Accessibility)
         .unwrap();

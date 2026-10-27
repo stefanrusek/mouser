@@ -48,3 +48,4 @@ windows = { version = "=0.62.2", features = [
 [target.'cfg(windows)'.dev-dependencies]
 mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
 tempfile = "=3.27.0"
+cucumber = "=0.23.0"

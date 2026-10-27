@@ -7,4 +7,5 @@ pub mod ids;
 pub mod log;
 pub mod model;
 pub mod release;
+pub mod service_ipc;
 pub mod wire;

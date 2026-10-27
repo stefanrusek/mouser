@@ -233,8 +233,8 @@ impl Platform for NoSettingsScreen {
     ) -> mouser_platform::Result<WatchHandle> {
         self.0.watch_network(tx)
     }
-    fn foreground_elevated(&self) -> bool {
-        self.0.foreground_elevated()
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        self.0.foreground_app()
     }
     fn secrets(&self) -> Box<dyn SecretStore> {
         self.0.secrets()

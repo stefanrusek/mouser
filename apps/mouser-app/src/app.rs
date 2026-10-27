@@ -36,6 +36,8 @@ pub fn handle<R: Runtime>(
             serde_json::from_value(note.params.clone()).expect("status matches its schema"),
         ),
         Topic::JoinRequest => windows::show(app, Which::Join),
+        // v2 placeholder: T322 (the app lane wires config updates)
+        Topic::Config => {}
         Topic::Problem => app.state::<Host>().toast(&note, notifier),
         Topic::Transfer => {
             // Progress opens the window once; a question or a stop always brings it forward.

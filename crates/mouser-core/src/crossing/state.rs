@@ -72,6 +72,8 @@ impl Session {
             LocalInput::Key { usage, down } => set(&mut self.held.keys, usage, down),
             LocalInput::Button { button, down } => set(&mut self.held.buttons, button, down),
             LocalInput::Motion { .. } | LocalInput::Scroll { .. } => {}
+            // v2: replaced in T111
+            LocalInput::CaptureLost(_) => {}
         }
     }
 

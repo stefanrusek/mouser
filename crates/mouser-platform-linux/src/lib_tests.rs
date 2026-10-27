@@ -107,7 +107,7 @@ fn wayland_has_a_clipboard_that_starts_on_first_use() {
 fn windows_and_macos_only_features_are_absent() {
     let (p, _dir) = platform("x11");
     assert!(p.secure_input().is_none());
-    assert!(!p.foreground_elevated());
+    assert!(p.foreground_app().is_none());
     assert!(p.file_drag().is_none());
 }
 

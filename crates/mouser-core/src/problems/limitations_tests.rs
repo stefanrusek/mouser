@@ -132,3 +132,36 @@ async fn a_platform_problem_is_withdrawn_by_its_text_and_may_come_back() {
     assert!(again["cleared_at"].is_null());
     assert_eq!(open(&status(&node).await), 1);
 }
+
+/// The problem raised for a limitation on `capability` is keyed by `slug`.
+async fn limitation_is_keyed(capability: Capability, slug: &str) {
+    let lab = Lab::new();
+    let platform = VirtualPlatform::new();
+    platform.set_info(info(&[(capability, "text")]));
+    let node = lab.start_with("Alpha", platform, |_| {}).await;
+    let s = status(&node).await;
+    assert!(
+        s.problems
+            .iter()
+            .any(|p| p.problem_id == format!("platform_limitation:{slug}")),
+        "no problem keyed {slug}"
+    );
+}
+
+// v2: replaced in T184
+#[tokio::test]
+async fn the_install_limitation_is_keyed_install() {
+    limitation_is_keyed(Capability::Install, "install").await;
+}
+
+// v2: replaced in T184
+#[tokio::test]
+async fn the_login_screen_limitation_is_keyed_login_screen() {
+    limitation_is_keyed(Capability::LoginScreen, "login_screen").await;
+}
+
+// v2: replaced in T184
+#[tokio::test]
+async fn the_tray_limitation_is_keyed_tray() {
+    limitation_is_keyed(Capability::Tray, "tray").await;
+}

@@ -107,7 +107,7 @@ async fn crossing_toward_an_unreachable_computer_leaves_the_pointer_where_it_is(
     settle().await;
     assert!(!a.platform.is_grabbed(), "the mouse is still Alpha's");
     assert!(a.platform.warps().is_empty(), "the pointer did not move");
-    assert_eq!(status(a).await.active_computer, None);
+    assert_eq!(status(a).await.active_computer, a.engine.computer_id());
 }
 
 #[tokio::test]

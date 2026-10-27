@@ -105,7 +105,7 @@ fn warps(node: &TestNode) -> Vec<(f64, f64)> {
 }
 
 async fn active(node: &TestNode) -> Option<ComputerId> {
-    status(node).await.active_computer
+    Some(status(node).await.active_computer)
 }
 
 fn entered_at(node: &TestNode, x: f64, y: f64) -> impl std::future::Future<Output = ()> + '_ {
@@ -404,7 +404,7 @@ async fn a_computer_that_cannot_grab_input_does_not_start_a_jump_to_another_comp
             .any(|i| matches!(i, Injected::MotionAbs { .. })),
         "Beta was never entered"
     );
-    assert_eq!(active(a).await, None);
+    assert_eq!(active(a).await, Some(a.engine.computer_id()));
     // The jump to Alpha's own display still works.
     hotkey(a);
     let letters = shown(&mut mine).await;

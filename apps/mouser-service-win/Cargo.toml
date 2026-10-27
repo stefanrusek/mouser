@@ -7,3 +7,24 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+mouser-proto = { path = "../../crates/mouser-proto" }
+mouser-core = { path = "../../crates/mouser-core" }
+
+# Windows-only: on other systems the crate has no Windows dependencies so the
+# workspace builds everywhere.
+[target.'cfg(windows)'.dependencies]
+windows-service = "=0.8.1"
+windows = { version = "=0.62.2", features = [
+    "Win32_System_Services",
+    "Win32_System_RemoteDesktop",
+    "Win32_Security",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_Registry",
+    "Win32_System_ProcessStatus",
+] }
+
+[dev-dependencies]
+cucumber = "=0.23.0"

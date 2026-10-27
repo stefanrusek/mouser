@@ -90,8 +90,8 @@ impl Platform for Picky {
         self.inner.watch_network(tx)
     }
 
-    fn foreground_elevated(&self) -> bool {
-        self.inner.foreground_elevated()
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        self.inner.foreground_app()
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {

@@ -61,6 +61,25 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
     eventually(|| *events.lock().unwrap() == 6).await;
 }
 
+// v2 placeholder: T322
+#[tokio::test(flavor = "multi_thread")]
+async fn a_config_notification_reaches_the_windows_and_does_nothing_else() {
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let handle_ = app.handle().clone();
+    let port = FakeTray::default();
+    let tray = TrayController::new(Box::new(port.clone()), Os::MacOs, Appearance::Light);
+    let notifier = FakeNotifier::default();
+    let events = Arc::new(std::sync::Mutex::new(0));
+    let seen = events.clone();
+    handle_.listen(EVENT, move |_| *seen.lock().unwrap() += 1);
+
+    handle(&handle_, &tray, &notifier, note(Topic::Config, json!({})));
+    eventually(|| *events.lock().unwrap() == 1).await;
+    assert!(port.views.lock().unwrap().is_empty());
+    assert!(notifier.shown.lock().unwrap().is_empty());
+}
+
 fn transfer_note(state: &str) -> Notification {
     note(
         Topic::Transfer,

@@ -98,7 +98,7 @@ impl LoginWorld {
         self.lab
             .node("Alpha")
             .wait_status("Beta to be the active computer", |s| {
-                s.active_computer == Some(beta)
+                s.active_computer == beta
             })
             .await;
     }
@@ -181,7 +181,7 @@ async fn can_log_in_on_windows(w: &mut LoginWorld) {
 #[given("a Windows computer shows a permission elevation prompt or a user-switching screen")]
 async fn windows_shows_a_secure_screen(w: &mut LoginWorld) {
     w.beta_at_login_screen(Os::Windows).await;
-    w.beta().set_foreground_elevated(true);
+    w.beta().set_foreground_app(None);
 }
 
 #[then("they can operate that screen")]

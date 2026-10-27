@@ -4,6 +4,7 @@ use mouser_proto::control::{FixAction, Problem, ProblemKind};
 use mouser_proto::ids::{ComputerId, DeskId, DevicePublicKey};
 use mouser_proto::model::*;
 use mouser_proto::wire::*;
+use sha2::{Digest, Sha256};
 
 fn did() -> DisplayId {
     DisplayId {
@@ -197,8 +198,10 @@ fn all_messages() -> Vec<ControlMessage> {
                 pid: 77,
                 app_name: "Terminal".into(),
             }),
+            mode: ComputerMode::Portable,
             problems: vec![Problem {
                 problem_id: "k:s".into(),
+                app: Some("regedit.exe".into()),
                 kind: ProblemKind::SecureInput,
                 computer: ComputerId([1; 16]),
                 message: "m".into(),
@@ -210,13 +213,21 @@ fn all_messages() -> Vec<ControlMessage> {
         ControlMessage::SecureAttention,
         ControlMessage::Paused { paused: true },
         ControlMessage::Paused { paused: false },
+        ControlMessage::LogsRequest { request: [7; 16] },
+        ControlMessage::DeskSettings {
+            epoch: 12,
+            author: ComputerId([6; 16]),
+            landing_highlight: false,
+            command_as_control: true,
+        },
+        ControlMessage::RestartElevated,
     ]
 }
 
 #[test]
 fn every_control_message_roundtrips_through_framing() {
     let msgs = all_messages();
-    assert_eq!(msgs.len(), 35);
+    assert_eq!(msgs.len(), 38);
     let mut stream = Vec::new();
     for m in &msgs {
         let frame = encode_frame(m);
@@ -293,4 +304,191 @@ fn display_id_hash_is_stable_and_discriminates() {
     };
     assert_ne!(display_id_hash(&a), display_id_hash(&other_key));
     assert_ne!(display_id_hash(&a), display_id_hash(&other_computer));
+}
+
+/// The 0.2.8 variant indexes, in `all_messages()` order, then the three new ones.
+const VARIANT_INDEXES: [u8; 38] = [
+    0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    24, 25, 26, 27, 28, 29, 30, 30, 31, 32, 33,
+];
+
+#[test]
+fn control_message_variant_indexes_are_a_snapshot() {
+    let msgs = all_messages();
+    for (m, index) in msgs.iter().zip(VARIANT_INDEXES) {
+        let body = &encode_frame(m)[4..];
+        assert_eq!(body[0], index, "{m:?}");
+    }
+    // Paused is the last 0.2.8 variant; the three new ones follow in order.
+    assert_eq!(
+        encode_frame(&ControlMessage::Paused { paused: true })[4],
+        30
+    );
+    assert_eq!(
+        encode_frame(&ControlMessage::LogsRequest { request: [0; 16] })[4],
+        31
+    );
+    assert_eq!(encode_frame(&ControlMessage::RestartElevated)[4..], [33]);
+}
+
+#[test]
+fn v2_constants() {
+    assert_eq!(V2_SINCE, "0.3.0");
+    assert_eq!(PROTOCOL_VERSION, 1);
+}
+
+#[test]
+fn unknown_variant_is_distinct_from_malformed() {
+    // Valid length prefix, body names variant 34 (one past RestartElevated).
+    let unknown = [0, 0, 0, 3, 34, 1, 2];
+    let err = decode_frame::<ControlMessage>(&unknown).unwrap_err();
+    assert_eq!(err, FrameError::UnknownVariant(34));
+    assert_eq!(err.to_string(), "unknown message variant 34");
+    // A multi-byte varint index.
+    let big = [0, 0, 0, 2, 0x80, 0x01];
+    assert_eq!(
+        decode_frame::<ControlMessage>(&big).unwrap_err(),
+        FrameError::UnknownVariant(128)
+    );
+    // Known variant, undecodable body: a bad nested enum (Os) is Malformed.
+    let mut hello = encode_frame(&all_messages()[0]);
+    hello[32] = 9;
+    assert_eq!(
+        decode_frame::<ControlMessage>(&hello).unwrap_err(),
+        FrameError::Malformed
+    );
+    // Known variant, a value its type rejects (an unknown fix action).
+    let mut status = encode_frame(&all_messages()[31]);
+    let at = status
+        .windows(b"approve_join".len())
+        .position(|w| w == b"approve_join")
+        .unwrap();
+    status[at + 11] = b'X';
+    assert_eq!(
+        decode_frame::<ControlMessage>(&status).unwrap_err(),
+        FrameError::Malformed
+    );
+    // Known variant, truncated body.
+    let truncated = [0, 0, 0, 2, 28, 0];
+    assert_eq!(
+        decode_frame::<ControlMessage>(&truncated).unwrap_err(),
+        FrameError::Malformed
+    );
+    assert_ne!(FrameError::UnknownVariant(0), FrameError::Malformed);
+}
+
+fn logs_part() -> LogsPart {
+    LogsPart {
+        card: LogsCard {
+            id: ComputerId([1; 16]),
+            name: "pc".into(),
+            os: Os::Windows,
+            os_version: "11 23H2".into(),
+            version: "0.3.0".into(),
+            mode: ComputerMode::Service,
+        },
+        config_toml: "schema = 1\n".into(),
+        logging: true,
+        files: vec![("mouser.log".into(), 10), ("mouser.log.1".into(), 4)],
+    }
+}
+
+#[test]
+fn logs_part_roundtrips_and_stream_id_is_derived() {
+    let part = logs_part();
+    let frame = encode_frame(&part);
+    assert_eq!(
+        decode_frame::<LogsPart>(&frame).unwrap(),
+        (part, frame.len())
+    );
+    let request = [9u8; 16];
+    let mut hasher = Sha256::new();
+    hasher.update(b"logs\n");
+    hasher.update(request);
+    let digest = hasher.finalize();
+    assert_eq!(logs_stream_id(&request), digest[..16]);
+    assert_ne!(logs_stream_id(&request), logs_stream_id(&[8; 16]));
+}
+
+#[test]
+fn computer_mode_names() {
+    for (mode, name) in [
+        (ComputerMode::Installed, "installed"),
+        (ComputerMode::Portable, "portable"),
+        (ComputerMode::PortableElevated, "portable_elevated"),
+        (ComputerMode::Service, "service"),
+        (ComputerMode::Headless, "headless"),
+    ] {
+        assert_eq!(serde_json::to_value(mode).unwrap(), name);
+        let bytes = postcard::to_stdvec(&mode).unwrap();
+        assert_eq!(postcard::from_bytes::<ComputerMode>(&bytes).unwrap(), mode);
+    }
+}
+
+#[test]
+fn peer_status_mode_is_last_and_legacy_shape_has_none() {
+    let ControlMessage::Status(status) = all_messages()[31].clone() else {
+        panic!("index 31 is the Status sample");
+    };
+    // `mode` is the last field: the encoding ends with the index of Portable.
+    let current = encode_frame(&ControlMessage::Status(status.clone()));
+    assert_eq!(*current.last().unwrap(), 1);
+    assert_eq!(postcard::to_stdvec(&ComputerMode::Portable).unwrap(), [1]);
+
+    // 001 shape: no `mode`, and `Problem` without `app`.
+    let legacy = encode_status_v1(&status);
+    assert_eq!(
+        u32::from_be_bytes(legacy[..4].try_into().unwrap()) as usize,
+        legacy.len() - 4
+    );
+    let (variant, rest) = postcard::take_from_bytes::<u32>(&legacy[4..]).unwrap();
+    assert_eq!(variant, 28);
+    let v1: PeerStatusV1 = postcard::from_bytes(rest).unwrap();
+    assert_eq!(v1, status.to_v1());
+    assert_eq!(v1.permissions, status.permissions);
+    assert_eq!(v1.problems[0].problem_id, "k:s");
+    // Back to the current shape once the peer's mode is known.
+    let back = v1.with_mode(ComputerMode::Headless);
+    assert_eq!(back.mode, ComputerMode::Headless);
+    assert_eq!(back.problems[0].app, None);
+    assert_eq!(back.problems[0].message, "m");
+}
+
+#[test]
+fn decode_status_v1_reads_a_0_2_x_status_frame() {
+    let ControlMessage::Status(status) = all_messages()[31].clone() else {
+        panic!("index 31 is the Status sample");
+    };
+    let frame = encode_status_v1(&status);
+    let (v1, used) = decode_status_v1(&frame).unwrap();
+    assert_eq!(used, frame.len());
+    assert_eq!(v1, status.to_v1());
+    let current = v1.with_mode(ComputerMode::Headless);
+    assert_eq!(current.problems[0].app, None);
+    assert_eq!(current.mode, ComputerMode::Headless);
+
+    // Trailing bytes of the next frame are left alone.
+    let mut two = frame.clone();
+    two.extend(&frame);
+    assert_eq!(decode_status_v1(&two).unwrap().1, frame.len());
+}
+
+#[test]
+fn decode_status_v1_rejects_short_other_and_garbled_frames() {
+    let ControlMessage::Status(status) = all_messages()[31].clone() else {
+        panic!("index 31 is the Status sample");
+    };
+    let frame = encode_status_v1(&status);
+    assert_eq!(
+        decode_status_v1(&frame[..frame.len() - 1]),
+        Err(FrameError::Incomplete)
+    );
+    // A frame for another message is not a status.
+    let other = encode_frame(&all_messages()[0]);
+    assert_eq!(decode_status_v1(&other), Err(FrameError::Malformed));
+    // Status variant index followed by garbage.
+    let mut body = vec![28u8, 0xFF, 0xFF];
+    let mut garbled = (body.len() as u32).to_be_bytes().to_vec();
+    garbled.append(&mut body);
+    assert_eq!(decode_status_v1(&garbled), Err(FrameError::Malformed));
 }

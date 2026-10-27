@@ -376,7 +376,7 @@ impl LinkWorld {
         self.assert_sessions_never_ended();
         let alpha = self.lab.node("Alpha").status().await;
         let beta_id = self.lab.node("Beta").id();
-        assert_eq!(alpha.active_computer, Some(beta_id));
+        assert_eq!(alpha.active_computer, beta_id);
     }
 
     /// No desk-mate was ever shown as anything but connected since the desk
@@ -551,7 +551,10 @@ async fn control_returns(w: &mut LinkWorld) {
         [(1919.0, 540.0)],
         "the pointer is back on Alpha"
     );
-    assert_eq!(w.lab.node("Alpha").status().await.active_computer, None);
+    assert_eq!(
+        w.lab.node("Alpha").status().await.active_computer,
+        w.lab.node("Alpha").id()
+    );
     alpha.send_input(LocalInput::Key {
         usage: C_KEY,
         down: true,
@@ -602,7 +605,7 @@ async fn pointer_stays(w: &mut LinkWorld) {
     assert!(!alpha.is_grabbed());
     assert!(alpha.warps().is_empty(), "the pointer did not move");
     let status = w.lab.node("Alpha").status().await;
-    assert_eq!(status.active_computer, None);
+    assert_eq!(status.active_computer, w.lab.node("Alpha").id());
     let beta = status.computers.iter().find(|c| c.name == "Beta").unwrap();
     assert_eq!(beta.connection, ConnectionState::Offline);
     assert!(beta.last_seen.is_some(), "it says when Beta was last seen");

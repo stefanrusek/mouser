@@ -14,6 +14,8 @@ mod handshake_tests;
 mod liveness_tests;
 #[cfg(test)]
 mod redial_tests;
+#[cfg(test)]
+mod v2_placeholder_tests;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -422,6 +424,12 @@ impl Ctx {
             ControlMessage::QuickJumpHide => self.input(peer, |c| c.on_quickjump_hide()),
             ControlMessage::ReleaseAll { .. } => self.input(peer, |c| c.on_release_all(peer)),
             ControlMessage::Panic => self.input(peer, |c| c.on_panic(peer)),
+            // v2: replaced in T159
+            ControlMessage::LogsRequest { .. } => Ok(()),
+            // v2: replaced in T205
+            ControlMessage::DeskSettings { .. } => Ok(()),
+            // v2: replaced in T226
+            ControlMessage::RestartElevated => Ok(()),
             other => Err(format!("unexpected message {other:?}")),
         }
     }

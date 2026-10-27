@@ -62,6 +62,8 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
     let now = std::time::Instant::now();
     let name = ctx.display_name_in(&core);
     let mut computers = vec![StatusComputer {
+        os_version: None,
+        mode: None,
         id: ctx.me(),
         name: name.clone(),
         os: crate::platform_os(info.os),
@@ -83,6 +85,8 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
             let peer = core.peers.get(&member.computer_id);
             let connection = core.connection_of(member.computer_id, now);
             computers.push(StatusComputer {
+                os_version: None,
+                mode: None,
                 id: member.computer_id,
                 name: member.display_name.clone(),
                 os: member.os,
@@ -150,12 +154,21 @@ pub(crate) fn build(ctx: &Ctx) -> Status {
         }
     }
     drop(core);
+    // v2 placeholder: T192 (neutral tray summary)
+    let tray_summary = mouser_proto::control::TraySummary {
+        state,
+        connection: mouser_proto::control::TrayConnection::Alone,
+        computers: computers.len() as u32,
+        displays: computers.iter().map(|c| c.displays).sum(),
+    };
     Status {
+        tray_summary,
         version: ctx.mouser_version.clone(),
         computer: ComputerRef { id: ctx.me(), name },
         state,
         desk,
-        active_computer: ctx.crossing.lock().unwrap().active(),
+        // v2 placeholder: T192 (this computer when the pointer is local)
+        active_computer: ctx.crossing.lock().unwrap().active().unwrap_or(ctx.me()),
         computers,
         problems,
         logging: Some(LoggingStatus {

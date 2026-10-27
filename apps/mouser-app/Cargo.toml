@@ -47,3 +47,4 @@ mouser-testkit = { path = "../../crates/mouser-testkit" }
 tauri = { version = "=2.12.5", features = ["tray-icon", "image-png", "macos-private-api", "test"] }
 tempfile = "3"
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "time"] }
+cucumber = "=0.23.0"

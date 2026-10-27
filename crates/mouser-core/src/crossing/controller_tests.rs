@@ -46,8 +46,8 @@ async fn pushing_past_a_shared_edge_enters_the_adjoining_display() {
     ));
     // `status` says where the input goes, on both ends.
     eventually("the active computer to be Beta", || async {
-        status(a).await.active_computer == Some(b.engine.computer_id())
-            && status(b).await.active_computer == Some(b.engine.computer_id())
+        status(a).await.active_computer == b.engine.computer_id()
+            && status(b).await.active_computer == b.engine.computer_id()
     })
     .await;
 }
@@ -163,7 +163,7 @@ async fn moving_back_returns_control_and_releases_what_the_remote_holds() {
     a.platform.send_input(key(A, true));
     assert_eq!(a.platform.local_delivered().last(), Some(&key(A, true)));
     eventually("no active computer", || async {
-        status(a).await.active_computer.is_none()
+        status(a).await.active_computer == a.engine.computer_id()
     })
     .await;
 }
@@ -301,10 +301,7 @@ async fn control_passes_between_remote_computers() {
     })
     .await;
     assert!(a.platform.is_grabbed());
-    assert_eq!(
-        status(a).await.active_computer,
-        Some(c.engine.computer_id())
-    );
+    assert_eq!(status(a).await.active_computer, c.engine.computer_id());
 }
 
 #[tokio::test]

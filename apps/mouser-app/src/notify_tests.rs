@@ -21,6 +21,8 @@ fn note_of(id: &str, kind: ProblemKind, message: &str, cleared: bool) -> Notific
         kind,
         computer: "00".repeat(16).parse().unwrap(),
         message: message.into(),
+        // v2 placeholder: T249
+        app: None,
         fix: None,
         raised_at: "2026-10-21T00:00:00Z".into(),
         cleared_at: cleared.then(|| "2026-10-21T00:01:00Z".into()),

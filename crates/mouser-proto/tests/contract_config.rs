@@ -91,13 +91,87 @@ fn validate_allowlist_entries_are_cidr() {
 }
 
 #[test]
-fn desk_shared_keys_are_the_crossing_and_allowlist_keys() {
+fn desk_shared_keys_are_the_crossing_allowlist_and_keyboard_keys() {
     assert_eq!(
         DESK_SHARED_KEYS,
         [
             "crossing.block_fullscreen",
             "crossing.equalize_dimensions",
-            "advanced.allowlist"
+            "advanced.allowlist",
+            "crossing.landing_highlight",
+            "keyboard.command_as_control"
         ]
+    );
+}
+
+#[test]
+fn v2_keys_default_to_true_and_a_missing_key_takes_the_default() {
+    let c = Config::default();
+    assert!(c.crossing.landing_highlight);
+    assert!(c.keyboard.command_as_control);
+    assert_eq!(c.schema, 1);
+    // A 0.2.8 file has neither key.
+    let old: Config = toml::from_str("schema = 1\n[crossing]\nblock_fullscreen = false\n").unwrap();
+    assert!(old.crossing.landing_highlight && old.keyboard.command_as_control);
+    assert!(!old.crossing.block_fullscreen);
+    assert_eq!(old.schema, 1);
+    let off: Config = toml::from_str(
+        "[crossing]\nlanding_highlight = false\n[keyboard]\ncommand_as_control = false\n",
+    )
+    .unwrap();
+    assert!(!off.crossing.landing_highlight && !off.keyboard.command_as_control);
+    // A non-boolean is rejected at parse time; `Config::validate` only sees
+    // typed values (see the report: contract problem on T039/T040).
+    assert!(toml::from_str::<Config>("[keyboard]\ncommand_as_control = \"yes\"\n").is_err());
+}
+
+#[test]
+fn validate_enable_disable_uses_the_chord_parser() {
+    let mut c = Config::default();
+    for ok in [
+        "Ctrl+Alt+Shift+M",
+        "Cmd+Space",
+        "F12",
+        "Meta+Shift+0",
+        "Alt+Escape",
+        "Ctrl+Tab",
+        "Ctrl+Enter",
+        "Ctrl+Backspace",
+        "Ctrl+9",
+    ] {
+        c.hotkeys.enable_disable = ok.into();
+        assert_eq!(c.validate(), Ok(()), "{ok}");
+    }
+    for (bad, reason) in [
+        ("Ctrl+Alt+Nope", "\"Nope\" is not a known key"),
+        (
+            "Hyper+M",
+            "\"Hyper\" is not a modifier (Ctrl, Alt, Shift, Meta)",
+        ),
+        ("Ctrl+F13", "\"F13\" is not a known key"),
+        ("Ctrl+F0", "\"F0\" is not a known key"),
+        ("", "\"\" is not a known key"),
+        ("Ctrl+a", "\"a\" is not a known key"),
+    ] {
+        c.hotkeys.enable_disable = bad.into();
+        let e = c.validate().unwrap_err();
+        assert_eq!(e.key, "hotkeys.enable_disable");
+        assert_eq!(
+            e.to_string(),
+            format!("hotkeys.enable_disable: {reason}"),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn validate_max_log_mb_is_at_least_one() {
+    let mut c = Config::default();
+    c.diagnostics.max_log_mb = 1;
+    assert_eq!(c.validate(), Ok(()));
+    c.diagnostics.max_log_mb = 0;
+    assert_eq!(
+        c.validate().unwrap_err().to_string(),
+        "diagnostics.max_log_mb: must be 1 or more"
     );
 }

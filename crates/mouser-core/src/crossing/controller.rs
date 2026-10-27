@@ -212,6 +212,8 @@ impl Crossing {
                     dy: dy.round() as i32,
                 });
             }
+            // v2: replaced in T111
+            LocalInput::CaptureLost(_) => {}
             LocalInput::Key { usage, down } => {
                 if down && self.panic.pressed(usage, now) {
                     self.panic_desk();

@@ -6,10 +6,10 @@
 
 use crate::report;
 use mouser_platform::{
-    Autostart, Capability, ClipRep, Clipboard, DropTarget, Error, FileDrag, InputCapture,
-    InputInject, InterfaceKind, Limitation, LocalDisplay, LocalInput, NetInterface, Os,
-    PermissionKind, PermissionState, Platform, PlatformInfo, PlatformProblem, Result, SecretStore,
-    SecureInputHolder, SessionType, WatchHandle,
+    Autostart, Capability, CaptureLossReason, ClipRep, Clipboard, DropTarget, Error, FileDrag,
+    ForegroundApp, InputCapture, InputInject, InterfaceKind, Limitation, LocalDisplay, LocalInput,
+    NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo, PlatformProblem,
+    Result, SecretStore, SecureInputHolder, SessionType, WatchHandle,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -24,6 +24,16 @@ pub enum Injected {
     Button { button: u8, down: bool },
     Scroll { dx: f64, dy: f64 },
     Key { usage: u32, down: bool },
+    SecureAttention,
+}
+
+/// A kind of injected input, for [`VirtualPlatform::refuse_input`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum InputKind {
+    Motion,
+    Button,
+    Scroll,
+    Key,
     SecureAttention,
 }
 
@@ -60,7 +70,9 @@ struct State {
     next_watch: u64,
 
     fullscreen: bool,
-    elevated: bool,
+    foreground: Option<ForegroundApp>,
+    refused: BTreeSet<InputKind>,
+    panic_on_next_inject: bool,
     secure_input: Option<SecureInputHolder>,
     secrets: BTreeMap<String, Vec<u8>>,
     secret_writes_fail: bool,
@@ -148,7 +160,9 @@ impl VirtualPlatform {
             problem_watchers: Vec::new(),
             next_watch: 0,
             fullscreen: false,
-            elevated: false,
+            foreground: None,
+            refused: BTreeSet::new(),
+            panic_on_next_inject: false,
             secure_input: None,
             secrets: BTreeMap::new(),
             secret_writes_fail: false,
@@ -242,8 +256,41 @@ impl VirtualPlatform {
         self.lock().fullscreen = fullscreen;
     }
 
-    pub fn set_foreground_elevated(&self, elevated: bool) {
-        self.lock().elevated = elevated;
+    pub fn set_foreground_app(&self, app: Option<ForegroundApp>) {
+        self.lock().foreground = app;
+    }
+
+    /// Make inject methods of these kinds return `Err(Os("refused"))`.
+    pub fn refuse_input(&self, kinds: &[InputKind]) {
+        self.lock().refused = kinds.iter().copied().collect();
+    }
+
+    /// Undo [`refuse_input`](Self::refuse_input).
+    pub fn accept_input(&self) {
+        self.lock().refused.clear();
+    }
+
+    /// The next inject call panics; later calls succeed.
+    pub fn panic_on_next_inject(&self) {
+        self.lock().panic_on_next_inject = true;
+    }
+
+    /// True while the capture is grabbed (pointer held still and hidden).
+    pub fn pointer_hidden(&self) -> bool {
+        self.lock().capture.grabbed
+    }
+
+    /// If grabbed: ungrab, then deliver `LocalInput::CaptureLost(reason)`.
+    /// Otherwise nothing happens.
+    pub fn lose_capture(&self, reason: CaptureLossReason) {
+        let mut s = self.lock();
+        if !s.capture.grabbed {
+            return;
+        }
+        s.capture.grabbed = false;
+        if let Some(tx) = &s.capture.tx {
+            let _ = tx.send(LocalInput::CaptureLost(reason));
+        }
     }
 
     pub fn set_secure_input(&self, holder: Option<SecureInputHolder>) {
@@ -469,8 +516,8 @@ impl Platform for VirtualPlatform {
         Ok(self.watch(|s| &mut s.problem_watchers, tx))
     }
 
-    fn foreground_elevated(&self) -> bool {
-        self.lock().elevated
+    fn foreground_app(&self) -> Option<ForegroundApp> {
+        self.lock().foreground.clone()
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
@@ -503,7 +550,17 @@ impl InputCapture for VirtualCapture {
     }
 
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
-        self.0.lock().capture.warps.push((x, y));
+        let mut s = self.0.lock();
+        let inside = s.displays.iter().any(|d| {
+            x >= d.origin.0
+                && x < d.origin.0 + d.logical_size.0
+                && y >= d.origin.1
+                && y < d.origin.1 + d.logical_size.1
+        });
+        if !inside {
+            return Err(Error::Os("warp outside every display".into()));
+        }
+        s.capture.warps.push((x, y));
         Ok(())
     }
 
@@ -527,6 +584,19 @@ struct VirtualInject {
 }
 
 impl VirtualInject {
+    /// Panics once if scripted to; refuses if this kind is refused.
+    fn gate(&self, kind: InputKind) -> Result<()> {
+        let mut s = self.platform.lock();
+        if std::mem::take(&mut s.panic_on_next_inject) {
+            drop(s);
+            panic!("scripted inject panic");
+        }
+        if s.refused.contains(&kind) {
+            return Err(Error::Os("refused".into()));
+        }
+        Ok(())
+    }
+
     fn record(&self, injected: Injected) {
         self.platform.lock().injected.push(injected);
     }
@@ -534,11 +604,13 @@ impl VirtualInject {
 
 impl InputInject for VirtualInject {
     fn motion_abs(&mut self, x: f64, y: f64) -> Result<()> {
+        self.gate(InputKind::Motion)?;
         self.record(Injected::MotionAbs { x, y });
         Ok(())
     }
 
     fn button(&mut self, button: u8, down: bool) -> Result<()> {
+        self.gate(InputKind::Button)?;
         if down {
             self.buttons.insert(button);
         } else {
@@ -549,11 +621,13 @@ impl InputInject for VirtualInject {
     }
 
     fn scroll(&mut self, dx: f64, dy: f64) -> Result<()> {
+        self.gate(InputKind::Scroll)?;
         self.record(Injected::Scroll { dx, dy });
         Ok(())
     }
 
     fn key(&mut self, usage: u32, down: bool) -> Result<()> {
+        self.gate(InputKind::Key)?;
         if down {
             self.keys.insert(usage);
         } else {
@@ -567,6 +641,7 @@ impl InputInject for VirtualInject {
         if !self.platform.lock().secure_attention_supported {
             return Err(Error::Unsupported);
         }
+        self.gate(InputKind::SecureAttention)?;
         self.record(Injected::SecureAttention);
         Ok(())
     }

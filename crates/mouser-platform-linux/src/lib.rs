@@ -259,8 +259,9 @@ impl Platform for LinuxPlatform {
         Ok(netwatch::watch(&self.settings.env, tx))
     }
 
-    fn foreground_elevated(&self) -> bool {
-        false
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        // v2: real foreground_app in platform-linux US1
+        None
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {

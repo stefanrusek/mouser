@@ -80,7 +80,7 @@ async fn losing_the_active_computer_returns_the_mouse_and_keyboard_and_releases_
     // The pointer and keyboard are Alpha's again.
     assert!(!a.platform.is_grabbed());
     assert_eq!(a.platform.warps(), [(1919.0, 540.0)], "where it left");
-    assert_eq!(status(a).await.active_computer, None);
+    assert_eq!(status(a).await.active_computer, a.engine.computer_id());
     a.platform.send_input(LocalInput::Key {
         usage: C_KEY,
         down: true,

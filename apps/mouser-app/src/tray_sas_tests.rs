@@ -16,7 +16,7 @@ fn windows_status(mut status: Status, active_remote: bool) -> Status {
     other.name = "Studio".into();
     other.os = Os::Windows;
     if active_remote {
-        status.active_computer = Some(other.id);
+        status.active_computer = other.id;
     } else {
         status.computers[0].os = Os::Windows;
     }

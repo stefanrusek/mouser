@@ -809,7 +809,7 @@ async fn control_returns_home(w: &mut CrossWorld) {
         "the keyboard types here again"
     );
     let active = w.lab.node("Alpha").status().await.active_computer;
-    assert_eq!(active, None);
+    assert_eq!(active, w.lab.node("Alpha").id());
 }
 
 // ---- scenario 8 (whole desk): panic from any computer -------------------------------------------------
@@ -843,8 +843,9 @@ async fn every_computer_returns_home(w: &mut CrossWorld) {
     .await;
     for name in ["Alpha", "Beta"] {
         let node = w.lab.node(name);
-        node.wait_status("no computer is driven from elsewhere", |s| {
-            s.active_computer.is_none()
+        let own = node.id();
+        node.wait_status("no computer is driven from elsewhere", move |s| {
+            s.active_computer == own
         })
         .await;
     }
@@ -1346,7 +1347,7 @@ async fn shared_mouse_computer_is_driven(w: &mut CrossWorld) {
     until("Alpha to stop forwarding", || !alpha.is_grabbed()).await;
     let alpha_id = w.lab.node("Alpha").id();
     let active = w.lab.node("Alpha").status().await.active_computer;
-    assert_eq!(active, Some(alpha_id), "Alpha no longer drives Beta");
+    assert_eq!(active, alpha_id, "Alpha no longer drives Beta");
     // Beta's mouse and keyboard now drive Alpha.
     beta.send_input(key(C, true));
     injected(&alpha, "Beta's keyboard on Alpha", |i| {

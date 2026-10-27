@@ -1,7 +1,7 @@
 //! VirtualPlatform scripting and recording capabilities.
 
 use mouser_platform::*;
-use mouser_testkit::{Injected, VirtualPlatform};
+use mouser_testkit::{Injected, InputKind, VirtualPlatform};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 
@@ -217,9 +217,6 @@ fn state_flags_secure_input_secrets_autostart() {
     assert!(!vp.foreground_is_fullscreen());
     vp.set_fullscreen(true);
     assert!(vp.foreground_is_fullscreen());
-    assert!(!vp.foreground_elevated());
-    vp.set_foreground_elevated(true);
-    assert!(vp.foreground_elevated());
     assert_eq!(vp.secure_input(), None);
     let holder = SecureInputHolder {
         pid: 7,
@@ -301,4 +298,109 @@ fn clones_share_one_virtual_computer() {
     let core_side: std::sync::Arc<dyn Platform> = std::sync::Arc::new(vp.clone());
     core_side.inject().unwrap().key(0x0007_0009, true).unwrap();
     assert_eq!(vp.injected().len(), 2);
+}
+
+#[test]
+fn refused_input_kinds_return_os_refused_until_accepted() {
+    let vp = VirtualPlatform::new();
+    let mut inject = vp.inject().unwrap();
+    vp.refuse_input(&[InputKind::Key, InputKind::Button]);
+    let refused = Err(Error::Os("refused".into()));
+    assert_eq!(inject.key(0x0007_0004, true), refused);
+    assert_eq!(inject.button(1, true), refused);
+    inject.motion_abs(1.0, 2.0).unwrap();
+    inject.scroll(0.0, 1.0).unwrap();
+    assert_eq!(vp.injected().len(), 2);
+    vp.accept_input();
+    inject.key(0x0007_0004, true).unwrap();
+    inject.button(1, true).unwrap();
+    assert_eq!(vp.injected().len(), 4);
+}
+
+#[test]
+fn refusing_motion_scroll_and_secure_attention_kinds() {
+    let vp = VirtualPlatform::new();
+    vp.set_secure_attention_supported(true);
+    let mut inject = vp.inject().unwrap();
+    vp.refuse_input(&[
+        InputKind::Motion,
+        InputKind::Scroll,
+        InputKind::SecureAttention,
+    ]);
+    let refused = Err(Error::Os("refused".into()));
+    assert_eq!(inject.motion_abs(1.0, 2.0), refused);
+    assert_eq!(inject.scroll(0.0, 1.0), refused);
+    assert_eq!(inject.secure_attention(), refused);
+    assert!(vp.injected().is_empty());
+}
+
+#[test]
+fn panic_on_next_inject_panics_once() {
+    let vp = VirtualPlatform::new();
+    let mut inject = vp.inject().unwrap();
+    vp.panic_on_next_inject();
+    let first = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = inject.motion_abs(1.0, 2.0);
+    }));
+    assert!(first.is_err());
+    inject.motion_abs(1.0, 2.0).unwrap();
+    assert_eq!(vp.injected(), vec![Injected::MotionAbs { x: 1.0, y: 2.0 }]);
+}
+
+#[test]
+fn foreground_app_is_scripted() {
+    let vp = VirtualPlatform::new();
+    assert_eq!(vp.foreground_app(), None);
+    let app = ForegroundApp {
+        name: "game.exe".into(),
+        admin: true,
+        outranks_mouser: true,
+    };
+    vp.set_foreground_app(Some(app.clone()));
+    assert_eq!(vp.foreground_app(), Some(app));
+    vp.set_foreground_app(None);
+    assert_eq!(vp.foreground_app(), None);
+}
+
+#[test]
+fn pointer_hidden_only_while_grabbed() {
+    let vp = VirtualPlatform::new();
+    let mut capture = vp.capture().unwrap();
+    let (tx, _rx) = channel();
+    capture.start(tx).unwrap();
+    assert!(!vp.pointer_hidden());
+    capture.set_grabbed(true).unwrap();
+    assert!(vp.pointer_hidden());
+    capture.set_grabbed(false).unwrap();
+    assert!(!vp.pointer_hidden());
+}
+
+#[test]
+fn lose_capture_ungrabs_then_delivers_and_is_inert_when_not_grabbed() {
+    let vp = VirtualPlatform::new();
+    let mut capture = vp.capture().unwrap();
+    let (tx, rx) = channel();
+    capture.start(tx).unwrap();
+
+    vp.lose_capture(CaptureLossReason::HooksSilent);
+    assert!(rx.try_recv().is_err());
+
+    capture.set_grabbed(true).unwrap();
+    vp.lose_capture(CaptureLossReason::OtherDesktop);
+    assert!(!vp.pointer_hidden());
+    assert!(!vp.is_grabbed());
+    assert_eq!(
+        rx.try_recv().unwrap(),
+        LocalInput::CaptureLost(CaptureLossReason::OtherDesktop)
+    );
+}
+
+#[test]
+fn warp_outside_every_display_is_an_error() {
+    let vp = VirtualPlatform::new();
+    let mut capture = vp.capture().unwrap();
+    assert!(matches!(capture.warp(5000.0, 5.0), Err(Error::Os(_))));
+    assert!(vp.warps().is_empty());
+    capture.warp(1919.0, 1079.0).unwrap();
+    assert_eq!(vp.warps(), vec![(1919.0, 1079.0)]);
 }

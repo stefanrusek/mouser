@@ -297,8 +297,9 @@ impl Platform for WinPlatform {
         }))
     }
 
-    fn foreground_elevated(&self) -> bool {
-        uipi::foreground_elevated()
+    fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
+        // v2: real foreground_app in platform-windows US1
+        None
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
