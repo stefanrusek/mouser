@@ -293,28 +293,55 @@ async fn a_panic_in_one_request_is_an_internal_error_and_the_server_keeps_servin
 mod service_pipe {
     use std::os::windows::ffi::OsStrExt;
 
-    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE, LocalFree};
     use windows_sys::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
-        SDDL_REVISION_1, SE_KERNEL_OBJECT,
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SDDL_REVISION_1,
+        SE_KERNEL_OBJECT,
     };
     use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
 
     use super::*;
     use crate::control::SERVICE_PIPE;
     use mouser_proto::wire::ComputerMode;
 
     /// The DACL of the pipe `name`, as SDDL.
+    ///
+    /// `GetNamedSecurityInfoW` rejects a pipe path (`\\.\pipe\...`) with
+    /// `ERROR_BAD_PATHNAME`; a pipe's security is read from an open handle, so
+    /// open one with `READ_CONTROL` and ask `GetSecurityInfo` for its DACL.
     fn dacl_of(name: &str) -> String {
+        /// The standard right to read an object's security — enough for the DACL.
+        const READ_CONTROL: u32 = 0x0002_0000;
         let wide: Vec<u16> = std::ffi::OsStr::new(name)
             .encode_wide()
             .chain(Some(0))
             .collect();
-        let mut descriptor = std::ptr::null_mut();
-        // SAFETY: `wide` is NUL-terminated; the descriptor is freed below.
-        let status = unsafe {
-            GetNamedSecurityInfoW(
+        // SAFETY: `wide` is NUL-terminated; the handle is closed below.
+        let handle = unsafe {
+            CreateFileW(
                 wide.as_ptr(),
+                READ_CONTROL,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(
+            !handle.is_null() && handle != INVALID_HANDLE_VALUE,
+            "the pipe opens for READ_CONTROL: {}",
+            std::io::Error::last_os_error()
+        );
+        let mut descriptor = std::ptr::null_mut();
+        // SAFETY: `handle` is a live pipe handle with READ_CONTROL; the
+        // descriptor it yields is freed below.
+        let status = unsafe {
+            GetSecurityInfo(
+                handle,
                 SE_KERNEL_OBJECT,
                 DACL_SECURITY_INFORMATION,
                 std::ptr::null_mut(),
@@ -324,6 +351,8 @@ mod service_pipe {
                 &mut descriptor,
             )
         };
+        // SAFETY: the handle is no longer needed now the security is read.
+        unsafe { CloseHandle(handle) };
         assert_eq!(status, 0, "the pipe's security is readable");
         let mut text = std::ptr::null_mut();
         // SAFETY: `descriptor` came from the call above.
@@ -372,9 +401,13 @@ mod service_pipe {
             .unwrap();
         let value = service.call(Method::Status, None).await.unwrap();
         assert_eq!(value["computer"]["name"], "Alpha");
-        // Only SYSTEM, Administrators and the interactive user may open it.
+        // Only SYSTEM, Administrators and the interactive user may open it,
+        // each with full access. The pipe is created from `GA` (GENERIC_ALL),
+        // but the object manager maps a file object's generic rights to their
+        // specific form when it stores the descriptor, so the DACL reads back
+        // as `FA` (FILE_ALL_ACCESS) — the same grant, spelled specifically.
         let dacl = dacl_of(SERVICE_PIPE);
-        for ace in ["(A;;GA;;;SY)", "(A;;GA;;;BA)", "(A;;GA;;;IU)"] {
+        for ace in ["(A;;FA;;;SY)", "(A;;FA;;;BA)", "(A;;FA;;;IU)"] {
             assert!(dacl.contains(ace), "{dacl}");
         }
         assert_eq!(dacl.matches("(A;").count(), 3, "{dacl}");
