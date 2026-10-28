@@ -76,6 +76,7 @@ Probe: `spikes/spike_elevate/` (standalone crate, `windows` 0.62.2), built nativ
 | C | Single-instance forward, medium first ← medium second (`WM_COPYDATA`) | CONFIRMED — delivered |
 | D | Single-instance forward, **elevated** first ← **medium** second | mutex seen; `WM_COPYDATA` blocked by UIPI |
 | E | `runas` **declined** → `ERROR_CANCELLED` (1223) | NOT RUN (UAC auto-elevates on this VM) |
+| F | Inject from an **elevated** instance into an elevated app (positive case) | CONFIRMED — delivered |
 
 ### Scenario A: elevation relaunch with `--wait-for` handover — CONFIRMED
 
@@ -121,3 +122,15 @@ So the real cross-integrity hazard is **not** a duplicate instance; it is that *
 ### Scenario E: `runas` declined (`ERROR_CANCELLED` 1223) — NOT RUN
 
 The probe's `relaunch`/`--relaunch-after` path logs `ERROR_CANCELLED` (1223) when the user declines the UAC prompt. On this VM `ConsentPromptBehaviorAdmin=0` makes `runas` elevate without ever prompting, so there is no decline to capture. Exercising it needs the owner to temporarily set `ConsentPromptBehaviorAdmin` to a prompting value (a security-setting change the owner must make, not the probe) and then decline a relaunch. Deferred until an owner can do that; the handling is a single `GetLastError == ERROR_CANCELLED` branch and is low risk.
+
+### Scenario F: injection from an elevated instance into an elevated app — CONFIRMED (delivered)
+
+The positive counterpart to Scenario B. The probe was launched **elevated** (`run`, via `runas`, which auto-elevates on this VM) so the injector is `elevated=true integrity=high (0x3000)`. Its `WH_KEYBOARD_LL`/`WH_MOUSE_LL` hooks are the same delivery oracle: an event that reaches the input queue is logged `injected=true`.
+
+- **The elevated instance's own LL hooks see input.** With the probe running elevated, the hook logged the user's real pointer motion (`HOOK mouse: N move events ...`) as well as its own injected events — the hooks install and fire normally at high integrity.
+- **Same-process high→high (own foreground window):** `SendInput(text, 32 events) returned 32, GetLastError 0` and the hook then logged **32** `injected=true` key events + 4 injected mouse moves — every event reached the queue.
+- **Cross-process high→high (separate elevated app):** with `Taskmgr.exe` (`pid 20032`, a different process, `elevated=true integrity=high 0x3000`) in the foreground, the elevated probe injected and the hook again logged **32** `injected=true` key events + 4 injected mouse moves. `INJECT: foreground window ... Taskmgr.exe ... elevated=true integrity=high (0x3000)`, `INJECT: injector: elevated=true integrity=high (0x3000)`.
+
+So the UIPI gate is purely a function of the **injector's** integrity relative to the foreground window: at equal (high) integrity `SendInput`'s events are accepted into the queue and delivered (hook sees `injected=true`), exactly where a medium injector against the same high-IL foreground saw **zero** delivered events (Scenario B). The product implication: if Mouser must drive an elevated foreground app, Mouser itself has to be running at that integrity (an elevated relaunch — Scenario A), because the block is on the sender's integrity, not something the target opts out of.
+
+(Setup note: the elevated Task Manager window opened for this probe is a throwaway target and can be closed; a medium-integrity shell cannot terminate it.)
