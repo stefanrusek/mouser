@@ -62,3 +62,62 @@ Two `observe 130` runs with an owner driving the desktop: `abs-observe` (SmartMo
 - **Input is swallowed away from the foreground app — CONFIRMED by the owner.** While capture was active the cursor *shape* stopped changing and typing did **not** appear in Notepad, i.e. `RIDEV_NOLEGACY` suppressed legacy mouse/keyboard to other windows while the probe received the raw stream.
 - **CAVEAT — `ClipCursor` is defeated by Parallels in both modes.** The requested off-screen clip never took; every sample logged the clip rect as the full screen `(0,0)-(1474,979)` and the cursor roamed freely (`abs-capture`) or was only frozen by the stall (`on-capture`). Parallels Tools owns absolute cursor positioning and resets the clip each frame. **The capture feature cannot rely on `ClipCursor` to pin or hide the pointer inside a Parallels guest** — it must hide/park the cursor another way.
 - **CAVEAT — release hotkey collision.** `Ctrl+Alt` (the probe's release chord) is also Parallels' own mouse-release chord in games mode; the two fire together. The product's capture-release hotkey must avoid `Ctrl+Alt`.
+
+## P3 spike_elevate (2026-10-28)
+
+Probe: `spikes/spike_elevate/` (standalone crate, `windows` 0.62.2), built natively (aarch64, debug). Same VM as P1. The probe replicates `tauri-plugin-single-instance` 2.5.4 (mutex `com.mouser.spike-elevate-sim`, a hidden message window, `FindWindowW` + `AllowSetForegroundWindow` + `WM_COPYDATA` with `dwData` 1543) plus an elevation relaunch via `ShellExecuteExW(verb=runas)` and a `--wait-for <pid>` handover that opens the parent with `PROCESS_SYNCHRONIZE` and waits before touching the mutex. Logs: `%TEMP%\spike_elevate\<timestamp>-pid<pid>-<mode>.log`.
+
+**UAC note (affects which paths are reachable on this VM).** The VM is configured `EnableLUA=1`, `ConsentPromptBehaviorAdmin=0` (elevate without prompting). So `runas` auto-elevates **silently** — no consent dialog. This lets the accept path (Scenario A) run unattended but means the user-decline path (`ERROR_CANCELLED` 1223) cannot be exercised here without an owner raising `ConsentPromptBehaviorAdmin` first (a security-setting change); see Scenario E.
+
+| # | Scenario | Status |
+|---|----------|--------|
+| A | `runas` relaunch + `--wait-for` handover (medium → elevated, old instance holds the mutex until the child waits it out) | CONFIRMED |
+| B | Inject text/mouse into an **elevated** foreground window from the medium probe | CONFIRMED — silently dropped |
+| C | Single-instance forward, medium first ← medium second (`WM_COPYDATA`) | CONFIRMED — delivered |
+| D | Single-instance forward, **elevated** first ← **medium** second | mutex seen; `WM_COPYDATA` blocked by UIPI |
+| E | `runas` **declined** → `ERROR_CANCELLED` (1223) | NOT RUN (UAC auto-elevates on this VM) |
+
+### Scenario A: elevation relaunch with `--wait-for` handover — CONFIRMED
+
+A medium first instance (`pid 19132`, `integrity=medium 0x2000`) took the mutex fresh, then after 3 s relaunched itself elevated:
+
+- `RELAUNCH: ShellExecuteExW(verb=runas, ... params=run --wait-for 19132 --exit-after 12)` → `ShellExecuteExW OK (UAC accepted); new process pid 2672` (accepted silently per the UAC note).
+- The old instance deliberately **kept the mutex for 3 s** after the relaunch, then released it just before exit.
+- The elevated child (`pid 2672`, `integrity=high 0x3000`) logged `--wait-for 19132: opening process (SYNCHRONIZE) before touching the single-instance mutex`, then `WaitForSingleObject -> 0 (parent exited) after 2864 ms`, and only *then* `CreateMutexW(...) -> GetLastError 0 (fresh)` and `RUNNING as the first instance ... integrity=high (0x3000)`.
+
+So the `PROCESS_SYNCHRONIZE` + `WaitForSingleObject` handover works: the elevated successor does not race the medium predecessor for the single-instance mutex — it blocks until the old process exits and then acquires the mutex cleanly. This is the pattern a real elevate-in-place relaunch must use.
+
+### Scenario B: injection into an elevated foreground window — CONFIRMED (silently dropped)
+
+The medium probe (`integrity=medium 0x2000`) called `SendInput` to type `SPIKE-ELEVATE-OK` and nudge the mouse while different windows held the foreground. The probe's own `WH_KEYBOARD_LL`/`WH_MOUSE_LL` hook is the delivery oracle: an injected event that reaches the input queue is seen by the hook (`injected=true`); one dropped before the queue is not seen at all.
+
+- **Same-integrity control (Notepad, `integrity=medium 0x2000`):** `SendInput(text, 32 events) returned 32, GetLastError 0`, and the hook then logged **16** `HOOK key down vk=0xE7 ... injected=true` lines plus the injected mouse move — every event reached the queue.
+- **Elevated target (`Taskmgr.exe`, `elevated=true integrity=high 0x3000`):** `SendInput(text 'SPIKE-ELEVATE-OK', 32 events) returned 32, GetLastError 0` and `SendInput(mouse move +1,-1) returned 2` — **identical success return** — but the hook logged **zero** `injected=true` key events afterward (the only nearby hook line was a real `msg=0x204 injected=false` button-up). The 32 events were accepted by the API and then **silently discarded by UIPI**; they never reached the input queue, so not even the injecting process saw them.
+
+This reproduces P1 item 2 through the plugin-shaped `inject()` path: **`SendInput`'s return value is not a delivery signal** when the foreground window outranks Mouser. Mouser must detect the elevated-foreground case from the foreground readout (P1 items 3/4), never from `SendInput`'s result.
+
+### Scenario C: single-instance forward, medium → medium — CONFIRMED (delivered)
+
+First instance `pid 2168` (`integrity=medium 0x2000`) took the mutex and ran a message loop. A second launch `pid 9636` (also medium):
+
+- `CreateMutexW(...) -> GetLastError 183 (ERROR_ALREADY_EXISTS)` — detects the running instance.
+- `FindWindowW -> 0x405de`, owner `pid 2168 ... integrity=medium`.
+- `AllowSetForegroundWindow -> ok=true`.
+- `SendMessageTimeoutW(WM_COPYDATA) DELIVERED, result 1`.
+
+The first instance logged `*** WM_COPYDATA RECEIVED from second launch: cwd|args = ...`. So the normal (non-elevated) single-instance forward works end to end: the second invocation hands its cwd+args to the first and exits.
+
+### Scenario D: single-instance forward, elevated first ← medium second — mutex seen, `WM_COPYDATA` blocked by UIPI
+
+First instance launched elevated (`pid 14224`, `elevated=true integrity=high 0x3000`), took the mutex fresh. A **medium** second launch (`pid 2168`, `integrity=medium 0x2000`):
+
+- `CreateMutexW(...) -> GetLastError 183 (ERROR_ALREADY_EXISTS)` — **the medium instance does detect the elevated singleton.** (A named mutex's default DACL grants `SYNCHRONIZE`/`QUERY` broadly, so there is no `ACCESS_DENIED` on the mutex. The earlier worry that a medium second instance would fail to see an elevated first instance and start a **duplicate** is **REFUTED**.)
+- `FindWindowW -> 0x8900ae`, owner `pid 14224 ... elevated=true integrity=high (0x3000)`.
+- `AllowSetForegroundWindow -> ok=true`.
+- `SendMessageTimeoutW(WM_COPYDATA) FAILED, result 0, GetLastError 5 (ERROR_ACCESS_DENIED)`.
+
+So the real cross-integrity hazard is **not** a duplicate instance; it is that **argument/URL hand-off from a medium relaunch to an already-running elevated instance is silently blocked by UIPI** (a medium process cannot post `WM_COPYDATA` to a high-IL window). `tauri-plugin-single-instance` would log "failed to forward arguments" and the payload is lost — the second instance still suppresses itself (mutex said already-exists), but whatever the user passed (a file, a URL, a command) never reaches the running instance. For an elevated instance to accept the forward it would have to opt in with `ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW)`, which the plugin does not do. Mouser should either run both instances at the same integrity or add that filter (and a payload-size/validation guard) if it ever runs elevated.
+
+### Scenario E: `runas` declined (`ERROR_CANCELLED` 1223) — NOT RUN
+
+The probe's `relaunch`/`--relaunch-after` path logs `ERROR_CANCELLED` (1223) when the user declines the UAC prompt. On this VM `ConsentPromptBehaviorAdmin=0` makes `runas` elevate without ever prompting, so there is no decline to capture. Exercising it needs the owner to temporarily set `ConsentPromptBehaviorAdmin` to a prompting value (a security-setting change the owner must make, not the probe) and then decline a relaunch. Deferred until an owner can do that; the handling is a single `GetLastError == ERROR_CANCELLED` branch and is low risk.

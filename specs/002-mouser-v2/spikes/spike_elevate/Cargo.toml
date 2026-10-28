@@ -1,0 +1,22 @@
+[package]
+name = "spike_elevate"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Probe P3 (T014): portable runas relaunch, --wait-for hand-over of the single-instance mutex, hooks/injection while elevated, UIPI vs WM_COPYDATA."
+
+[dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Registry",
+  "Win32_Security",
+  "Win32_System_DataExchange",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[workspace]
