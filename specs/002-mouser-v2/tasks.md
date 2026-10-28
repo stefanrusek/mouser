@@ -608,8 +608,8 @@ Package `crates/mouser-platform-macos`. Gate per phase: `cargo xtask gate --pack
 - [ ] T425 [P] [US1-platform-macos] Write `crates/mouser-platform-macos/tests/contract_platform_macos_v2.rs` running conformance rules 10 and 11 against `MacPlatform` (rule 10 query: the backend's cursor-hidden state)
 - [ ] T426 [P] [US1-platform-macos] Write unit tests in `crates/mouser-platform-macos/src/foreground_tests.rs`: `foreground_app()` returns `NSWorkspace.frontmostApplication`'s localized name with `admin = false` and `outranks_mouser = false`; `None` with no frontmost application; `CaptureLost` is never emitted (contracts/platform-api-delta.md)
 - [ ] T427 [US1-platform-macos] Implement `foreground_app()` in `crates/mouser-platform-macos/src/foreground.rs` and wire it into `crates/mouser-platform-macos/src/lib.rs`, replacing the T063 placeholder
-- [ ] T428 [US1-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the `macos-14` CI runner
-- [ ] T429 [US1-platform-macos] Commit: phase boundary "US1-platform-macos" (5.3)
+- [X] T428 [US1-platform-macos] Gate: `cargo xtask gate --packages mouser-platform-macos --lane platform-macos` on the `macos-14` CI runner
+- [X] T429 [US1-platform-macos] Commit: phase boundary "US1-platform-macos" (5.3)
 
 ### Lane: platform-linux
 
