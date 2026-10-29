@@ -9,7 +9,7 @@ use mouser_platform::{DropTarget, Error, FileDrag};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE};
 use windows::Win32::Foundation::{
     DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DV_E_FORMATETC, DV_E_LINDEX, E_FAIL, HWND, POINT, RECT,
     S_OK,
@@ -23,8 +23,8 @@ use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 use windows::Win32::System::Ole::{DROPEFFECT_COPY, DROPEFFECT_NONE, IDropTarget, OleInitialize};
 use windows::Win32::System::Threading::{
-    GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-    QueryFullProcessImageNameW,
+    GetCurrentProcessId, GetProcessTimes, OpenProcess, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -42,7 +42,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetForegroundWindow, SetWindowPos, WM_CLOSE, WS_EX_TOPMOST, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowTextW,
+    GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetShellWindow, GetWindowTextW,
     GetWindowThreadProcessId, PhysicalToLogicalPoint, WindowFromPoint,
 };
 use windows::core::{Interface, PCWSTR, PWSTR, w};
@@ -555,7 +555,11 @@ fn the_strips_are_there_only_while_the_left_button_is_down() {
     move_to(w / 2, h / 2);
     std::thread::sleep(Duration::from_millis(200));
     button(true);
-    assert!(wait_until(Duration::from_secs(3), visible));
+    let shown = wait_until(Duration::from_secs(3), visible);
+    // Always gathered, so that what the failure message says is exercised too.
+    let report = strips_report(&strips);
+    eprintln!("{report}");
+    assert!(shown, "the strips showed with the button down\n{report}");
     assert!(left_button_down());
     // With the button down, a drag that is late to the edge is waited for.
     let started = Instant::now();
@@ -753,9 +757,8 @@ fn how_the_drag_ended_decides_what_is_reported() {
 }
 
 /// An Explorer window a test opened, and the `explorer.exe` started for it.
-/// Dropped, also when the test fails part way, it closes the window, waits
-/// until the window is gone and ends that process, so no test leaves an
-/// Explorer behind.
+/// Dropped, also when the test fails part way, it closes the window, so no
+/// test leaves an Explorer window behind.
 struct ExplorerWindow {
     window: Option<HWND>,
     launcher: std::process::Child,
@@ -766,10 +769,13 @@ impl ExplorerWindow {
         self.window.expect("the Explorer window")
     }
 
-    /// Closes the window and ends the process started for it; whether the
-    /// window was gone in time.
-    fn close(&mut self) -> bool {
-        if let Some(window) = self.window {
+    /// Closes the window and gives the `explorer.exe` started for it time to
+    /// exit by itself: whether the window was gone in time, and whether that
+    /// process had exited. The process is never ended from here: it may be
+    /// the desktop's shell, which the next test needs.
+    fn close(&mut self) -> (bool, bool) {
+        let window = self.window.take();
+        if let Some(window) = window {
             let _ = unsafe {
                 PostMessageW(
                     Some(window),
@@ -779,15 +785,13 @@ impl ExplorerWindow {
                 )
             };
         }
-        let window = self.window;
         let gone = wait_until(Duration::from_secs(10), || {
             window.is_none_or(|w| !unsafe { IsWindow(Some(w)) }.as_bool())
         });
-        // Explorer usually hands the folder to the shell and exits at once;
-        // whatever it is still doing, it ends with the test.
-        let _ = self.launcher.kill();
-        let _ = self.launcher.wait();
-        gone
+        let exited = wait_until(Duration::from_secs(10), || {
+            matches!(self.launcher.try_wait(), Ok(Some(_)))
+        });
+        (gone, exited)
     }
 }
 
@@ -889,6 +893,50 @@ fn describe(window: HWND) -> String {
         rect.bottom,
         image_of(pid),
     )
+}
+
+/// How long ago process `pid` started.
+fn age_of(pid: u32) -> String {
+    // FILETIME counts 100 ns ticks from 1601, which is this many seconds
+    // before 1970.
+    const UNIX_FROM_1601: f64 = 11_644_473_600.0;
+    let age = |process: HANDLE| {
+        let mut times = [FILETIME::default(); 4];
+        let [created, exited, kernel, user] = &mut times;
+        let got = unsafe { GetProcessTimes(process, created, exited, kernel, user) };
+        let _ = unsafe { CloseHandle(process) };
+        let ticks = (u64::from(times[0].dwHighDateTime) << 32) | u64::from(times[0].dwLowDateTime);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64();
+        let ago = |()| format!("{:.1} s ago", now + UNIX_FROM_1601 - ticks as f64 / 1e7);
+        got.map_or_else(|e| format!("unknown ({e})"), ago)
+    };
+    unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+        .map_or_else(|e| format!("unknown ({e})"), age)
+}
+
+/// What the desktop looked like when the strips should have been showing:
+/// who has the foreground, whether the button reads as down, each strip, and
+/// the shell (a shell that has just started can hold on to the foreground).
+fn strips_report(strips: &[HWND; 4]) -> String {
+    let visible: Vec<bool> = strips
+        .iter()
+        .map(|s| unsafe { IsWindowVisible(*s) }.as_bool())
+        .collect();
+    let shell = unsafe { GetShellWindow() };
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(shell, Some(&mut pid)) };
+    [
+        format!("foreground: {}", describe(unsafe { GetForegroundWindow() })),
+        format!("left button down: {}", left_button_down()),
+        format!("strips visible (left, top, right, bottom): {visible:?}"),
+        format!("shell window: {}", describe(shell)),
+        format!("shell process started {}", age_of(pid)),
+        shell_windows(),
+    ]
+    .join("\n")
 }
 
 fn names_in(dir: &std::path::Path) -> String {
@@ -1031,11 +1079,12 @@ fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
         y: drop_at.1,
     });
     assert_eq!(same(&again.unwrap()), same(&dir));
-    assert!(
-        explorer.close(),
-        "the Explorer window closed\n{}",
-        shell_windows()
+    let launcher = explorer.launcher.id();
+    let (closed, exited) = explorer.close();
+    eprintln!(
+        "the explorer.exe started for the window (pid {launcher}) exited by itself: {exited}"
     );
+    assert!(closed, "the Explorer window closed\n{}", shell_windows());
     drop(drag);
     settle();
 }
