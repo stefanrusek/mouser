@@ -20,6 +20,8 @@ jobs:
             lane: linux
             packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-linux,mouser-app,mouser-cli,xtask
     runs-on: ${{ matrix.os }}
+    # A healthy gate takes ~30 min; a runner that never starts its steps (seen on ubuntu) hung for hours.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - name: Install Ubuntu system packages
