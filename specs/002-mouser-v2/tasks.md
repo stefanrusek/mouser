@@ -561,7 +561,7 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 - [ ] T396 [P] [US1-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/capture_tests.rs`: capture start spawns `<current exe> --cursor-guard <own pid>` in the same session with no window; a normal capture stop ends the guard
 - [ ] T397 [US1-platform-windows] Spawn and stop the guard in `crates/mouser-platform-windows/src/capture.rs`
 - [ ] T398 [US1-platform-windows] Rename the `#[allow(dead_code)]` field on `LiveInput` (`crates/mouser-platform-windows/src/lib.rs:384`) to `_guard` and delete the allow (debt G16); verified by clippy with `-D warnings`
-- [ ] T399 [US1-platform-windows] Wait for the Explorer child in test teardown in `crates/mouser-platform-windows/src/drag_tests.rs` and delete `#[allow(clippy::zombie_processes)]` (line 699) (debt Tier 1); verified by clippy
+- [X] T399 [US1-platform-windows] Wait for the Explorer child in test teardown in `crates/mouser-platform-windows/src/drag_tests.rs` and delete `#[allow(clippy::zombie_processes)]` (line 699) (debt Tier 1); verified by clippy
 - [ ] T400 [US1-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
 - [ ] T401 [US1-platform-windows] Commit: phase boundary "US1-platform-windows" (5.3)
 
