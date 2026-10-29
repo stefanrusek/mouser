@@ -26,13 +26,10 @@ fn a_blank_arrow_left_behind_is_restored_and_said() {
     let restored = Cell::new(false);
     let mut code = None;
     let notes = guard_notes(|| {
-        code = Some(after_parent(
-            || true,
-            || {
-                restored.set(true);
-                Ok(())
-            },
-        ));
+        code = Some(after_parent(&|| true, &|| {
+            restored.set(true);
+            Ok(())
+        }));
     });
     assert!(restored.get());
     assert_eq!(code, Some(ExitCode::SUCCESS));
@@ -43,7 +40,7 @@ fn a_blank_arrow_left_behind_is_restored_and_said() {
 fn an_arrow_that_is_not_blank_is_left_alone() {
     let mut code = None;
     let notes = guard_notes(|| {
-        code = Some(after_parent(|| false, || panic!("nothing to restore")));
+        code = Some(after_parent(&|| false, &|| panic!("nothing to restore")));
     });
     assert_eq!(code, Some(ExitCode::SUCCESS));
     assert!(notes.is_empty());
@@ -53,10 +50,9 @@ fn an_arrow_that_is_not_blank_is_left_alone() {
 fn cursors_that_cannot_be_restored_are_a_failure_and_not_said_to_be_shown() {
     let mut code = None;
     let notes = guard_notes(|| {
-        code = Some(after_parent(
-            || true,
-            || Err(Error::Os("SystemParametersInfo: refused".into())),
-        ));
+        code = Some(after_parent(&|| true, &|| {
+            Err(Error::Os("SystemParametersInfo: refused".into()))
+        }));
     });
     assert_eq!(code, Some(ExitCode::FAILURE));
     assert!(notes.is_empty());

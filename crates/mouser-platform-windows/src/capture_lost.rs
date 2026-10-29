@@ -8,6 +8,7 @@
 //! hook.
 
 use crate::capture::Shared;
+use crate::diag;
 use mouser_platform::{CaptureLossReason, ForegroundApp, LocalInput};
 use std::sync::atomic::Ordering;
 
@@ -44,9 +45,17 @@ pub(crate) fn reason_now(
 }
 
 /// The foreground changed: an app above Mouser takes the capture away at
-/// once, without waiting for the next watchdog cycle.
+/// once, without waiting for the next watchdog cycle. The change is written
+/// to the diagnostic log (when logging is on), by app name only (FR-003).
 pub(crate) fn on_foreground(app: Option<ForegroundApp>, lose: &dyn Fn(CaptureLossReason)) {
-    if app.is_some_and(|app| app.outranks_mouser) {
+    let (name, outranks) = app.as_ref().map_or((String::new(), false), |app| {
+        (app.name.clone(), app.outranks_mouser)
+    });
+    diag::note(
+        "capture.foreground",
+        vec![("app", name), ("outranks", outranks.to_string())],
+    );
+    if outranks {
         lose(CaptureLossReason::ElevatedForeground);
     }
 }

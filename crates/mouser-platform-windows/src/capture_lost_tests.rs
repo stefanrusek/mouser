@@ -1,5 +1,6 @@
 use crate::capture::{Shared, WinCapture};
 use crate::capture_lost::*;
+use crate::inject::{MOUSER_TAG, key_input, send};
 use crate::watchdog::{Skip, Surroundings};
 use mouser_platform::{CaptureLossReason, ForegroundApp, InputCapture, LocalInput};
 use std::cell::RefCell;
@@ -7,6 +8,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DestroyWindow, SetForegroundWindow, WINDOW_EX_STYLE, WS_POPUP, WS_VISIBLE,
+};
+use windows::core::w;
 
 fn shared(grabbed: bool) -> Shared {
     Shared {
@@ -130,4 +135,98 @@ fn the_real_capture_lost_while_grabbed_shows_the_pointer_before_core_is_told() {
     assert_eq!(told, Some(CaptureLossReason::OtherDesktop));
     assert!(shown, "the pointer is shown");
     assert!(!grabbed, "ungrabbed");
+}
+
+/// A PC on which nothing takes the capture away.
+struct NothingLost;
+
+impl Surroundings for NothingLost {
+    fn skip(&mut self) -> Option<Skip> {
+        None
+    }
+
+    fn lost(&mut self) -> Option<CaptureLossReason> {
+        None
+    }
+
+    fn probed(&mut self) {}
+
+    fn foreground(&self) -> String {
+        "test.exe".into()
+    }
+
+    fn input_tick(&self) -> u32 {
+        crate::watchdog::last_input()
+    }
+}
+
+fn nothing_lost() -> Box<dyn Surroundings + Send> {
+    Box::new(NothingLost)
+}
+
+#[test]
+fn the_real_capture_keeps_its_grab_when_an_app_not_above_mouser_comes_to_the_front() {
+    let _live = crate::live_input();
+    let own = std::env::current_exe().unwrap();
+    let own = own.file_name().unwrap().to_string_lossy().into_owned();
+    // The foreground changes the capture's hook heard of, from the diagnostic log.
+    let (heard_tx, heard) = channel();
+    crate::diag::set_diagnostics(Some(Arc::new(move |event, fields| {
+        if event == "capture.foreground" {
+            let _ = heard_tx.send(fields);
+        }
+    })));
+    let mut capture =
+        WinCapture::with_watchdog(Arc::new(|_| {}), Duration::from_millis(50), nothing_lost);
+    let (tx, rx) = channel();
+    capture.start(tx).unwrap();
+    capture.set_grabbed(true).unwrap();
+    let window = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            w!("STATIC"),
+            w!("capture foreground test"),
+            WS_POPUP | WS_VISIBLE,
+            0,
+            0,
+            40,
+            40,
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+    .unwrap();
+    // Windows lets a program bring its window to the front just after it
+    // sent input; a tap of Alt is the least a press can do.
+    send(&[
+        key_input(0x38, false, true, MOUSER_TAG),
+        key_input(0x38, false, false, MOUSER_TAG),
+    ])
+    .unwrap();
+    let _ = unsafe { SetForegroundWindow(window) };
+    let ours = vec![("app", own), ("outranks", "false".to_string())];
+    let end = Instant::now() + Duration::from_secs(5);
+    let heard_ours = loop {
+        let left = end.saturating_duration_since(Instant::now());
+        match heard.recv_timeout(left) {
+            Ok(fields) if fields == ours => break true,
+            Ok(_) => {}
+            Err(_) => break false,
+        }
+    };
+    let grabbed = capture.running().unwrap().shared.grabbed.load(SeqCst);
+    capture.stop();
+    crate::diag::set_diagnostics(None);
+    let _ = unsafe { DestroyWindow(window) };
+    let lost = rx
+        .try_iter()
+        .any(|input| matches!(input, LocalInput::CaptureLost(_)));
+    assert!(
+        heard_ours,
+        "the hook heard the test's window come to the front"
+    );
+    assert!(grabbed, "still grabbed");
+    assert!(!lost, "core is not told the capture was lost");
 }
