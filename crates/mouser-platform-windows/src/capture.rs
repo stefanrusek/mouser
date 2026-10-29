@@ -24,8 +24,13 @@
 //! installed again, and a Problem is reported if that does not cure it
 //! (`watchdog`). The hook thread runs time-critical and the process opts out
 //! of power throttling, so a busy PC does not make the hooks time out.
+//!
+//! Each capture runs a cursor guard (research V5): this executable again,
+//! with no window, which shows the pointer if Mouser ends without doing so.
+//! A normal stop shows the pointer and then ends the guard.
 
 use crate::capture_lost::{self, on_foreground};
+use crate::cursor_guard::StopEvent;
 use crate::displays::{self, DisplayCache};
 use crate::foreground_hook::ForegroundHook;
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
@@ -35,6 +40,9 @@ use mouser_platform::{
     CaptureLossReason, Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result,
 };
 use std::cell::RefCell;
+use std::os::windows::process::CommandExt;
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -42,7 +50,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::System::Threading::{CREATE_NO_WINDOW, GetCurrentThreadId};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_MOVE_NOCOALESCE, MOUSEEVENTF_VIRTUALDESK,
 };
@@ -464,6 +472,56 @@ pub(crate) struct Running {
     forward: JoinHandle<()>,
     watchdog: JoinHandle<()>,
     stop_watchdog: Sender<()>,
+    guard: Option<Guard>,
+}
+
+/// Starts the cursor guard for the process with this id.
+pub(crate) type SpawnGuard = fn(u32) -> std::io::Result<Child>;
+
+/// `command`, started with no window and no console of its own to read or
+/// write.
+pub(crate) fn windowless(command: &mut Command) -> &mut Command {
+    command
+        .creation_flags(CREATE_NO_WINDOW.0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+}
+
+/// The cursor guard's command line: `<exe> --cursor-guard <parent>`.
+pub(crate) fn guard_command(exe: &Path, parent: u32) -> Command {
+    let mut command = Command::new(exe);
+    command.args(["--cursor-guard", &parent.to_string()]);
+    windowless(&mut command);
+    command
+}
+
+/// The real guard: this executable, run as the guard of `parent`.
+fn spawn_guard(parent: u32) -> std::io::Result<Child> {
+    guard_command(&std::env::current_exe()?, parent).spawn()
+}
+
+/// A running cursor guard and the event that stops it.
+pub(crate) struct Guard {
+    stop: StopEvent,
+    child: Child,
+}
+
+impl Guard {
+    /// Starts a guard of this process with `spawn`. The stop event is made
+    /// first, so a guard that starts after a stop still sees it.
+    fn start(spawn: SpawnGuard) -> std::io::Result<Guard> {
+        let parent = std::process::id();
+        let stop = StopEvent::create(parent).map_err(std::io::Error::other)?;
+        let child = spawn(parent)?;
+        Ok(Guard { stop, child })
+    }
+
+    /// Stops the guard and waits for it to end by itself.
+    fn end(mut self) {
+        self.stop.set();
+        let _ = self.child.wait();
+    }
 }
 
 /// Hides or restores the local pointer; a failure is reported as a problem and
@@ -492,6 +550,7 @@ pub(crate) struct WinCapture {
     problems: Problems,
     interval: Duration,
     surroundings: MakeSurroundings,
+    spawn_guard: SpawnGuard,
     running: Option<Running>,
 }
 
@@ -509,6 +568,7 @@ impl WinCapture {
             problems,
             interval,
             surroundings,
+            spawn_guard,
             running: None,
         }
     }
@@ -596,6 +656,13 @@ impl InputCapture for WinCapture {
                 );
             })
         };
+        let guard = Guard::start(self.spawn_guard)
+            .inspect_err(|e| {
+                (self.problems)(PlatformProblem::Raised(format!(
+                    "Mouser could not start its cursor guard: {e}"
+                )));
+            })
+            .ok();
         self.running = Some(Running {
             shared,
             hook_thread_id,
@@ -604,6 +671,7 @@ impl InputCapture for WinCapture {
             forward,
             watchdog,
             stop_watchdog,
+            guard,
         });
         Ok(())
     }
@@ -631,6 +699,10 @@ impl InputCapture for WinCapture {
         if running.shared.grabbed.load(Ordering::SeqCst) {
             set_pointer_hidden(false, &self.problems, hide_or_show);
         }
+        // The pointer is shown: the guard has nothing left to guard.
+        if let Some(guard) = running.guard {
+            guard.end();
+        }
         let _ = running.stop_watchdog.send(());
         running.watchdog.join().expect("watchdog thread");
         // A hook thread that is already gone has nothing left to stop.
@@ -650,6 +722,17 @@ impl Drop for WinCapture {
 /// For tests: what the OS does to a hook that timed out.
 #[cfg(test)]
 impl WinCapture {
+    /// Starts guards with `spawn` instead of the real one.
+    pub(crate) fn with_guard(mut self, spawn: SpawnGuard) -> Self {
+        self.spawn_guard = spawn;
+        self
+    }
+
+    /// The running capture's guard.
+    pub(crate) fn guard(&self) -> Option<&Child> {
+        self.running().ok()?.guard.as_ref().map(|g| &g.child)
+    }
+
     /// A thread message the hook thread has no use for.
     pub(crate) fn poke(&self) {
         let id = self.running().unwrap().hook_thread_id;

@@ -962,3 +962,163 @@ fn a_mouse_message_that_means_nothing_is_not_forwarded_and_passes_through() {
     assert!(on_mouse(ctx, 0x9999, &info));
     assert!(forwarded.try_recv().is_err());
 }
+
+// ---- the cursor guard (research V5) ----
+
+#[test]
+fn the_guard_is_this_executable_run_with_cursor_guard_and_the_parent_pid() {
+    let exe = std::env::current_exe().unwrap();
+    let command = guard_command(&exe, 4242);
+    assert_eq!(command.get_program(), exe.as_os_str());
+    let args: Vec<_> = command.get_args().collect();
+    assert_eq!(args, ["--cursor-guard", "4242"]);
+}
+
+#[test]
+fn capture_start_runs_this_executable_as_the_guard() {
+    let (capture, _rx) = started(no_problems());
+    let guard = capture.guard().expect("a guard was started");
+    let image = image_of(guard);
+    drop(capture);
+    assert_eq!(image, std::env::current_exe().unwrap());
+}
+
+/// The executable file of `child`, read through its handle, so it can be
+/// read after the child has ended.
+fn image_of(child: &std::process::Child) -> std::path::PathBuf {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Threading::{PROCESS_NAME_WIN32, QueryFullProcessImageNameW};
+    let mut path = [0u16; 1024];
+    let mut len = path.len() as u32;
+    let process = HANDLE(child.as_raw_handle());
+    let name = windows::core::PWSTR(path.as_mut_ptr());
+    unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, name, &mut len) }.unwrap();
+    String::from_utf16_lossy(&path[..len as usize]).into()
+}
+
+/// Set in a copy of this test binary that stands in for the guard: the
+/// parent's pid.
+const GUARD_PARENT: &str = "MOUSER_TEST_GUARD_PARENT";
+
+/// The file a stand-in guard writes just before it starts guarding `parent`.
+fn ready_file(parent: u32) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("mouser-test-guard-{parent}.ready"))
+}
+
+/// The stand-in guard: a copy of this test binary running only
+/// `guard_host`, started as the real guard is, with no window.
+fn spawn_guard_host(parent: u32) -> std::io::Result<std::process::Child> {
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command
+        .args(["--exact", "capture_tests::guard_host", "--test-threads=1"])
+        .env(GUARD_PARENT, parent.to_string());
+    windowless(&mut command).spawn()
+}
+
+/// In a stand-in guard, guards the parent with the real guard, which must
+/// end well; run as an ordinary test, does nothing.
+#[test]
+fn guard_host() {
+    let Ok(parent) = std::env::var(GUARD_PARENT) else {
+        return;
+    };
+    let parent = parent.parse().unwrap();
+    std::fs::write(ready_file(parent), "").unwrap();
+    assert_eq!(
+        crate::cursor_guard::run(parent),
+        std::process::ExitCode::SUCCESS
+    );
+}
+
+fn session_of(pid: u32) -> u32 {
+    use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    let mut session = 0;
+    unsafe { ProcessIdToSessionId(pid, &mut session) }.unwrap();
+    session
+}
+
+/// The visible top-level windows of process `pid`.
+fn visible_windows_of(pid: u32) -> usize {
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    unsafe extern "system" fn each(window: HWND, found: LPARAM) -> windows::core::BOOL {
+        let found = unsafe { &mut *(found.0 as *mut (u32, usize)) };
+        let mut owner = 0;
+        unsafe { GetWindowThreadProcessId(window, Some(&mut owner)) };
+        if owner == found.0 && unsafe { IsWindowVisible(window) }.as_bool() {
+            found.1 += 1;
+        }
+        true.into()
+    }
+    let mut found = (pid, 0usize);
+    unsafe { EnumWindows(Some(each), LPARAM(&raw mut found as isize)) }.unwrap();
+    found.1
+}
+
+#[test]
+fn the_guard_runs_in_this_session_with_no_window_until_a_normal_stop_ends_it() {
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        WaitForSingleObject,
+    };
+    let own = std::process::id();
+    let ready = ready_file(own);
+    let _ = std::fs::remove_file(&ready);
+    let (tx, _rx) = channel();
+    let mut capture = WinCapture::new(no_problems()).with_guard(spawn_guard_host);
+    capture.start(tx).unwrap();
+    let pid = capture.guard().expect("a guard was started").id();
+    let access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE;
+    let process = unsafe { OpenProcess(access, false, pid) }.unwrap();
+    // The stand-in was asked to guard this process: it names its file so.
+    let end = Instant::now() + Duration::from_secs(20);
+    while !ready.exists() && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let was_ready = ready.exists();
+    let session = session_of(pid);
+    let windows = visible_windows_of(pid);
+    let waiting = unsafe { WaitForSingleObject(process, 0) } == WAIT_TIMEOUT;
+    capture.stop();
+    let ended = unsafe { WaitForSingleObject(process, 0) } == WAIT_OBJECT_0;
+    let mut code = 0;
+    unsafe { GetExitCodeProcess(process, &mut code) }.unwrap();
+    let _ = unsafe { CloseHandle(process) };
+    let _ = std::fs::remove_file(&ready);
+    assert!(was_ready, "the guard started for this process");
+    assert_eq!(session, session_of(own), "in this session");
+    assert_eq!(windows, 0, "with no window");
+    assert!(waiting, "the guard waits while the capture runs");
+    assert!(ended, "a normal stop ends the guard");
+    assert_eq!(code, 0, "and the guard ended well");
+}
+
+fn no_guard(_: u32) -> std::io::Result<std::process::Child> {
+    Err(std::io::Error::other("refused"))
+}
+
+#[test]
+fn a_guard_that_cannot_start_is_a_problem_and_the_capture_runs_on() {
+    let (ptx, prx) = channel();
+    let problems: Problems = Arc::new(move |problem| {
+        let _ = ptx.send(problem);
+    });
+    let (tx, _rx) = channel();
+    let mut capture = WinCapture::new(problems).with_guard(no_guard);
+    capture.start(tx).unwrap();
+    let guard = capture.guard().is_some();
+    let running = capture.running().is_ok();
+    capture.stop();
+    assert!(!guard);
+    assert!(running, "the capture runs on");
+    assert_eq!(
+        prx.try_iter().collect::<Vec<_>>(),
+        [PlatformProblem::Raised(
+            "Mouser could not start its cursor guard: refused".into()
+        )]
+    );
+}
