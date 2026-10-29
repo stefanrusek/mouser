@@ -6,6 +6,7 @@
 //! would otherwise catch the other tests' CLI processes.
 
 use std::process::Stdio;
+use std::time::Duration;
 
 use tokio::process::Command;
 
@@ -67,6 +68,14 @@ async fn assert_connects(endpoint: Endpoint, env: &[(&str, &str)]) {
         () = endpoint.accepted() => {}
         status = child.wait() => panic!("the CLI exited ({status:?}) without connecting"),
     }
+    // The stand-in hangs up, as an engine that goes away does, and the CLI
+    // exits by itself. Killed instead, it would leave the coverage data it
+    // was writing broken, and one broken file fails the whole coverage merge.
+    drop(endpoint);
+    tokio::time::timeout(Duration::from_secs(20), child.wait())
+        .await
+        .expect("the CLI exits once the endpoint hangs up")
+        .unwrap();
 }
 
 #[cfg(target_os = "macos")]
