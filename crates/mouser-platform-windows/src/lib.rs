@@ -22,6 +22,7 @@ mod drag;
 mod dropdir;
 mod edge;
 mod firewall;
+mod foreground;
 mod fullscreen;
 mod inject;
 mod keymap;
@@ -298,8 +299,7 @@ impl Platform for WinPlatform {
     }
 
     fn foreground_app(&self) -> Option<mouser_platform::ForegroundApp> {
-        // v2: real foreground_app in platform-windows US1
-        None
+        foreground::foreground_app()
     }
 
     fn secrets(&self) -> Box<dyn SecretStore> {
@@ -341,6 +341,8 @@ mod displays_tests;
 mod drag_tests;
 #[cfg(test)]
 mod firewall_tests;
+#[cfg(test)]
+mod foreground_tests;
 #[cfg(test)]
 mod fullscreen_tests;
 #[cfg(test)]
