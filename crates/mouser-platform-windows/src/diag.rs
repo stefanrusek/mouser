@@ -212,3 +212,27 @@ pub(crate) fn note(event: DiagEvent) {
         sink(event.level(), event.name(), event.fields());
     }
 }
+
+/// A line as the sink receives it.
+#[cfg(test)]
+pub(crate) type Line = (DiagLevel, String, Vec<(&'static str, DiagValue)>);
+
+/// For tests: every line written while `f` runs. Tests that listen take
+/// turns, so one does not take the sink from another.
+#[cfg(test)]
+pub(crate) fn heard_during(f: impl FnOnce()) -> Vec<Line> {
+    static LISTENING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _turn = LISTENING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let into = heard.clone();
+    set_diagnostics(Some(Arc::new(move |level, event, fields| {
+        into.lock()
+            .unwrap()
+            .push((level, event.to_string(), fields));
+    })));
+    f();
+    set_diagnostics(None);
+    std::mem::take(&mut *heard.lock().unwrap())
+}

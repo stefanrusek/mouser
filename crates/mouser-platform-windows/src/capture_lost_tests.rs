@@ -1,11 +1,12 @@
 use crate::capture::{Shared, WinCapture};
 use crate::capture_lost::*;
+use crate::diag::{DiagLevel, DiagValue, heard_during};
 use crate::inject::{MOUSER_TAG, key_input, send};
 use crate::watchdog::{Skip, Surroundings};
 use mouser_platform::{CaptureLossReason, ForegroundApp, InputCapture, LocalInput};
 use std::cell::RefCell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
+use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -16,9 +17,21 @@ use windows::core::w;
 fn shared(grabbed: bool) -> Shared {
     Shared {
         grabbed: AtomicBool::new(grabbed),
-        seen_mouse: AtomicU32::new(0),
-        seen_key: AtomicU32::new(0),
+        ..Shared::default()
     }
+}
+
+/// The `capture.lost` lines written while `f` ran about `foreground`,
+/// which marks this test's own (other tests' captures may write meanwhile).
+fn lost_lines(foreground: &str, f: impl FnOnce()) -> Vec<Vec<(&'static str, DiagValue)>> {
+    let ours = ("foreground", DiagValue::Str(foreground.into()));
+    heard_during(f)
+        .into_iter()
+        .filter(|(level, event, fields)| {
+            *level == DiagLevel::Warn && event == "capture.lost" && fields.contains(&ours)
+        })
+        .map(|(_, _, fields)| fields)
+        .collect()
 }
 
 fn app(outranks_mouser: bool) -> Option<ForegroundApp> {
@@ -33,13 +46,25 @@ fn app(outranks_mouser: bool) -> Option<ForegroundApp> {
 fn losing_a_grabbed_capture_shows_the_pointer_before_core_is_told() {
     let shared = shared(true);
     let done = RefCell::new(Vec::new());
-    let lost = lose(
-        &shared,
-        CaptureLossReason::HooksSilent,
-        || done.borrow_mut().push("pointer shown".to_string()),
-        |input| done.borrow_mut().push(format!("{input:?}")),
-    );
+    let mut lost = false;
+    let lines = lost_lines("first.exe", || {
+        lost = lose(
+            &shared,
+            CaptureLossReason::HooksSilent,
+            Some("first.exe".into()),
+            || done.borrow_mut().push("pointer shown".to_string()),
+            |input| done.borrow_mut().push(format!("{input:?}")),
+        );
+    });
     assert!(lost);
+    // Logged with the program in front, by name only.
+    assert_eq!(
+        lines,
+        [vec![
+            ("reason", DiagValue::Str("hooks_silent".into())),
+            ("foreground", DiagValue::Str("first.exe".into()))
+        ]]
+    );
     assert!(!shared.grabbed.load(SeqCst), "ungrabbed");
     let told = format!(
         "{:?}",
@@ -51,13 +76,18 @@ fn losing_a_grabbed_capture_shows_the_pointer_before_core_is_told() {
 #[test]
 fn a_capture_that_is_not_grabbed_has_nothing_to_lose() {
     let shared = shared(false);
-    let lost = lose(
-        &shared,
-        CaptureLossReason::OtherDesktop,
-        || panic!("the pointer is already shown"),
-        |_| panic!("core is not told"),
-    );
+    let mut lost = true;
+    let lines = lost_lines("second.exe", || {
+        lost = lose(
+            &shared,
+            CaptureLossReason::OtherDesktop,
+            Some("second.exe".into()),
+            || panic!("the pointer is already shown"),
+            |_| panic!("core is not told"),
+        );
+    });
     assert!(!lost);
+    assert!(lines.is_empty(), "nothing was lost, nothing is logged");
 }
 
 #[test]
@@ -73,11 +103,15 @@ fn another_desktop_or_an_app_above_mouser_takes_the_capture_away() {
 #[test]
 fn a_foreground_change_to_an_app_above_mouser_takes_the_capture_away_at_once() {
     let lost = RefCell::new(Vec::new());
-    let lose = |reason| lost.borrow_mut().push(reason);
+    let lose = |reason, foreground| lost.borrow_mut().push((reason, foreground));
     on_foreground(app(false), &lose);
     on_foreground(None, &lose);
     on_foreground(app(true), &lose);
-    assert_eq!(*lost.borrow(), [CaptureLossReason::ElevatedForeground]);
+    let above = (
+        CaptureLossReason::ElevatedForeground,
+        Some("app.exe".into()),
+    );
+    assert_eq!(*lost.borrow(), [above]);
 }
 
 /// A PC on which another desktop has the input.
@@ -115,26 +149,37 @@ fn the_real_capture_lost_while_grabbed_shows_the_pointer_before_core_is_told() {
         Duration::from_millis(50),
         other_desktop_has_the_input,
     );
-    let (tx, rx) = channel();
-    capture.start(tx).unwrap();
-    capture.set_grabbed(true).unwrap();
-    // The watchdog's next cycle finds the other desktop.
-    let end = Instant::now() + Duration::from_secs(5);
-    let told = loop {
-        let left = end.saturating_duration_since(Instant::now());
-        match rx.recv_timeout(left) {
-            Ok(LocalInput::CaptureLost(reason)) => break Some(reason),
-            Ok(_) => {}
-            Err(_) => break None,
-        }
-    };
-    // By the time core hears of it the pointer is back (rule 10).
-    let shown = !crate::cursor::arrow_is_blank();
-    let grabbed = capture.running().unwrap().shared.grabbed.load(SeqCst);
-    capture.stop();
+    let (mut told, mut shown, mut grabbed) = (None, false, true);
+    let lines = lost_lines("LogonUI.exe", || {
+        let (tx, rx) = channel();
+        capture.start(tx).unwrap();
+        capture.set_grabbed(true).unwrap();
+        // The watchdog's next cycle finds the other desktop.
+        let end = Instant::now() + Duration::from_secs(5);
+        told = loop {
+            let left = end.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left) {
+                Ok(LocalInput::CaptureLost(reason)) => break Some(reason),
+                Ok(_) => {}
+                Err(_) => break None,
+            }
+        };
+        // By the time core hears of it the pointer is back (rule 10).
+        shown = !crate::cursor::arrow_is_blank();
+        grabbed = capture.running().unwrap().shared.grabbed.load(SeqCst);
+        capture.stop();
+    });
     assert_eq!(told, Some(CaptureLossReason::OtherDesktop));
     assert!(shown, "the pointer is shown");
     assert!(!grabbed, "ungrabbed");
+    // Logged once, with the program in front by name only.
+    assert_eq!(
+        lines,
+        [vec![
+            ("reason", DiagValue::Str("other_desktop".into())),
+            ("foreground", DiagValue::Str("LogonUI.exe".into()))
+        ]]
+    );
 }
 
 /// A PC on which nothing takes the capture away.

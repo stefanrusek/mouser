@@ -98,6 +98,21 @@ fn count(counts: Counts, hook: Hook) -> u32 {
     }
 }
 
+/// What the hooks have seen: every event, and the watchdog's probes among
+/// them. An event that is not a probe is real input (or Mouser's own).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Seen {
+    pub(crate) all: Counts,
+    pub(crate) probes: Counts,
+}
+
+impl Seen {
+    /// What `hook` has seen: (every event, the probes).
+    fn of(self, hook: Hook) -> (u32, u32) {
+        (count(self.all, hook), count(self.probes, hook))
+    }
+}
+
 /// Why a probe now would tell nothing, so none is sent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Skip {
@@ -153,8 +168,9 @@ pub(crate) const MISSES_TO_RAISE: u32 = 2;
 /// A probe a hook has not seen yet.
 #[derive(Clone, Copy)]
 struct Pending {
-    /// What the hook had seen when the probe was sent.
-    count: u32,
+    /// What the hook had seen when the probe was sent: (every event, the
+    /// probes).
+    seen: (u32, u32),
     /// The system's last-input tick right after it was sent.
     tick: u32,
 }
@@ -193,7 +209,7 @@ impl Judge {
 
 /// What one watchdog cycle works with.
 pub(crate) struct Cycle<'a> {
-    pub(crate) counters: &'a dyn Fn() -> Counts,
+    pub(crate) counters: &'a dyn Fn() -> Seen,
     pub(crate) probe: &'a mut dyn FnMut() -> Outcome,
     /// Installs these hooks again (asynchronously).
     pub(crate) reinstall: &'a mut dyn FnMut(&[Hook]),
@@ -201,8 +217,9 @@ pub(crate) struct Cycle<'a> {
     pub(crate) problems: &'a Problems,
     /// Writes a `capture.probe` line.
     pub(crate) note: &'a dyn Fn(Probe),
-    /// Takes the capture away, for this reason (`capture_lost`).
-    pub(crate) lost: &'a dyn Fn(CaptureLossReason),
+    /// Takes the capture away, for this reason, with the program in front
+    /// when it can be named (`capture_lost`).
+    pub(crate) lost: &'a dyn Fn(CaptureLossReason, Option<String>),
 }
 
 /// One watchdog cycle: judge the probe still unseen from the last cycle and,
@@ -210,9 +227,11 @@ pub(crate) struct Cycle<'a> {
 /// next one.
 ///
 /// A hook that has seen any event since that probe, the probe or real input,
-/// is healthy. One that has seen nothing has missed only if someone used the
-/// PC since (the system's last-input tick moved): with nobody there, its
-/// silence says nothing, and the probe stays pending.
+/// is healthy: `late` when the probe came after its wait, `live` when the
+/// hook saw real input though the probe never came (another program's hook
+/// may swallow probes). One that has seen nothing has missed only if someone
+/// used the PC since (the system's last-input tick moved): with nobody there,
+/// its silence says nothing, and the probe stays pending.
 pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     let foreground = cycle.surroundings.foreground();
     // A program that cannot be named is left out, not written empty.
@@ -227,7 +246,7 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
         });
     };
     if let Some(reason) = cycle.surroundings.lost() {
-        (cycle.lost)(reason);
+        (cycle.lost)(reason, foreground.clone());
     }
     let now = (cycle.counters)();
     let tick = cycle.surroundings.input_tick();
@@ -237,9 +256,13 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
         let Some(pending) = state.pending.take() else {
             continue;
         };
-        if count(now, hook) != pending.count {
+        let (all, probes) = now.of(hook);
+        if probes != pending.seen.1 {
             state.misses = 0;
             note(ProbeOutcome::Late, Some(hook), None, None);
+        } else if all != pending.seen.0 {
+            state.misses = 0;
+            note(ProbeOutcome::Live, Some(hook), None, None);
         } else if tick == pending.tick {
             state.pending = Some(pending);
         } else {
@@ -250,7 +273,7 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     }
     if !failed.is_empty() {
         // One real miss: the capture cannot be trusted to see input.
-        (cycle.lost)(CaptureLossReason::HooksSilent);
+        (cycle.lost)(CaptureLossReason::HooksSilent, foreground.clone());
         (cycle.reinstall)(&failed);
         let repeated = failed
             .iter()
@@ -273,26 +296,29 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     cycle.surroundings.probed();
     let after = (cycle.counters)();
     let tick = cycle.surroundings.input_tick();
-    let mut unseen = Vec::new();
+    // What each hook that did not see the probe made of its wait.
+    let mut not_seen = Vec::new();
     for hook in Hook::BOTH {
         let state = judge.state(hook);
-        if count(after, hook) != count(now, hook) {
+        let (before, after) = (now.of(hook), after.of(hook));
+        if after.1 != before.1 {
             state.misses = 0;
             state.pending = None;
+        } else if after.0 != before.0 {
+            state.misses = 0;
+            state.pending = None;
+            not_seen.push((ProbeOutcome::Live, hook));
         } else {
-            state.pending = Some(Pending {
-                count: count(now, hook),
-                tick,
-            });
-            unseen.push(hook);
+            state.pending = Some(Pending { seen: before, tick });
+            not_seen.push((ProbeOutcome::Unseen, hook));
         }
     }
-    if unseen.is_empty() {
+    if not_seen.is_empty() {
         note(ProbeOutcome::Seen, None, None, None);
     }
     // One line per hook: a line names one hook.
-    for hook in unseen {
-        note(ProbeOutcome::Unseen, Some(hook), None, None);
+    for (outcome, hook) in not_seen {
+        note(outcome, Some(hook), None, None);
     }
     judge.clear_if_healed(cycle.problems);
 }

@@ -561,6 +561,29 @@ fn warping_moves_and_re_parks_the_cursor() {
 }
 
 #[test]
+fn grabbing_and_letting_go_write_no_pointer_lines_of_the_backends_own() {
+    // Core writes pointer.hidden and pointer.shown with the catalog's
+    // reasons; a second record from the backend would double them.
+    let _live = crate::live_input();
+    let lines = crate::diag::heard_during(|| {
+        let (mut capture, _rx) = started(no_problems());
+        capture.set_grabbed(true).unwrap();
+        capture.set_grabbed(false).unwrap();
+        capture.set_grabbed(true).unwrap();
+        capture.stop();
+    });
+    let pointer: Vec<_> = lines
+        .iter()
+        .filter(|(_, event, _)| event.starts_with("pointer."))
+        .collect();
+    assert!(pointer.is_empty(), "{pointer:?}");
+    assert!(
+        lines.iter().any(|(_, event, _)| event == "capture.start"),
+        "the capture's own lines were heard"
+    );
+}
+
+#[test]
 fn warping_to_a_point_on_no_display_is_an_error_and_leaves_the_cursor() {
     let _live = crate::live_input();
     let (mut capture, _rx) = started(no_problems());
@@ -899,11 +922,7 @@ fn the_problem_text_is_unchanged() {
 }
 
 fn shared() -> Shared {
-    Shared {
-        grabbed: std::sync::atomic::AtomicBool::new(false),
-        seen_mouse: std::sync::atomic::AtomicU32::new(0),
-        seen_key: std::sync::atomic::AtomicU32::new(0),
-    }
+    Shared::default()
 }
 
 #[test]

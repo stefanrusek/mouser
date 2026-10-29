@@ -8,15 +8,18 @@
 //! hook.
 
 use crate::capture::Shared;
+use crate::diag::{self, DiagEvent};
 use mouser_platform::{CaptureLossReason, ForegroundApp, LocalInput};
 use std::sync::atomic::Ordering;
 
 /// Takes the capture away: when it is grabbed, ungrabs it, `show`s the
-/// pointer and then `tell`s core why. A grab is lost once. Whether it was
-/// grabbed.
+/// pointer, writes `capture.lost` with the program in front (`foreground`,
+/// by name only, when it can be named) and then `tell`s core why. A grab is
+/// lost once. Whether it was grabbed.
 pub(crate) fn lose(
     shared: &Shared,
     reason: CaptureLossReason,
+    foreground: Option<String>,
     show: impl FnOnce(),
     tell: impl FnOnce(LocalInput),
 ) -> bool {
@@ -24,6 +27,7 @@ pub(crate) fn lose(
         return false;
     }
     show();
+    diag::note(DiagEvent::CaptureLost { reason, foreground });
     tell(LocalInput::CaptureLost(reason));
     true
 }
@@ -45,11 +49,14 @@ pub(crate) fn reason_now(
 
 /// The foreground changed: an app above Mouser takes the capture away at
 /// once, without waiting for the next watchdog cycle.
-pub(crate) fn on_foreground(app: Option<ForegroundApp>, lose: &dyn Fn(CaptureLossReason)) {
+pub(crate) fn on_foreground(
+    app: Option<ForegroundApp>,
+    lose: &dyn Fn(CaptureLossReason, Option<String>),
+) {
     #[cfg(test)]
     heard::tell(&app);
-    if app.is_some_and(|app| app.outranks_mouser) {
-        lose(CaptureLossReason::ElevatedForeground);
+    if let Some(app) = app.filter(|app| app.outranks_mouser) {
+        lose(CaptureLossReason::ElevatedForeground, Some(app.name));
     }
 }
 
