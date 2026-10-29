@@ -125,15 +125,16 @@ pub(crate) struct TestNode {
 /// wrong a moment later.
 const DEFAULT_PORT: u16 = 32121;
 
-/// A UDP port nobody is using. Taken from a range the operating system never
-/// hands out as an ephemeral port (the relay sockets of other computers
-/// would otherwise take it between the probe and the engine's bind), at an
+/// A UDP port nobody is using. Taken from 20000-31999, below every
+/// ephemeral range (Linux starts at 32768, macOS and Windows at 49152),
+/// or the relay sockets of other computers would take it between the probe
+/// and the engine's bind. At an
 /// offset that differs per process and per call.
 pub(crate) fn free_port() -> u16 {
     static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     std::iter::repeat_with(|| {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 12_000) as u16
     })
     .find(|port| {
         *port != DEFAULT_PORT
@@ -1305,5 +1306,20 @@ pub(crate) fn admin_app(name: &str, outranks_mouser: bool) -> mouser_platform::F
         name: name.into(),
         admin: true,
         outranks_mouser,
+    }
+}
+
+/// Regression (CI flake "a UDP socket can be bound: 0.0.0.0:38126: Address
+/// already in use"): Linux hands ports from 32768 up to ephemeral sockets
+/// (relay sockets, port-0 binds), so a probed port there can be taken
+/// between the probe and the engine's bind. Probed ports stay below it.
+#[test]
+fn probed_ports_are_below_every_operating_systems_ephemeral_range() {
+    for _ in 0..40_000 {
+        let port = free_port();
+        assert!(
+            (20_000..32_768).contains(&port),
+            "{port} may be handed out as ephemeral"
+        );
     }
 }

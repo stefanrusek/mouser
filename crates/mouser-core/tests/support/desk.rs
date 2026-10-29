@@ -181,15 +181,16 @@ static PIPES: AtomicU64 = AtomicU64::new(0);
 /// wrong a moment later.
 const DEFAULT_PORT: u16 = 32121;
 
-/// A UDP port nobody is using. Taken from a range the operating system never
-/// hands out as an ephemeral port (the relay sockets of other computers
-/// would otherwise take it between the probe and the engine's bind), at an
+/// A UDP port nobody is using. Taken from 20000-31999, below every
+/// ephemeral range (Linux starts at 32768, macOS and Windows at 49152),
+/// or the relay sockets of other computers would take it between the probe
+/// and the engine's bind. At an
 /// offset that differs per process and per call.
 fn free_port() -> u16 {
     static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     std::iter::repeat_with(|| {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
+        20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 12_000) as u16
     })
     .find(|port| {
         *port != DEFAULT_PORT
