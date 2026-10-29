@@ -31,7 +31,7 @@ pub enum Capability { /* …001… */ Install, LoginScreen, Tray }
 
 | Backend | `foreground_app` | `CaptureLost` |
 |---|---|---|
-| Windows | `GetForegroundWindow` → process id → image name (`QueryFullProcessImageNameW`, file name only) and token elevation/integrity compared with Mouser's (`uipi.rs`) | V7 conditions (a)–(c) |
+| Windows | `GetForegroundWindow` → process id → image name (`QueryFullProcessImageNameW`, file name only; when the process cannot be opened — most SYSTEM processes, probe P1 — the file name from a Toolhelp32 snapshot, orchestrator-approved 2026-10-29; neither → `None`) and token elevation/integrity compared with Mouser's (`uipi.rs`) | V7 conditions (a)–(c) |
 | macOS | `NSWorkspace.frontmostApplication` localized name; `admin = false`, `outranks_mouser = false` | not emitted (the CGEventTap disable path is 001's re-enable) |
 | Linux X11 | `_NET_ACTIVE_WINDOW` → `_NET_WM_PID` → `/proc/<pid>/comm`; `admin` = process euid is 0; `outranks_mouser = false` | not emitted |
 | Linux Wayland | `None` | not emitted |
