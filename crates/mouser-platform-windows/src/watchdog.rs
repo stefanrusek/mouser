@@ -19,6 +19,7 @@
 //! withdrawn once every hook sees a probe again.
 
 use crate::capture::{LOST_HOLD, Problems};
+use crate::diag::{DiagHook, Probe, ProbeOutcome};
 use mouser_platform::{CaptureLossReason, PlatformProblem};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::RemoteDesktop::{
@@ -50,10 +51,19 @@ pub(crate) enum Hook {
 impl Hook {
     pub(crate) const BOTH: [Hook; 2] = [Hook::Mouse, Hook::Keyboard];
 
+    #[cfg(test)]
     pub(crate) fn name(self) -> &'static str {
         match self {
             Hook::Mouse => "mouse",
             Hook::Keyboard => "keyboard",
+        }
+    }
+
+    /// The hook as a log line names it.
+    pub(crate) fn diag(self) -> DiagHook {
+        match self {
+            Hook::Mouse => DiagHook::Mouse,
+            Hook::Keyboard => DiagHook::Keyboard,
         }
     }
 
@@ -181,9 +191,6 @@ impl Judge {
     }
 }
 
-/// A debug-level log line's fields.
-pub(crate) type Fields = Vec<(&'static str, String)>;
-
 /// What one watchdog cycle works with.
 pub(crate) struct Cycle<'a> {
     pub(crate) counters: &'a dyn Fn() -> Counts,
@@ -192,8 +199,8 @@ pub(crate) struct Cycle<'a> {
     pub(crate) reinstall: &'a mut dyn FnMut(&[Hook]),
     pub(crate) surroundings: &'a mut dyn Surroundings,
     pub(crate) problems: &'a Problems,
-    /// Writes a debug-level log line.
-    pub(crate) note: &'a dyn Fn(Fields),
+    /// Writes a `capture.probe` line.
+    pub(crate) note: &'a dyn Fn(Probe),
     /// Takes the capture away, for this reason (`capture_lost`).
     pub(crate) lost: &'a dyn Fn(CaptureLossReason),
 }
@@ -208,10 +215,16 @@ pub(crate) struct Cycle<'a> {
 /// silence says nothing, and the probe stays pending.
 pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     let foreground = cycle.surroundings.foreground();
-    let note = |outcome: &str, mut fields: Fields| {
-        fields.insert(0, ("outcome", outcome.into()));
-        fields.push(("foreground", foreground.clone()));
-        (cycle.note)(fields);
+    // A program that cannot be named is left out, not written empty.
+    let foreground = Some(foreground).filter(|name| !name.is_empty());
+    let note = |outcome, hook: Option<Hook>, misses, reason| {
+        (cycle.note)(Probe {
+            outcome,
+            hook: hook.map(Hook::diag),
+            misses,
+            reason,
+            foreground: foreground.clone(),
+        });
     };
     if let Some(reason) = cycle.surroundings.lost() {
         (cycle.lost)(reason);
@@ -226,17 +239,13 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
         };
         if count(now, hook) != pending.count {
             state.misses = 0;
-            note("late", vec![("hook", hook.name().into())]);
+            note(ProbeOutcome::Late, Some(hook), None, None);
         } else if tick == pending.tick {
             state.pending = Some(pending);
         } else {
             state.misses += 1;
             failed.push(hook);
-            let misses = state.misses.to_string();
-            note(
-                "missed",
-                vec![("hook", hook.name().into()), ("misses", misses)],
-            );
+            note(ProbeOutcome::Missed, Some(hook), Some(state.misses), None);
         }
     }
     if !failed.is_empty() {
@@ -254,11 +263,11 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     }
     judge.clear_if_healed(cycle.problems);
     if let Some(why) = cycle.surroundings.skip() {
-        note("skipped", vec![("reason", why.name().into())]);
+        note(ProbeOutcome::Skipped, None, None, Some(why.name()));
         return;
     }
     if (cycle.probe)() == Outcome::NotSent {
-        note("not_sent", vec![]);
+        note(ProbeOutcome::NotSent, None, None, None);
         return;
     }
     cycle.surroundings.probed();
@@ -275,13 +284,15 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
                 count: count(now, hook),
                 tick,
             });
-            unseen.push(hook.name());
+            unseen.push(hook);
         }
     }
     if unseen.is_empty() {
-        note("seen", vec![]);
-    } else {
-        note("unseen", vec![("hook", unseen.join(","))]);
+        note(ProbeOutcome::Seen, None, None, None);
+    }
+    // One line per hook: a line names one hook.
+    for hook in unseen {
+        note(ProbeOutcome::Unseen, Some(hook), None, None);
     }
     judge.clear_if_healed(cycle.problems);
 }

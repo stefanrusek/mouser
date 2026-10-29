@@ -106,7 +106,7 @@ pub(crate) fn after_parent(blank: &dyn Fn() -> bool, restore: &dyn Fn() -> Resul
     }
     match restore() {
         Ok(()) => {
-            diag::note("pointer.shown", vec![("reason", "guard".into())]);
+            diag::note(diag::DiagEvent::PointerShownByGuard);
             ExitCode::SUCCESS
         }
         Err(_) => ExitCode::FAILURE,

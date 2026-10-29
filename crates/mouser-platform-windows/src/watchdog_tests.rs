@@ -1,4 +1,5 @@
 use crate::capture::{LOST_HOLD, Problems};
+use crate::diag::{Probe, ProbeOutcome};
 use crate::watchdog::*;
 use mouser_platform::{CaptureLossReason, PlatformProblem};
 use std::cell::{Cell, RefCell};
@@ -14,6 +15,8 @@ struct FakeDesk {
     tick: Cell<u32>,
     /// Why the capture can no longer see input, if the test says so.
     lost: Option<CaptureLossReason>,
+    /// The program in front; empty when it cannot be named.
+    foreground: String,
 }
 
 impl Surroundings for FakeDesk {
@@ -30,7 +33,7 @@ impl Surroundings for FakeDesk {
     }
 
     fn foreground(&self) -> String {
-        "game.exe".into()
+        self.foreground.clone()
     }
 
     fn input_tick(&self) -> u32 {
@@ -54,7 +57,7 @@ struct Cycles {
     reinstalls: Vec<Vec<Hook>>,
     heard: Arc<Mutex<Vec<PlatformProblem>>>,
     sink: Problems,
-    notes: RefCell<Vec<Fields>>,
+    notes: RefCell<Vec<Probe>>,
     /// Why the capture was taken away, each time.
     lost: RefCell<Vec<CaptureLossReason>>,
 }
@@ -74,6 +77,7 @@ impl Cycles {
                 busy: true,
                 tick: Cell::new(0),
                 lost: None,
+                foreground: "game.exe".into(),
             },
             lost: RefCell::new(Vec::new()),
             sent: 0,
@@ -105,7 +109,7 @@ impl Cycles {
                 reinstall: &mut |hooks| reinstalls.push(hooks.to_vec()),
                 surroundings: &mut self.desk,
                 problems: &self.sink,
-                note: &|fields| self.notes.borrow_mut().push(fields),
+                note: &|probe| self.notes.borrow_mut().push(probe),
                 lost: &|reason| self.lost.borrow_mut().push(reason),
             },
         );
@@ -132,13 +136,24 @@ impl Cycles {
 
     /// The last log line, as `key=value` words.
     fn last_note(&self) -> String {
+        self.last_notes(1).remove(0)
+    }
+
+    /// The last `n` log lines, oldest first, as `key=value` words.
+    fn last_notes(&self, n: usize) -> Vec<String> {
         let notes = self.notes.borrow();
-        let fields = notes.last().expect("a line was logged");
-        fields
+        assert!(notes.len() >= n, "{} lines were logged", notes.len());
+        notes[notes.len() - n..]
             .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(" ")
+            .map(|probe| {
+                probe
+                    .fields()
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .collect()
     }
 }
 
@@ -163,13 +178,25 @@ fn healthy_hooks_probe_every_cycle_and_say_nothing() {
 }
 
 #[test]
+fn a_program_in_front_that_cannot_be_named_is_left_out_of_the_line() {
+    let mut c = Cycles::new();
+    c.desk.foreground = String::new();
+    assert!(c.run());
+    assert_eq!(c.last_note(), "outcome=seen");
+}
+
+#[test]
 fn a_probe_that_is_only_late_is_not_a_miss() {
     let mut c = Cycles::new();
     c.reaches = (false, false);
     assert!(c.run());
+    // One line per hook: the catalog's `hook` names one.
     assert_eq!(
-        c.last_note(),
-        "outcome=unseen hook=mouse,keyboard foreground=game.exe"
+        c.last_notes(2),
+        [
+            "outcome=unseen hook=mouse foreground=game.exe",
+            "outcome=unseen hook=keyboard foreground=game.exe"
+        ]
     );
     // The guest stalled: the wait passed, and the hooks saw the probe afterwards.
     c.arrive(true, true);
@@ -180,7 +207,7 @@ fn a_probe_that_is_only_late_is_not_a_miss() {
         c.notes
             .borrow()
             .iter()
-            .any(|n| n.contains(&("outcome", "late".into())))
+            .any(|n| n.outcome == ProbeOutcome::Late)
     );
 }
 

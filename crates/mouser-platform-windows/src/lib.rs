@@ -39,7 +39,9 @@ mod vfiles;
 mod watchdog;
 
 pub use capture::LOST_HOLD;
-pub use diag::{Diagnostics, set_diagnostics};
+pub use diag::{
+    DiagEvent, DiagHook, DiagLevel, DiagValue, Diagnostics, Probe, ProbeOutcome, set_diagnostics,
+};
 
 /// Whether the pointer is hidden on this PC: the system arrow is Mouser's
 /// blank cursor. Conformance rule 10's query, and what the cursor guard
