@@ -686,9 +686,14 @@ impl InputCapture for WinCapture {
         Ok(())
     }
 
+    /// Parks the cursor at logical point (`x`, `y`). A point on no display
+    /// is an error, not a cursor clamped to some edge (rule 11).
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
-        let running = self.running()?;
-        let (px, py) = displays::logical_to_pixel(&running.displays.snapshot(), x, y);
+        let all = self.running()?.displays.snapshot();
+        if !displays::on_a_display(&all, x, y) {
+            return Err(Error::Os(format!("({x}, {y}) is on no display")));
+        }
+        let (px, py) = displays::logical_to_pixel(&all, x, y);
         park_cursor(px, py)
     }
 

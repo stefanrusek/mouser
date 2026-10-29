@@ -203,6 +203,15 @@ fn pixels_and_logical_points_convert_per_display_scale() {
 }
 
 #[test]
+fn a_point_is_on_a_display_only_inside_one() {
+    let all = two_displays();
+    assert!(on_a_display(&all, 0.0, 0.0));
+    assert!(on_a_display(&all, 2200.0, 50.0));
+    assert!(!on_a_display(&all, -5.0, 3.0));
+    assert!(!on_a_display(&all, 1_000_000.0, 1_000_000.0));
+}
+
+#[test]
 fn the_cache_follows_display_changes() {
     let cache = DisplayCache::new();
     assert_eq!(cache.snapshot(), displays().unwrap());

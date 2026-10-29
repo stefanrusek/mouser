@@ -561,6 +561,22 @@ fn warping_moves_and_re_parks_the_cursor() {
 }
 
 #[test]
+fn warping_to_a_point_on_no_display_is_an_error_and_leaves_the_cursor() {
+    let _live = crate::live_input();
+    let (mut capture, _rx) = started(no_problems());
+    let before = cursor();
+    let far = 1_000_000.0;
+    let warped = capture.warp(far, far);
+    let after = cursor();
+    capture.stop();
+    let Err(Error::Os(text)) = warped else {
+        panic!("warp to a point on no display returned {warped:?}");
+    };
+    assert_eq!(text, "(1000000, 1000000) is on no display");
+    assert_eq!(after, before, "the cursor did not move");
+}
+
+#[test]
 fn mousers_own_injected_input_is_never_captured() {
     let _live = crate::live_input();
     let (mut capture, rx) = started(no_problems());

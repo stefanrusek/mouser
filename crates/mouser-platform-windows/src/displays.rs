@@ -269,20 +269,25 @@ pub(crate) fn pixel_to_logical(all: &[LocalDisplay], x: i32, y: i32) -> ((f64, f
 /// Desktop logical coordinates as a physical pixel; the first display stands
 /// in for a point outside every display.
 pub(crate) fn logical_to_pixel(all: &[LocalDisplay], x: f64, y: f64) -> (i32, i32) {
-    let d = all
-        .iter()
-        .find(|d| {
-            x >= d.origin.0
-                && x < d.origin.0 + d.logical_size.0
-                && y >= d.origin.1
-                && y < d.origin.1 + d.logical_size.1
-        })
-        .unwrap_or(&all[0]);
+    let d = all.iter().find(|d| contains(d, x, y)).unwrap_or(&all[0]);
     let scale = f64::from(d.scale);
     (
         (d.origin.0 + (x - d.origin.0) * scale).round() as i32,
         (d.origin.1 + (y - d.origin.1) * scale).round() as i32,
     )
+}
+
+/// Whether logical point (`x`, `y`) is on display `d`.
+fn contains(d: &LocalDisplay, x: f64, y: f64) -> bool {
+    x >= d.origin.0
+        && x < d.origin.0 + d.logical_size.0
+        && y >= d.origin.1
+        && y < d.origin.1 + d.logical_size.1
+}
+
+/// Whether logical point (`x`, `y`) is on one of the displays `all`.
+pub(crate) fn on_a_display(all: &[LocalDisplay], x: f64, y: f64) -> bool {
+    all.iter().any(|d| contains(d, x, y))
 }
 
 /// Read access to a [`DisplayCache`] from another thread.
