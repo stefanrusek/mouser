@@ -34,6 +34,39 @@ fn a_process_that_cannot_be_opened_counts_as_elevated() {
 }
 
 #[test]
+fn a_window_counts_as_outranking_when_mouser_cannot_read_its_own_level() {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DestroyWindow, WINDOW_EX_STYLE, WS_POPUP,
+    };
+    use windows::core::w;
+    // A window of this very process: the same level as Mouser's own.
+    let window = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            w!("STATIC"),
+            w!("uipi test"),
+            WS_POPUP,
+            0,
+            0,
+            1,
+            1,
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+    .unwrap();
+    let own = integrity_level(own_pid());
+    let same_level = window_outranks(window, own);
+    // Unknown, Mouser's level answers instead of failing: the window may outrank it.
+    let unknown = window_outranks(window, None);
+    let _ = unsafe { DestroyWindow(window) };
+    assert!(!same_level);
+    assert!(unknown);
+}
+
+#[test]
 fn no_window_is_not_an_elevated_window() {
     assert!(!window_elevated(windows::Win32::Foundation::HWND::default()));
 }

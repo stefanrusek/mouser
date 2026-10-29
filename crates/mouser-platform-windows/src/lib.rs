@@ -372,17 +372,20 @@ mod watchdog_tests;
 #[cfg(test)]
 pub(crate) fn live_input() -> LiveInput {
     static LIVE: Mutex<()> = Mutex::new(());
-    LiveInput(
-        LIVE.lock()
+    LiveInput {
+        _guard: LIVE
+            .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner),
-    )
+    }
 }
 
 /// Holds the input lock; on release it waits a moment before letting the next
 /// test have the input, so pointer movement the system is still delivering
 /// (the VM's mouse integration among it) is not mistaken for that test's.
 #[cfg(test)]
-pub(crate) struct LiveInput(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+pub(crate) struct LiveInput {
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
 
 #[cfg(test)]
 impl Drop for LiveInput {
