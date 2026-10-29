@@ -188,10 +188,9 @@ async fn headless_start_installs_the_panic_hook_on_the_engines_log() {
     .await;
 }
 
-/// Run a headless engine until `signal` is sent to this process, and check it
+/// Run a headless engine until `stop` asks this process to stop, and check it
 /// shut down (the control endpoint is removed by `Engine::shutdown`).
-#[cfg(unix)]
-async fn shuts_down_on(signal: &str) {
+async fn shuts_down_on(stop: impl FnOnce()) {
     use crate::headless::stop_signal;
     let _one_at_a_time = crate::support_tests::one_at_a_time().await;
     let dir = tempfile::tempdir().unwrap();
@@ -212,26 +211,127 @@ async fn shuts_down_on(signal: &str) {
         stop_signal(),
     ));
     crate::support_tests::eventually(|| control.exists()).await;
+    stop();
+    task.await.unwrap();
+    assert!(!control.exists());
+}
+
+/// Sends `signal` to this process.
+#[cfg(unix)]
+fn kill(signal: &str) {
     let sent = std::process::Command::new("kill")
         .arg(signal)
         .arg(std::process::id().to_string())
         .status()
         .unwrap();
     assert!(sent.success());
-    task.await.unwrap();
-    assert!(!control.exists());
 }
 
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn sigterm_shuts_the_engine_down_before_exit() {
-    shuts_down_on("-TERM").await;
+    shuts_down_on(|| kill("-TERM")).await;
 }
 
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn ctrl_c_shuts_the_engine_down_before_exit() {
-    shuts_down_on("-INT").await;
+    shuts_down_on(|| kill("-INT")).await;
+}
+
+/// Set for the copy of the Ctrl-C test that runs on a console of its own.
+#[cfg(windows)]
+const ON_ITS_OWN_CONSOLE: &str = "MOUSER_TEST_ON_ITS_OWN_CONSOLE";
+
+/// Presses Ctrl-C on this process's console, after checking that nothing
+/// else shares that console.
+#[cfg(windows)]
+fn ctrl_c_on_this_console() {
+    use windows_sys::Win32::System::Console::{
+        CTRL_C_EVENT, GenerateConsoleCtrlEvent, GetConsoleProcessList, SetConsoleCtrlHandler,
+    };
+    let mut on_console = [0u32; 8];
+    let count = unsafe { GetConsoleProcessList(on_console.as_mut_ptr(), 8) };
+    assert_eq!(count, 1, "processes on this console: {on_console:?}");
+    // A process can start with Ctrl-C turned off; turn it back on.
+    assert_ne!(unsafe { SetConsoleCtrlHandler(None, 0) }, 0);
+    assert_ne!(unsafe { GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) }, 0);
+}
+
+/// A copy of this test binary running one test on a console of its own, with
+/// no window, writing what it prints to a file. Dropped, it is ended and
+/// waited for, should it still be running.
+#[cfg(windows)]
+struct OwnConsole {
+    copy: std::process::Child,
+    output: std::path::PathBuf,
+    _dir: tempfile::TempDir,
+}
+
+#[cfg(windows)]
+impl OwnConsole {
+    fn run(test: &str) -> Self {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("output.txt");
+        let file = std::fs::File::create(&output).unwrap();
+        let copy = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", test, "--nocapture", "--test-threads=1"])
+            .env(ON_ITS_OWN_CONSOLE, "1")
+            .stdout(file.try_clone().unwrap())
+            .stderr(file)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .unwrap();
+        Self {
+            copy,
+            output,
+            _dir: dir,
+        }
+    }
+
+    /// Waits up to `limit` for the copy to end by itself: how it exited, and
+    /// what it printed.
+    async fn finish(&mut self, limit: std::time::Duration) -> (std::process::ExitStatus, String) {
+        let end = std::time::Instant::now() + limit;
+        let status = loop {
+            if let Some(status) = self.copy.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                std::time::Instant::now() < end,
+                "the copy ended within {limit:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
+        (status, std::fs::read_to_string(&self.output).unwrap())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for OwnConsole {
+    fn drop(&mut self) {
+        let _ = self.copy.kill();
+        let _ = self.copy.wait();
+    }
+}
+
+/// Ctrl-C reaches every process on the console it is pressed on, so pressed
+/// from here it would reach the test harness and cargo as well. Instead this
+/// test runs a copy of itself on a console of its own, and that copy presses
+/// Ctrl-C on its own console, as the unix tests signal their own process. The
+/// copy ends by itself, so what it measured for coverage is written whole.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread")]
+async fn ctrl_c_shuts_the_engine_down_before_exit() {
+    if std::env::var_os(ON_ITS_OWN_CONSOLE).is_some() {
+        return shuts_down_on(ctrl_c_on_this_console).await;
+    }
+    let mut copy = OwnConsole::run("headless_tests::ctrl_c_shuts_the_engine_down_before_exit");
+    let (status, output) = copy.finish(std::time::Duration::from_secs(60)).await;
+    assert!(status.success(), "{output}");
+    assert!(output.contains("1 passed"), "{output}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
