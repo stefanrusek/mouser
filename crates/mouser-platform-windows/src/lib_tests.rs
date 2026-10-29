@@ -82,11 +82,12 @@ fn delegates_displays_and_their_watch() {
 }
 
 #[test]
-fn capture_and_injection_are_provided_and_no_foreground_app_is_reported_yet() {
+fn capture_and_injection_are_provided_and_the_app_in_front_is_reported() {
     let p = WinPlatform::new();
     drop(p.capture().unwrap());
     drop(p.inject().unwrap());
-    assert!(p.foreground_app().is_none());
+    // Whatever is in front of this test (foreground_tests covers what it says).
+    assert_eq!(p.foreground_app(), crate::foreground::foreground_app());
 }
 
 #[test]
