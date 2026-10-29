@@ -18,7 +18,7 @@ use windows::Win32::System::Threading::{
 /// after restoring blank system cursors. Never creates a window.
 pub fn run(parent_pid: u32) -> ExitCode {
     wait_for(parent_pid);
-    after_parent(arrow_is_blank, recover)
+    after_parent(&arrow_is_blank, &recover)
 }
 
 /// Waits until process `pid` has ended, for whatever reason; at once when
@@ -34,10 +34,7 @@ pub(crate) fn wait_for(pid: u32) {
 /// `restore` the user's cursors and say so in the diagnostic log (when
 /// logging is on); otherwise nothing. A failure when the cursors could not
 /// be restored.
-pub(crate) fn after_parent(
-    blank: impl FnOnce() -> bool,
-    restore: impl FnOnce() -> Result<()>,
-) -> ExitCode {
+pub(crate) fn after_parent(blank: &dyn Fn() -> bool, restore: &dyn Fn() -> Result<()>) -> ExitCode {
     if !blank() {
         return ExitCode::SUCCESS;
     }
