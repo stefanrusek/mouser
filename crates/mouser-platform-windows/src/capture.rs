@@ -52,7 +52,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 /// "MOUP": `dwExtraInfo` of the watchdog's probe events.
-const PROBE_TAG: usize = 0x4D4F_5550;
+pub(crate) const PROBE_TAG: usize = 0x4D4F_5550;
 /// F24, which nothing binds: the key the watchdog's probe releases.
 const PROBE_SCAN: u16 = 0x76;
 
@@ -148,9 +148,10 @@ pub(crate) fn convert(all: &[LocalDisplay], raw: Raw) -> LocalInput {
 /// State the hook thread, the caller and the watchdog share.
 pub(crate) struct Shared {
     pub(crate) grabbed: AtomicBool,
-    /// Probe events each hook has seen.
-    pub(crate) probed_mouse: AtomicU32,
-    pub(crate) probed_key: AtomicU32,
+    /// Events each hook has seen, of every kind: real input, Mouser's own and
+    /// the watchdog's probes. Any of them shows the hook still sees input.
+    pub(crate) seen_mouse: AtomicU32,
+    pub(crate) seen_key: AtomicU32,
 }
 
 /// What the hook callbacks work with; they run on the hook thread.
@@ -167,9 +168,9 @@ thread_local! {
 
 /// Whether to swallow a mouse event.
 pub(crate) fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
+    ctx.shared.seen_mouse.fetch_add(1, Ordering::SeqCst);
     match info.dwExtraInfo {
         PROBE_TAG => {
-            ctx.shared.probed_mouse.fetch_add(1, Ordering::SeqCst);
             // Swallowed, so a probe never moves the cursor.
             return true;
         }
@@ -188,12 +189,10 @@ pub(crate) fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bo
 }
 
 /// Whether to swallow a keyboard event.
-fn on_key(ctx: &mut HookCtx, info: &KBDLLHOOKSTRUCT) -> bool {
+pub(crate) fn on_key(ctx: &mut HookCtx, info: &KBDLLHOOKSTRUCT) -> bool {
+    ctx.shared.seen_key.fetch_add(1, Ordering::SeqCst);
     match info.dwExtraInfo {
-        PROBE_TAG => {
-            ctx.shared.probed_key.fetch_add(1, Ordering::SeqCst);
-            return true;
-        }
+        PROBE_TAG => return true,
         MOUSER_TAG => return false,
         _ => {}
     }
@@ -343,11 +342,11 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
     Hook::BOTH.into_iter().for_each(|hook| hooks.remove(hook));
 }
 
-/// The probe events each hook has seen so far.
+/// The events each hook has seen so far.
 fn seen(shared: &Shared) -> Counts {
     (
-        shared.probed_mouse.load(Ordering::SeqCst),
-        shared.probed_key.load(Ordering::SeqCst),
+        shared.seen_mouse.load(Ordering::SeqCst),
+        shared.seen_key.load(Ordering::SeqCst),
     )
 }
 
@@ -527,8 +526,8 @@ impl InputCapture for WinCapture {
         }
         let shared = Arc::new(Shared {
             grabbed: AtomicBool::new(false),
-            probed_mouse: AtomicU32::new(0),
-            probed_key: AtomicU32::new(0),
+            seen_mouse: AtomicU32::new(0),
+            seen_key: AtomicU32::new(0),
         });
         let displays = DisplayCache::new();
         let (raw_tx, raw_rx) = channel();

@@ -158,6 +158,33 @@ fn moved_to(x: i32, y: i32) -> windows::Win32::UI::WindowsAndMessaging::MSLLHOOK
 }
 
 #[test]
+fn the_hooks_count_every_event_they_see_not_only_probes() {
+    use std::sync::atomic::Ordering::SeqCst;
+    use windows::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT;
+    let (ctx, _forwarded) = &mut hook_ctx(|| Some(CURSOR));
+    // Real input, Mouser's own and the watchdog's probe alike: any event a
+    // hook sees shows that it still sees input.
+    for tag in [0, crate::inject::MOUSER_TAG, PROBE_TAG] {
+        let mouse = windows::Win32::UI::WindowsAndMessaging::MSLLHOOKSTRUCT {
+            dwExtraInfo: tag,
+            ..moved_to(500, 300)
+        };
+        on_mouse(ctx, WM_MOUSEMOVE, &mouse);
+        let key = KBDLLHOOKSTRUCT {
+            scanCode: 0x1E,
+            dwExtraInfo: tag,
+            ..Default::default()
+        };
+        on_key(ctx, &key);
+    }
+    let seen = (
+        ctx.shared.seen_mouse.load(SeqCst),
+        ctx.shared.seen_key.load(SeqCst),
+    );
+    assert_eq!(seen, (3, 3));
+}
+
+#[test]
 fn a_grabbed_move_counts_from_where_the_cursor_is_not_from_where_it_was_parked() {
     // The cursor got away from where the grab began (a move just before the
     // grab took hold, or one the system let past a slow hook): every move
@@ -632,10 +659,7 @@ fn the_watchdog_quietly_reinstalls_a_hook_the_system_removed() {
     let shared = capture.running().unwrap().shared.clone();
     let counts = || {
         use std::sync::atomic::Ordering::SeqCst;
-        (
-            shared.probed_mouse.load(SeqCst),
-            shared.probed_key.load(SeqCst),
-        )
+        (shared.seen_mouse.load(SeqCst), shared.seen_key.load(SeqCst))
     };
     let back = counts();
     let end = Instant::now() + Duration::from_secs(5);
@@ -841,8 +865,8 @@ fn the_problem_text_is_unchanged() {
 fn shared() -> Shared {
     Shared {
         grabbed: std::sync::atomic::AtomicBool::new(false),
-        probed_mouse: std::sync::atomic::AtomicU32::new(0),
-        probed_key: std::sync::atomic::AtomicU32::new(0),
+        seen_mouse: std::sync::atomic::AtomicU32::new(0),
+        seen_key: std::sync::atomic::AtomicU32::new(0),
     }
 }
 
@@ -851,8 +875,8 @@ fn a_probe_is_seen_when_both_hooks_count_it() {
     use std::sync::atomic::Ordering::SeqCst;
     let s = shared();
     let out = probe_hooks_with(&s, Duration::from_secs(5), &mut || {
-        s.probed_mouse.fetch_add(1, SeqCst);
-        s.probed_key.fetch_add(1, SeqCst);
+        s.seen_mouse.fetch_add(1, SeqCst);
+        s.seen_key.fetch_add(1, SeqCst);
         Ok(())
     });
     assert_eq!(out, Outcome::Sent);
@@ -863,7 +887,7 @@ fn a_probe_a_hook_does_not_count_in_time_is_sent_all_the_same() {
     use std::sync::atomic::Ordering::SeqCst;
     let s = shared();
     let out = probe_hooks_with(&s, Duration::from_millis(30), &mut || {
-        s.probed_mouse.fetch_add(1, SeqCst);
+        s.seen_mouse.fetch_add(1, SeqCst);
         Ok(())
     });
     assert_eq!(out, Outcome::Sent);
@@ -886,13 +910,13 @@ fn the_real_probe_is_seen_by_working_hooks_and_leaves_the_cursor_alone() {
     let s = &capture.running().unwrap().shared;
     for _ in 0..3 {
         let before = (
-            s.probed_mouse.load(std::sync::atomic::Ordering::SeqCst),
-            s.probed_key.load(std::sync::atomic::Ordering::SeqCst),
+            s.seen_mouse.load(std::sync::atomic::Ordering::SeqCst),
+            s.seen_key.load(std::sync::atomic::Ordering::SeqCst),
         );
         assert_eq!(probe_hooks(s, Duration::from_secs(5)), Outcome::Sent);
         let after = (
-            s.probed_mouse.load(std::sync::atomic::Ordering::SeqCst),
-            s.probed_key.load(std::sync::atomic::Ordering::SeqCst),
+            s.seen_mouse.load(std::sync::atomic::Ordering::SeqCst),
+            s.seen_key.load(std::sync::atomic::Ordering::SeqCst),
         );
         assert!(
             after.0 > before.0 && after.1 > before.1,
