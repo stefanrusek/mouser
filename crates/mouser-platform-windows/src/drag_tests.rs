@@ -43,7 +43,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetShellWindow, GetWindowTextW,
-    GetWindowThreadProcessId, PhysicalToLogicalPoint, WindowFromPoint,
+    GetWindowThreadProcessId, IsHungAppWindow, PhysicalToLogicalPoint, WindowFromPoint,
 };
 use windows::core::{Interface, PCWSTR, PWSTR, w};
 
@@ -52,9 +52,13 @@ use windows::core::{Interface, PCWSTR, PWSTR, w};
 /// Mouser: its edge strips lie over the same border as ours, and whichever is
 /// on top takes the drag.
 fn live() -> crate::LiveInput {
+    let turn = crate::live_input();
+    // Only once it is this test's turn: looking for other windows gives this
+    // thread a message queue, and a queue left unread while the test waits
+    // for its turn would get the test's own windows called hung.
     let why = another_mouser(unsafe { GetCurrentProcessId() });
     assert!(why.is_none(), "{}", why.unwrap_or_default());
-    crate::live_input()
+    turn
 }
 
 /// What stops the live drag tests on this desktop: the processes other than
@@ -527,6 +531,32 @@ fn plain_window(rect: RECT) -> HWND {
 }
 
 // ---- the edge strips --------------------------------------------------------------
+
+#[test]
+fn a_window_made_after_waiting_for_the_input_is_not_hung() {
+    // Windows calls a window hung once its thread has gone five seconds
+    // without reading its messages, and a press on it then reaches a ghost
+    // window instead. Waiting for the input must not start that clock.
+    let (taken, has_it) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let _turn = crate::live_input();
+        taken.send(()).unwrap();
+        std::thread::sleep(Duration::from_secs(6));
+    });
+    has_it.recv().unwrap();
+    let _live = live();
+    holder.join().unwrap();
+    let (w, h) = screen();
+    let window = plain_window(RECT {
+        left: w / 2 - 150,
+        top: h / 2 - 100,
+        right: w / 2 + 150,
+        bottom: h / 2 + 100,
+    });
+    let hung = unsafe { IsHungAppWindow(window) }.as_bool();
+    let _ = unsafe { DestroyWindow(window) };
+    assert!(!hung, "a window made right after the wait counts as hung");
+}
 
 #[test]
 fn the_strips_are_there_only_while_the_left_button_is_down() {
