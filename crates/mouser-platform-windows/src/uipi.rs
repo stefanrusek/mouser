@@ -1,6 +1,7 @@
 //! UIPI (W3): `SendInput` only reaches windows of equal or lower integrity
-//! and fails without a sound otherwise, so the core is told when the
-//! foreground window belongs to a process above Mouser's integrity level.
+//! and fails without a sound otherwise. This reads integrity levels so that
+//! Mouser can tell when the foreground window belongs to a process above its
+//! own: the capture watchdog sends no probe then, since it would vanish.
 
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
 use windows::Win32::Security::{
@@ -52,11 +53,17 @@ pub(crate) fn foreground_elevated() -> bool {
 /// Whether the process owning `window` outranks this one; a null window (no
 /// foreground window) does not.
 pub(crate) fn window_elevated(window: HWND) -> bool {
+    window_outranks(window, integrity_level(unsafe { GetCurrentProcessId() }))
+}
+
+/// Whether the process owning `window` outranks a process at level `own`; a
+/// null window does not. With `own` unknown the window counts as outranking:
+/// Mouser cannot tell that its input would reach it.
+pub(crate) fn window_outranks(window: HWND, own: Option<u32>) -> bool {
     if window.0.is_null() {
         return false;
     }
     let mut pid = 0;
     unsafe { GetWindowThreadProcessId(window, Some(&mut pid)) };
-    let own = integrity_level(unsafe { GetCurrentProcessId() }).expect("own integrity level");
-    outranks(pid, own)
+    own.is_none_or(|own| outranks(pid, own))
 }
