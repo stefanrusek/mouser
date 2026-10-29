@@ -976,6 +976,8 @@ fn the_guard_is_this_executable_run_with_cursor_guard_and_the_parent_pid() {
 
 #[test]
 fn capture_start_runs_this_executable_as_the_guard() {
+    // Captures in this process share the guard's stop event: one at a time.
+    let _live = crate::live_input();
     let (capture, _rx) = started(no_problems());
     let guard = capture.guard().expect("a guard was started");
     let image = image_of(guard);
@@ -1060,6 +1062,8 @@ fn visible_windows_of(pid: u32) -> usize {
 
 #[test]
 fn the_guard_runs_in_this_session_with_no_window_until_a_normal_stop_ends_it() {
+    // Captures in this process share the guard's stop event: one at a time.
+    let _live = crate::live_input();
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
     use windows::Win32::System::Threading::{
         GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
@@ -1103,6 +1107,8 @@ fn no_guard(_: u32) -> std::io::Result<std::process::Child> {
 
 #[test]
 fn a_guard_that_cannot_start_is_a_problem_and_the_capture_runs_on() {
+    // Captures in this process share the guard's stop event: one at a time.
+    let _live = crate::live_input();
     let (ptx, prx) = channel();
     let problems: Problems = Arc::new(move |problem| {
         let _ = ptx.send(problem);
