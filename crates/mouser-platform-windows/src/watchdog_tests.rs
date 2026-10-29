@@ -1,6 +1,6 @@
 use crate::capture::{LOST_HOLD, Problems};
 use crate::watchdog::*;
-use mouser_platform::PlatformProblem;
+use mouser_platform::{CaptureLossReason, PlatformProblem};
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 
@@ -12,11 +12,17 @@ struct FakeDesk {
     /// is read. Otherwise it moves only when the test says.
     busy: bool,
     tick: Cell<u32>,
+    /// Why the capture can no longer see input, if the test says so.
+    lost: Option<CaptureLossReason>,
 }
 
 impl Surroundings for FakeDesk {
     fn skip(&mut self) -> Option<Skip> {
         self.skip
+    }
+
+    fn lost(&mut self) -> Option<CaptureLossReason> {
+        self.lost
     }
 
     fn probed(&mut self) {
@@ -49,6 +55,8 @@ struct Cycles {
     heard: Arc<Mutex<Vec<PlatformProblem>>>,
     sink: Problems,
     notes: RefCell<Vec<Fields>>,
+    /// Why the capture was taken away, each time.
+    lost: RefCell<Vec<CaptureLossReason>>,
 }
 
 impl Cycles {
@@ -65,7 +73,9 @@ impl Cycles {
                 probed: 0,
                 busy: true,
                 tick: Cell::new(0),
+                lost: None,
             },
+            lost: RefCell::new(Vec::new()),
             sent: 0,
             reinstalls: Vec::new(),
             heard,
@@ -96,6 +106,7 @@ impl Cycles {
                 surroundings: &mut self.desk,
                 problems: &self.sink,
                 note: &|fields| self.notes.borrow_mut().push(fields),
+                lost: &|reason| self.lost.borrow_mut().push(reason),
             },
         );
         self.sent += u32::from(sent.get());
@@ -244,6 +255,32 @@ fn one_miss_reinstalls_only_the_hook_that_missed_and_tells_nobody() {
         assert_eq!(c.reinstalls.len(), 1);
         assert!(c.heard().is_empty(), "a single miss is not shown");
     }
+}
+
+#[test]
+fn one_real_miss_takes_the_capture_away() {
+    let mut c = Cycles::new();
+    c.reaches = (true, false);
+    c.run();
+    assert!(c.lost.borrow().is_empty(), "unseen is not missed yet");
+    c.run();
+    assert_eq!(*c.lost.borrow(), [CaptureLossReason::HooksSilent]);
+}
+
+#[test]
+fn what_the_pc_says_each_cycle_can_take_the_capture_away() {
+    for reason in [
+        CaptureLossReason::ElevatedForeground,
+        CaptureLossReason::OtherDesktop,
+    ] {
+        let mut c = Cycles::new();
+        c.desk.lost = Some(reason);
+        c.run();
+        assert_eq!(*c.lost.borrow(), [reason]);
+    }
+    let mut c = Cycles::new();
+    c.run();
+    assert!(c.lost.borrow().is_empty(), "nothing wrong");
 }
 
 #[test]

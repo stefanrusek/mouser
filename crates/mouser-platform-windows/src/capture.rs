@@ -25,11 +25,15 @@
 //! (`watchdog`). The hook thread runs time-critical and the process opts out
 //! of power throttling, so a busy PC does not make the hooks time out.
 
+use crate::capture_lost::{self, on_foreground};
 use crate::displays::{self, DisplayCache};
+use crate::foreground_hook::ForegroundHook;
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
 use crate::watchdog::{self, Counts, Cycle, Desk, Hook, Judge, Outcome, Surroundings};
 use crate::{diag, dpi, keymap};
-use mouser_platform::{Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result};
+use mouser_platform::{
+    CaptureLossReason, Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result,
+};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -303,8 +307,10 @@ impl<A: HookApi> Hooks<A> {
     }
 }
 
-/// The hook thread: install, pump, obey thread messages, remove.
-fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
+/// The hook thread: install, pump, obey thread messages, remove. It also
+/// follows the foreground window, so an app above Mouser coming to the front
+/// takes the capture away at once.
+fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>, lose: Lose) {
     dpi::physical_thread();
     let hurried = watchdog::hurry_this_thread();
     diag::note(
@@ -317,6 +323,7 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>) {
         cursor: || cursor_pos().ok(),
     }));
     let mut hooks = Hooks::install(System);
+    let _foreground = ForegroundHook::install(Box::new(move |app| on_foreground(app, &*lose)));
     // Thread messages can only be posted once the thread has a queue.
     let mut msg = MSG::default();
     let _ = unsafe { PeekMessageW(&mut msg, None, WM_APP, WM_APP, PM_NOREMOVE) };
@@ -420,6 +427,7 @@ fn watchdog_thread(
     stop: Receiver<()>,
     problems: Problems,
     mut surroundings: Box<dyn Surroundings + Send>,
+    lose: Lose,
 ) {
     let mut judge = Judge::default();
     while let Err(RecvTimeoutError::Timeout) = stop.recv_timeout(interval) {
@@ -438,10 +446,15 @@ fn watchdog_thread(
                 surroundings: surroundings.as_mut(),
                 problems: &problems,
                 note: &|fields| diag::note("capture.probe", fields),
+                lost: &|reason| lose(reason),
             },
         );
     }
 }
+
+/// Takes the capture away for a reason (`capture_lost`), from whichever
+/// thread finds it.
+pub(crate) type Lose = Arc<dyn Fn(CaptureLossReason) + Send + Sync>;
 
 pub(crate) struct Running {
     pub(crate) shared: Arc<Shared>,
@@ -529,12 +542,26 @@ impl InputCapture for WinCapture {
             seen_mouse: AtomicU32::new(0),
             seen_key: AtomicU32::new(0),
         });
+        let lose: Lose = {
+            let (shared, problems, tx) = (shared.clone(), self.problems.clone(), tx.clone());
+            Arc::new(move |reason| {
+                capture_lost::lose(
+                    &shared,
+                    reason,
+                    || set_pointer_hidden(false, &problems, hide_or_show),
+                    |input| {
+                        // A receiver that has gone away just means nobody is listening.
+                        let _ = tx.send(input);
+                    },
+                );
+            })
+        };
         let displays = DisplayCache::new();
         let (raw_tx, raw_rx) = channel();
         let (ready_tx, ready_rx) = channel();
         let hook = {
-            let shared = shared.clone();
-            std::thread::spawn(move || hook_thread(raw_tx, shared, ready_tx))
+            let (shared, lose) = (shared.clone(), lose.clone());
+            std::thread::spawn(move || hook_thread(raw_tx, shared, ready_tx, lose))
         };
         let hook_thread_id = ready_rx.recv().expect("hook thread");
         let forward = {
@@ -565,6 +592,7 @@ impl InputCapture for WinCapture {
                     stop_rx,
                     problems,
                     surroundings,
+                    lose,
                 );
             })
         };
