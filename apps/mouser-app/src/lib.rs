@@ -3,6 +3,7 @@
 pub mod app;
 pub mod args;
 pub mod commands;
+#[cfg(target_os = "windows")]
 pub mod diagnostics;
 pub mod exit;
 pub mod headless;
@@ -34,7 +35,7 @@ mod args_tests;
 pub(crate) mod commands_tests;
 #[cfg(test)]
 mod contract_navigation_tests;
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod diagnostics_tests;
 #[cfg(test)]
 mod exit_tests;

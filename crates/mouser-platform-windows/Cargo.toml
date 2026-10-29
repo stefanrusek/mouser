@@ -50,6 +50,8 @@ windows = { version = "=0.62.2", features = [
 [target.'cfg(windows)'.dev-dependencies]
 mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
 tempfile = "=3.27.0"
+serde_json = "1"
+jsonschema = "0.59"
 cucumber = "=0.23.0"
 tokio = { version = "=1.54.0", features = ["rt-multi-thread", "macros"] }
 

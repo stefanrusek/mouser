@@ -31,6 +31,7 @@
 
 use crate::capture_lost::{self, on_foreground};
 use crate::cursor_guard::StopEvent;
+use crate::diag::DiagEvent;
 use crate::displays::{self, DisplayCache};
 use crate::foreground_hook::ForegroundHook;
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
@@ -321,10 +322,9 @@ impl<A: HookApi> Hooks<A> {
 fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>, lose: Lose) {
     dpi::physical_thread();
     let hurried = watchdog::hurry_this_thread();
-    diag::note(
-        "capture.hook_thread",
-        vec![("time_critical", hurried.to_string())],
-    );
+    diag::note(DiagEvent::CaptureHookThread {
+        time_critical: hurried,
+    });
     CTX.set(Some(HookCtx {
         raw,
         shared,
@@ -342,11 +342,11 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>, lose: 
         match msg.message {
             WM_REINSTALL => {
                 for hook in watchdog::hooks_in(msg.wParam.0) {
-                    let ok = hooks.reinstall(hook).to_string();
-                    diag::note(
-                        "capture.reinstall",
-                        vec![("hook", hook.name().into()), ("ok", ok)],
-                    );
+                    let ok = hooks.reinstall(hook);
+                    diag::note(DiagEvent::CaptureReinstall {
+                        hook: hook.diag(),
+                        ok,
+                    });
                 }
             }
             WM_UNHOOK => watchdog::hooks_in(msg.wParam.0).for_each(|hook| hooks.remove(hook)),
@@ -453,7 +453,7 @@ fn watchdog_thread(
                 },
                 surroundings: surroundings.as_mut(),
                 problems: &problems,
-                note: &|fields| diag::note("capture.probe", fields),
+                note: &|probe| diag::note(DiagEvent::CaptureProbe(probe)),
                 lost: &|reason| lose(reason),
             },
         );
@@ -635,10 +635,7 @@ impl InputCapture for WinCapture {
             })
         };
         let unthrottled = watchdog::never_throttle();
-        diag::note(
-            "capture.start",
-            vec![("unthrottled", unthrottled.to_string())],
-        );
+        diag::note(DiagEvent::CaptureStart { unthrottled });
         let (stop_watchdog, stop_rx) = channel();
         let watchdog = {
             let (shared, problems, interval) =

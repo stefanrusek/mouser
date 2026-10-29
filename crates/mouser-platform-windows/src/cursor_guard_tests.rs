@@ -1,19 +1,22 @@
 use crate::cursor_guard::*;
-use crate::diag::set_diagnostics;
+use crate::diag::{DiagLevel, DiagValue, set_diagnostics};
 use mouser_platform::Error;
 use std::cell::Cell;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// The `pointer.shown` lines the guard wrote while `f` ran.
-fn guard_notes(f: impl FnOnce()) -> Vec<Vec<(&'static str, String)>> {
+/// The `pointer.shown` lines the guard wrote while `f` ran, with their level.
+type Lines = Vec<(DiagLevel, Vec<(&'static str, DiagValue)>)>;
+
+fn guard_notes(f: impl FnOnce()) -> Lines {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let sink = heard.clone();
-    set_diagnostics(Some(Arc::new(move |event, fields| {
+    let guard = ("reason", DiagValue::Str("guard".into()));
+    set_diagnostics(Some(Arc::new(move |level, event, fields| {
         // Other tests may write meanwhile; the guard's line is its own.
-        if event == "pointer.shown" && fields.contains(&("reason", "guard".to_string())) {
-            sink.lock().unwrap().push(fields);
+        if event == "pointer.shown" && fields.contains(&guard) {
+            sink.lock().unwrap().push((level, fields));
         }
     })));
     f();
@@ -33,7 +36,13 @@ fn a_blank_arrow_left_behind_is_restored_and_said() {
     });
     assert!(restored.get());
     assert_eq!(code, Some(ExitCode::SUCCESS));
-    assert_eq!(notes, [vec![("reason", "guard".to_string())]]);
+    assert_eq!(
+        notes,
+        [(
+            DiagLevel::Info,
+            vec![("reason", DiagValue::Str("guard".into()))]
+        )]
+    );
 }
 
 #[test]

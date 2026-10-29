@@ -3380,8 +3380,10 @@ name = "mouser-platform-windows"
 version = "0.2.8"
 dependencies = [
  "cucumber",
+ "jsonschema",
  "mouser-platform",
  "png",
+ "serde_json",
  "tempfile",
  "tokio",
  "windows 0.62.2",
