@@ -5,9 +5,19 @@
 
 // Returning the code, rather than `std::process::exit`, lets the process end
 // normally, so exit-time work (such as writing coverage data) still runs.
+/// `--cursor-guard <pid>` is handled before anything else starts: no Tauri,
+/// no window.
+fn guard_first(args: &[String]) -> Option<std::process::ExitCode> {
+    let os = mouser_app::platform_select::current_os();
+    mouser_app::args::first(args, os, mouser_app::args::GUARD)
+}
+
 #[cfg(feature = "gui")]
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    if let Some(code) = guard_first(&args) {
+        return code;
+    }
     #[cfg(target_os = "macos")]
     if let Some(staging) = mouser_app::login_screen::install_arg(&args) {
         // Run as root by the "Allow control at the login screen" prompt.
@@ -29,6 +39,10 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(not(feature = "gui"))]
 fn main() -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(code) = guard_first(&args) {
+        return code;
+    }
     eprintln!(
         "This build of mouser-app has no window or tray; build it with --features gui to run Mouser."
     );
