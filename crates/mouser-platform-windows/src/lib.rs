@@ -41,6 +41,13 @@ mod watchdog;
 pub use capture::LOST_HOLD;
 pub use diag::{Diagnostics, set_diagnostics};
 
+/// Whether the pointer is hidden on this PC: the system arrow is Mouser's
+/// blank cursor. Conformance rule 10's query, and what the cursor guard
+/// checks (research V5).
+pub fn pointer_hidden() -> bool {
+    cursor::arrow_is_blank()
+}
+
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
