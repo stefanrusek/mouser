@@ -169,13 +169,9 @@ fn the_real_capture_keeps_its_grab_when_an_app_not_above_mouser_comes_to_the_fro
     let _live = crate::live_input();
     let own = std::env::current_exe().unwrap();
     let own = own.file_name().unwrap().to_string_lossy().into_owned();
-    // The foreground changes the capture's hook heard of, from the diagnostic log.
+    // The foreground changes the capture's hook heard of.
     let (heard_tx, heard) = channel();
-    crate::diag::set_diagnostics(Some(Arc::new(move |event, fields| {
-        if event == "capture.foreground" {
-            let _ = heard_tx.send(fields);
-        }
-    })));
+    crate::capture_lost::heard::listen(Some(heard_tx));
     let mut capture =
         WinCapture::with_watchdog(Arc::new(|_| {}), Duration::from_millis(50), nothing_lost);
     let (tx, rx) = channel();
@@ -206,19 +202,19 @@ fn the_real_capture_keeps_its_grab_when_an_app_not_above_mouser_comes_to_the_fro
     ])
     .unwrap();
     let _ = unsafe { SetForegroundWindow(window) };
-    let ours = vec![("app", own), ("outranks", "false".to_string())];
+    let ours = (own, false);
     let end = Instant::now() + Duration::from_secs(5);
     let heard_ours = loop {
         let left = end.saturating_duration_since(Instant::now());
         match heard.recv_timeout(left) {
-            Ok(fields) if fields == ours => break true,
+            Ok(change) if change == ours => break true,
             Ok(_) => {}
             Err(_) => break false,
         }
     };
     let grabbed = capture.running().unwrap().shared.grabbed.load(SeqCst);
     capture.stop();
-    crate::diag::set_diagnostics(None);
+    crate::capture_lost::heard::listen(None);
     let _ = unsafe { DestroyWindow(window) };
     let lost = rx
         .try_iter()

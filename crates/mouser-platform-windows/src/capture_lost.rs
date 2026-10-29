@@ -8,7 +8,6 @@
 //! hook.
 
 use crate::capture::Shared;
-use crate::diag;
 use mouser_platform::{CaptureLossReason, ForegroundApp, LocalInput};
 use std::sync::atomic::Ordering;
 
@@ -45,17 +44,34 @@ pub(crate) fn reason_now(
 }
 
 /// The foreground changed: an app above Mouser takes the capture away at
-/// once, without waiting for the next watchdog cycle. The change is written
-/// to the diagnostic log (when logging is on), by app name only (FR-003).
+/// once, without waiting for the next watchdog cycle.
 pub(crate) fn on_foreground(app: Option<ForegroundApp>, lose: &dyn Fn(CaptureLossReason)) {
-    let (name, outranks) = app.as_ref().map_or((String::new(), false), |app| {
-        (app.name.clone(), app.outranks_mouser)
-    });
-    diag::note(
-        "capture.foreground",
-        vec![("app", name), ("outranks", outranks.to_string())],
-    );
-    if outranks {
+    #[cfg(test)]
+    heard::tell(&app);
+    if app.is_some_and(|app| app.outranks_mouser) {
         lose(CaptureLossReason::ElevatedForeground);
+    }
+}
+
+/// Lets a test hear each foreground change `on_foreground` was given, as
+/// (app name, outranks Mouser), so it can tell a change that was heard and
+/// kept the capture from one that never reached the hook.
+#[cfg(test)]
+pub(crate) mod heard {
+    use mouser_platform::ForegroundApp;
+    use std::sync::Mutex;
+    use std::sync::mpsc::Sender;
+
+    static LISTENER: Mutex<Option<Sender<(String, bool)>>> = Mutex::new(None);
+
+    /// Who hears the changes from now on; `None` for nobody.
+    pub(crate) fn listen(tx: Option<Sender<(String, bool)>>) {
+        *LISTENER.lock().unwrap() = tx;
+    }
+
+    pub(super) fn tell(app: &Option<ForegroundApp>) {
+        if let (Some(tx), Some(app)) = (LISTENER.lock().unwrap().as_ref(), app) {
+            let _ = tx.send((app.name.clone(), app.outranks_mouser));
+        }
     }
 }
