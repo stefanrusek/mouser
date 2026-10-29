@@ -1,35 +1,29 @@
 use crate::diag::*;
 use mouser_platform::CaptureLossReason;
-use std::sync::{Arc, Mutex};
-
-fn start() -> DiagEvent {
-    DiagEvent::CaptureStart { unthrottled: true }
-}
 
 #[test]
 fn diagnostics_reach_the_sink_while_one_is_set() {
-    let heard = Arc::new(Mutex::new(Vec::new()));
-    let sink = heard.clone();
-    note(start());
-    set_diagnostics(Some(Arc::new(move |level, event, fields| {
-        // Other tests' captures may write meanwhile.
-        if event == "capture.start" {
-            sink.lock()
-                .unwrap()
-                .push((level, event.to_string(), fields));
-        }
-    })));
-    note(start());
-    set_diagnostics(None);
-    note(start());
-    let heard = heard.lock().unwrap();
-    assert!(!heard.is_empty(), "the line written while the sink was set");
-    assert!(heard.iter().all(|line| *line
-        == (
-            DiagLevel::Debug,
-            "capture.start".to_string(),
-            vec![("unthrottled", DiagValue::Bool(true))]
-        )));
+    let marked = || DiagEvent::CaptureLost {
+        reason: CaptureLossReason::HooksSilent,
+        foreground: Some("diag-test.exe".into()),
+    };
+    let ours = |line: &&crate::diag::Line| {
+        line.2
+            .contains(&("foreground", DiagValue::Str("diag-test.exe".into())))
+    };
+    note(marked());
+    let heard = heard_during(|| note(marked()));
+    note(marked());
+    // Other tests' captures may write meanwhile; the marked line is this one's.
+    let heard: Vec<_> = heard.iter().filter(ours).collect();
+    assert_eq!(
+        heard,
+        [&(
+            DiagLevel::Warn,
+            "capture.lost".to_string(),
+            marked().fields()
+        )]
+    );
 }
 
 #[test]

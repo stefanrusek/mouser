@@ -35,7 +35,7 @@ use crate::diag::DiagEvent;
 use crate::displays::{self, DisplayCache};
 use crate::foreground_hook::ForegroundHook;
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
-use crate::watchdog::{self, Counts, Cycle, Desk, Hook, Judge, Outcome, Surroundings};
+use crate::watchdog::{self, Counts, Cycle, Desk, Hook, Judge, Outcome, Seen, Surroundings};
 use crate::{diag, dpi, keymap};
 use mouser_platform::{
     CaptureLossReason, Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result,
@@ -159,12 +159,17 @@ pub(crate) fn convert(all: &[LocalDisplay], raw: Raw) -> LocalInput {
 }
 
 /// State the hook thread, the caller and the watchdog share.
+#[derive(Default)]
 pub(crate) struct Shared {
     pub(crate) grabbed: AtomicBool,
     /// Events each hook has seen, of every kind: real input, Mouser's own and
     /// the watchdog's probes. Any of them shows the hook still sees input.
     pub(crate) seen_mouse: AtomicU32,
     pub(crate) seen_key: AtomicU32,
+    /// The watchdog's probes among them: what else a hook saw was real
+    /// input (or Mouser's own).
+    pub(crate) probes_mouse: AtomicU32,
+    pub(crate) probes_key: AtomicU32,
 }
 
 /// What the hook callbacks work with; they run on the hook thread.
@@ -184,6 +189,7 @@ pub(crate) fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bo
     ctx.shared.seen_mouse.fetch_add(1, Ordering::SeqCst);
     match info.dwExtraInfo {
         PROBE_TAG => {
+            ctx.shared.probes_mouse.fetch_add(1, Ordering::SeqCst);
             // Swallowed, so a probe never moves the cursor.
             return true;
         }
@@ -205,7 +211,10 @@ pub(crate) fn on_mouse(ctx: &mut HookCtx, msg: u32, info: &MSLLHOOKSTRUCT) -> bo
 pub(crate) fn on_key(ctx: &mut HookCtx, info: &KBDLLHOOKSTRUCT) -> bool {
     ctx.shared.seen_key.fetch_add(1, Ordering::SeqCst);
     match info.dwExtraInfo {
-        PROBE_TAG => return true,
+        PROBE_TAG => {
+            ctx.shared.probes_key.fetch_add(1, Ordering::SeqCst);
+            return true;
+        }
         MOUSER_TAG => return false,
         _ => {}
     }
@@ -365,6 +374,17 @@ fn seen(shared: &Shared) -> Counts {
     )
 }
 
+/// The events and the probes each hook has seen so far.
+fn seen_and_probes(shared: &Shared) -> Seen {
+    Seen {
+        all: seen(shared),
+        probes: (
+            shared.probes_mouse.load(Ordering::SeqCst),
+            shared.probes_key.load(Ordering::SeqCst),
+        ),
+    }
+}
+
 /// The virtual desktop `(left, top, width, height)` in physical pixels.
 fn virtual_desktop() -> (i32, i32, i32, i32) {
     dpi::physical(|| unsafe {
@@ -442,7 +462,7 @@ fn watchdog_thread(
         watchdog::watch_cycle(
             &mut judge,
             Cycle {
-                counters: &|| seen(&shared),
+                counters: &|| seen_and_probes(&shared),
                 probe: &mut || probe_hooks(&shared, PROBE_WAIT),
                 reinstall: &mut |hooks| {
                     let which = WPARAM(watchdog::bits(hooks));
@@ -454,7 +474,7 @@ fn watchdog_thread(
                 surroundings: surroundings.as_mut(),
                 problems: &problems,
                 note: &|probe| diag::note(DiagEvent::CaptureProbe(probe)),
-                lost: &|reason| lose(reason),
+                lost: &|reason, foreground| lose(reason, foreground),
             },
         );
     }
@@ -462,7 +482,9 @@ fn watchdog_thread(
 
 /// Takes the capture away for a reason (`capture_lost`), from whichever
 /// thread finds it.
-pub(crate) type Lose = Arc<dyn Fn(CaptureLossReason) + Send + Sync>;
+/// The program in front, by executable name, goes with it when it can be
+/// named.
+pub(crate) type Lose = Arc<dyn Fn(CaptureLossReason, Option<String>) + Send + Sync>;
 
 pub(crate) struct Running {
     pub(crate) shared: Arc<Shared>,
@@ -597,17 +619,14 @@ impl InputCapture for WinCapture {
         if self.running.is_some() {
             return Err(Error::Os("capture is already started".into()));
         }
-        let shared = Arc::new(Shared {
-            grabbed: AtomicBool::new(false),
-            seen_mouse: AtomicU32::new(0),
-            seen_key: AtomicU32::new(0),
-        });
+        let shared = Arc::new(Shared::default());
         let lose: Lose = {
             let (shared, problems, tx) = (shared.clone(), self.problems.clone(), tx.clone());
-            Arc::new(move |reason| {
+            Arc::new(move |reason, foreground| {
                 capture_lost::lose(
                     &shared,
                     reason,
+                    foreground,
                     || set_pointer_hidden(false, &problems, hide_or_show),
                     |input| {
                         // A receiver that has gone away just means nobody is listening.

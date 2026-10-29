@@ -48,7 +48,9 @@ impl Surroundings for FakeDesk {
 /// probe sent reaches the hooks in `reaches`, and what came out is recorded.
 struct Cycles {
     judge: Judge,
-    counters: Cell<Counts>,
+    counters: Cell<Seen>,
+    /// Which hooks see real input during a probe's wait.
+    typing: (bool, bool),
     /// Which hooks see a probe within its wait.
     reaches: (bool, bool),
     refuse: bool,
@@ -59,7 +61,8 @@ struct Cycles {
     sink: Problems,
     notes: RefCell<Vec<Probe>>,
     /// Why the capture was taken away, each time.
-    lost: RefCell<Vec<CaptureLossReason>>,
+    /// With the program in front, as it was named.
+    lost: RefCell<Vec<(CaptureLossReason, Option<String>)>>,
 }
 
 impl Cycles {
@@ -68,7 +71,8 @@ impl Cycles {
         let sunk = heard.clone();
         Cycles {
             judge: Judge::default(),
-            counters: Cell::new((0, 0)),
+            counters: Cell::new(Seen::default()),
+            typing: (false, false),
             reaches: (true, true),
             refuse: false,
             desk: FakeDesk {
@@ -91,7 +95,8 @@ impl Cycles {
     /// One cycle. Returns whether a probe was sent.
     fn run(&mut self) -> bool {
         let sent = Cell::new(false);
-        let (counters, reaches, refuse) = (&self.counters, self.reaches, self.refuse);
+        let (counters, reaches, refuse, typing) =
+            (&self.counters, self.reaches, self.refuse, self.typing);
         let reinstalls = &mut self.reinstalls;
         watch_cycle(
             &mut self.judge,
@@ -102,15 +107,15 @@ impl Cycles {
                         return Outcome::NotSent;
                     }
                     sent.set(true);
-                    let (m, k) = counters.get();
-                    counters.set((m + u32::from(reaches.0), k + u32::from(reaches.1)));
+                    counters.set(add(counters.get(), reaches, reaches));
+                    counters.set(add(counters.get(), typing, (false, false)));
                     Outcome::Sent
                 },
                 reinstall: &mut |hooks| reinstalls.push(hooks.to_vec()),
                 surroundings: &mut self.desk,
                 problems: &self.sink,
                 note: &|probe| self.notes.borrow_mut().push(probe),
-                lost: &|reason| self.lost.borrow_mut().push(reason),
+                lost: &|reason, foreground| self.lost.borrow_mut().push((reason, foreground)),
             },
         );
         self.sent += u32::from(sent.get());
@@ -123,11 +128,17 @@ impl Cycles {
         self.desk.tick.set(self.desk.tick.get() + 1);
     }
 
-    /// The hooks see events: probes that were late, or the person's input.
-    fn arrive(&self, mouse: bool, key: bool) {
-        let (m, k) = self.counters.get();
+    /// The hooks see probes that were late.
+    fn late_probe(&self, mouse: bool, key: bool) {
+        let both = (mouse, key);
+        self.counters.set(add(self.counters.get(), both, both));
+    }
+
+    /// The hooks see the person's input.
+    fn real_input(&self, mouse: bool, key: bool) {
+        let none = (false, false);
         self.counters
-            .set((m + u32::from(mouse), k + u32::from(key)));
+            .set(add(self.counters.get(), (mouse, key), none));
     }
 
     fn heard(&self) -> Vec<PlatformProblem> {
@@ -154,6 +165,16 @@ impl Cycles {
                     .join(" ")
             })
             .collect()
+    }
+}
+
+/// seen with one more event for each hook in events, a probe for each
+/// in probes.
+fn add(seen: Seen, events: (bool, bool), probes: (bool, bool)) -> Seen {
+    let one = |(m, k): Counts, (dm, dk): (bool, bool)| (m + u32::from(dm), k + u32::from(dk));
+    Seen {
+        all: one(seen.all, events),
+        probes: one(seen.probes, probes),
     }
 }
 
@@ -199,7 +220,7 @@ fn a_probe_that_is_only_late_is_not_a_miss() {
         ]
     );
     // The guest stalled: the wait passed, and the hooks saw the probe afterwards.
-    c.arrive(true, true);
+    c.late_probe(true, true);
     assert!(c.run());
     assert!(c.reinstalls.is_empty());
     assert!(c.heard().is_empty());
@@ -238,10 +259,32 @@ fn probes_another_program_swallows_are_no_miss_while_real_input_arrives() {
     for _ in 0..5 {
         assert!(c.run());
         c.someone_used_the_pc();
-        c.arrive(true, true);
+        c.real_input(true, true);
     }
     assert!(c.reinstalls.is_empty());
     assert!(c.heard().is_empty());
+    // Each cycle judged the hooks healthy on the person's input (Story 2
+    // sc. 3), and none was missed.
+    let lines = c.last_notes(c.notes.borrow().len());
+    let live = |hook: &str| format!("outcome=live hook={hook} foreground=game.exe");
+    for hook in ["mouse", "keyboard"] {
+        let times = lines.iter().filter(|l| **l == live(hook)).count();
+        assert_eq!(times, 4, "{lines:?}");
+    }
+    assert!(!lines.iter().any(|l| l.contains("missed")), "{lines:?}");
+}
+
+#[test]
+fn a_hook_that_sees_real_input_while_its_probe_is_swallowed_is_live_at_once() {
+    let mut c = Cycles::new();
+    c.reaches = (false, true);
+    c.typing = (true, false);
+    assert!(c.run());
+    assert_eq!(c.last_note(), "outcome=live hook=mouse foreground=game.exe");
+    // Nothing is pending for it: the next cycle judges nothing missed.
+    c.someone_used_the_pc();
+    assert!(c.run());
+    assert!(c.reinstalls.is_empty());
 }
 
 #[test]
@@ -250,7 +293,7 @@ fn repeated_stalls_that_always_arrive_late_never_raise_anything() {
     c.reaches = (false, false);
     for _ in 0..5 {
         assert!(c.run());
-        c.arrive(true, true);
+        c.late_probe(true, true);
     }
     assert!(c.reinstalls.is_empty());
     assert!(c.heard().is_empty());
@@ -291,7 +334,9 @@ fn one_real_miss_takes_the_capture_away() {
     c.run();
     assert!(c.lost.borrow().is_empty(), "unseen is not missed yet");
     c.run();
-    assert_eq!(*c.lost.borrow(), [CaptureLossReason::HooksSilent]);
+    // With the program in front, by name only.
+    let lost = (CaptureLossReason::HooksSilent, Some("game.exe".into()));
+    assert_eq!(*c.lost.borrow(), [lost]);
 }
 
 #[test]
@@ -303,7 +348,7 @@ fn what_the_pc_says_each_cycle_can_take_the_capture_away() {
         let mut c = Cycles::new();
         c.desk.lost = Some(reason);
         c.run();
-        assert_eq!(*c.lost.borrow(), [reason]);
+        assert_eq!(*c.lost.borrow(), [(reason, Some("game.exe".into()))]);
     }
     let mut c = Cycles::new();
     c.run();
@@ -378,7 +423,7 @@ fn a_late_probe_after_a_raise_clears_the_alarm() {
     }
     assert_eq!(c.heard(), [raised()]);
     c.run(); // the next probe, unseen in its wait
-    c.arrive(true, true);
+    c.late_probe(true, true);
     c.desk.skip = Some(Skip::Idle);
     assert!(!c.run());
     assert_eq!(c.heard(), [cleared()]);

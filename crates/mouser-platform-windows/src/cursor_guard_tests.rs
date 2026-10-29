@@ -1,27 +1,21 @@
 use crate::cursor_guard::*;
-use crate::diag::{DiagLevel, DiagValue, set_diagnostics};
+use crate::diag::{DiagLevel, DiagValue, heard_during};
 use mouser_platform::Error;
 use std::cell::Cell;
 use std::process::ExitCode;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// The `pointer.shown` lines the guard wrote while `f` ran, with their level.
 type Lines = Vec<(DiagLevel, Vec<(&'static str, DiagValue)>)>;
 
 fn guard_notes(f: impl FnOnce()) -> Lines {
-    let heard = Arc::new(Mutex::new(Vec::new()));
-    let sink = heard.clone();
+    // Other tests' captures may write meanwhile; the guard's line is its own.
     let guard = ("reason", DiagValue::Str("guard".into()));
-    set_diagnostics(Some(Arc::new(move |level, event, fields| {
-        // Other tests may write meanwhile; the guard's line is its own.
-        if event == "pointer.shown" && fields.contains(&guard) {
-            sink.lock().unwrap().push((level, fields));
-        }
-    })));
-    f();
-    set_diagnostics(None);
-    std::mem::take(&mut *heard.lock().unwrap())
+    heard_during(f)
+        .into_iter()
+        .filter(|(_, event, fields)| event == "pointer.shown" && fields.contains(&guard))
+        .map(|(level, _, fields)| (level, fields))
+        .collect()
 }
 
 #[test]
