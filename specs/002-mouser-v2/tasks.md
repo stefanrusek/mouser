@@ -352,7 +352,7 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T239 [P] [US1-app] Write unit tests in `apps/mouser-app/src/app_tests.rs`: a lagged engine broadcast receiver resyncs from `status` instead of panicking (`app.rs:72,137`; FR-002)
 - [X] T240 [US1-app] Replace the lag panics in `apps/mouser-app/src/app.rs` with a resync from `status`
 - [X] T241 [P] [US1-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--cursor-guard <pid>` is parsed before any Tauri initialisation and selects guard mode (Windows only; on other OSes the flag is rejected with exit code 3)
-- [ ] T242 [US1-app] Implement argument dispatch in `apps/mouser-app/src/args.rs` and in `apps/mouser-app/src/main.rs` call `mouser_platform_windows::cursor_guard::run(pid)` (signature frozen in contracts/platform-api-delta.md) for guard mode with no window (depends on Phase 19 T395 being merged)
+- [X] T242 [US1-app] Implement argument dispatch in `apps/mouser-app/src/args.rs` and in `apps/mouser-app/src/main.rs` call `mouser_platform_windows::cursor_guard::run(pid)` (signature frozen in contracts/platform-api-delta.md) for guard mode with no window (depends on Phase 19 T395 being merged)
 - [ ] T243 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
 - [ ] T244 [US1-app] Commit: phase boundary "US1-app" (5.3)
 
@@ -558,8 +558,8 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 - [X] T393 [US1-platform-windows] Implement capture-loss detection in `crates/mouser-platform-windows/src/capture_lost.rs`
 - [X] T394 [P] [US1-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/cursor_guard_tests.rs`: `cursor_guard::run(parent_pid)` waits on the parent's process handle; when the parent ends for any reason and the arrow is the blank cursor (the `recover_at_startup` test, `cursor.rs:121-126`) it restores with `SPI_SETCURSORS` and writes `pointer.shown {reason: guard}` through `crate::diag` when logging is on, then exits; if the arrow is not blank it only exits (research V5; Story 1 sc. 6)
 - [X] T395 [US1-platform-windows] Implement `cursor_guard::run(parent_pid: u32) -> std::process::ExitCode` (frozen signature, contracts/platform-api-delta.md) in `crates/mouser-platform-windows/src/cursor_guard.rs` and export it from `crates/mouser-platform-windows/src/lib.rs`
-- [ ] T396 [P] [US1-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/capture_tests.rs`: capture start spawns `<current exe> --cursor-guard <own pid>` in the same session with no window; a normal capture stop ends the guard
-- [ ] T397 [US1-platform-windows] Spawn and stop the guard in `crates/mouser-platform-windows/src/capture.rs`
+- [X] T396 [P] [US1-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/capture_tests.rs`: capture start spawns `<current exe> --cursor-guard <own pid>` in the same session with no window; a normal capture stop ends the guard
+- [X] T397 [US1-platform-windows] Spawn and stop the guard in `crates/mouser-platform-windows/src/capture.rs`
 - [X] T398 [US1-platform-windows] Rename the `#[allow(dead_code)]` field on `LiveInput` (`crates/mouser-platform-windows/src/lib.rs:384`) to `_guard` and delete the allow (debt G16); verified by clippy with `-D warnings`
 - [X] T399 [US1-platform-windows] Wait for the Explorer child in test teardown in `crates/mouser-platform-windows/src/drag_tests.rs` and delete `#[allow(clippy::zombie_processes)]` (line 699) (debt Tier 1); verified by clippy
 - [ ] T400 [US1-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
