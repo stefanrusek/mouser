@@ -336,6 +336,27 @@ impl Edge {
     }
 }
 
+/// The processes other than `own` that have edge strips: another Mouser
+/// beside this one, whose strips lie over the same border as ours.
+#[cfg(test)]
+pub(crate) fn others_with_strips(own: u32) -> Vec<u32> {
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, GetWindowThreadProcessId};
+    use windows::core::PCWSTR;
+    let mut pids = Vec::new();
+    let mut after = None;
+    while let Ok(strip) =
+        unsafe { FindWindowExW(None, after, w!("MouserEdgeStrip"), PCWSTR::null()) }
+    {
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(strip, Some(&mut pid)) };
+        if pid != own && !pids.contains(&pid) {
+            pids.push(pid);
+        }
+        after = Some(strip);
+    }
+    pids
+}
+
 impl Drop for Edge {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);

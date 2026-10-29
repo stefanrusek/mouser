@@ -1,6 +1,8 @@
 use crate::drag::*;
 use crate::dropdir::{desktop_folder, folder_at, folder_for, is_desktop_class};
-use crate::edge::{Pending as EdgePending, THICKNESS, left_button_down, strips};
+use crate::edge::{
+    Pending as EdgePending, THICKNESS, left_button_down, others_with_strips, strips,
+};
 use crate::inject::{MOUSER_TAG, mouse_input, send};
 use crate::vfiles::{Ended, descriptor_block, descriptor_name, new_data_object};
 use mouser_platform::{DropTarget, Error, FileDrag};
@@ -35,9 +37,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::Shell::{IShellWindows, IWebBrowserApp, ShellWindows};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DestroyWindow, FindWindowW, GetSystemMetrics, GetWindowRect, IsWindowVisible,
-    PostMessageW, SM_CXSCREEN, SM_CYSCREEN, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
-    SetWindowPos, WM_CLOSE, WS_EX_TOPMOST, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DestroyWindow, FindWindowW, GetSystemMetrics, GetWindowRect, IsWindow,
+    IsWindowVisible, PostMessageW, SM_CXSCREEN, SM_CYSCREEN, SWP_NOZORDER, SWP_SHOWWINDOW,
+    SetForegroundWindow, SetWindowPos, WM_CLOSE, WS_EX_TOPMOST, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowTextW,
@@ -46,9 +48,45 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{Interface, PCWSTR, PWSTR, w};
 
 /// Drags use the machine's one pointer and button, so tests that move it take
-/// turns with every other test that does.
+/// turns with every other test that does. They cannot run beside another
+/// Mouser: its edge strips lie over the same border as ours, and whichever is
+/// on top takes the drag.
 fn live() -> crate::LiveInput {
+    let why = another_mouser(unsafe { GetCurrentProcessId() });
+    assert!(why.is_none(), "{}", why.unwrap_or_default());
     crate::live_input()
+}
+
+/// What stops the live drag tests on this desktop: the processes other than
+/// `own` that have edge strips.
+fn another_mouser(own: u32) -> Option<String> {
+    let others: Vec<String> = others_with_strips(own)
+        .into_iter()
+        .map(|pid| format!("pid {pid} {}", image_of(pid)))
+        .collect();
+    (!others.is_empty()).then(|| {
+        format!(
+            "another Mouser ({}) is running; quit it before running live desktop tests",
+            others.join(", ")
+        )
+    })
+}
+
+#[test]
+fn another_mousers_strips_stop_the_live_tests_and_our_own_do_not() {
+    // Takes the input like a live test, but not through `live`, which this tests.
+    let _live = crate::live_input();
+    let drag = WinFileDrag::new();
+    let own = unsafe { GetCurrentProcessId() };
+    assert!(!others_with_strips(own).contains(&own));
+    // Seen from any other process, these strips are another Mouser's.
+    let why = another_mouser(own.wrapping_add(1)).expect("our strips, seen from elsewhere");
+    assert!(why.contains(&format!("pid {own} ")), "{why}");
+    assert!(
+        why.contains("quit it before running live desktop tests"),
+        "{why}"
+    );
+    drop(drag);
 }
 
 fn ole() {
@@ -604,25 +642,43 @@ fn files_dragged_to_the_edge_are_handed_over() {
         })
         .collect();
     let drag = Arc::new(Mutex::new(WinFileDrag::new()));
+    let ours = drag.lock().unwrap().edge().strips().map(|s| s.0 as isize);
     let (w, h) = screen();
+    let mut report = vec![
+        format!(
+            "foreground at the start: {}",
+            describe(unsafe { GetForegroundWindow() })
+        ),
+        shell_windows(),
+    ];
     move_to(w / 3, h / 3);
     std::thread::sleep(Duration::from_millis(200));
     let seen = Arc::new(Mutex::new(None));
-    let (remote_drag, remote_seen) = (drag.clone(), seen.clone());
+    let under = Arc::new(Mutex::new(String::new()));
+    let (remote_drag, remote_seen, remote_under) = (drag.clone(), seen.clone(), under.clone());
     drag_while(shell_files(&files), move || {
         std::thread::sleep(Duration::from_millis(500));
         glide((w / 3, h / 3), (w - 2, h / 3));
         std::thread::sleep(Duration::from_millis(300));
+        let at = physical(|| unsafe { WindowFromPoint(POINT { x: w - 2, y: h / 3 }) });
+        *remote_under.lock().unwrap() = format!(
+            "window under the pointer at the edge: {} (one of ours: {})",
+            describe(at),
+            ours.contains(&(at.0 as isize))
+        );
         *remote_seen.lock().unwrap() = remote_drag.lock().unwrap().outgoing();
         // A second ask finds nothing: the files are handed over once.
         assert_eq!(remote_drag.lock().unwrap().outgoing(), None);
         button(false);
     });
+    report.push(under.lock().unwrap().clone());
+    let report = report.join("\n");
+    eprintln!("{report}");
     let got: Vec<String> = seen
         .lock()
         .unwrap()
         .clone()
-        .expect("the files at the edge")
+        .unwrap_or_else(|| panic!("the files at the edge\n{report}"))
         .iter()
         .map(|p| same(p))
         .collect();
@@ -696,26 +752,74 @@ fn how_the_drag_ended_decides_what_is_reported() {
     assert!(started.elapsed() < Duration::from_secs(5));
 }
 
-#[allow(clippy::zombie_processes)] // the Explorer it starts runs until its window is closed
-fn explorer_window(dir: &std::path::Path) -> HWND {
+/// An Explorer window a test opened, and the `explorer.exe` started for it.
+/// Dropped, also when the test fails part way, it closes the window, waits
+/// until the window is gone and ends that process, so no test leaves an
+/// Explorer behind.
+struct ExplorerWindow {
+    window: Option<HWND>,
+    launcher: std::process::Child,
+}
+
+impl ExplorerWindow {
+    fn hwnd(&self) -> HWND {
+        self.window.expect("the Explorer window")
+    }
+
+    /// Closes the window and ends the process started for it; whether the
+    /// window was gone in time.
+    fn close(&mut self) -> bool {
+        if let Some(window) = self.window {
+            let _ = unsafe {
+                PostMessageW(
+                    Some(window),
+                    WM_CLOSE,
+                    Default::default(),
+                    Default::default(),
+                )
+            };
+        }
+        let window = self.window;
+        let gone = wait_until(Duration::from_secs(10), || {
+            window.is_none_or(|w| !unsafe { IsWindow(Some(w)) }.as_bool())
+        });
+        // Explorer usually hands the folder to the shell and exits at once;
+        // whatever it is still doing, it ends with the test.
+        let _ = self.launcher.kill();
+        let _ = self.launcher.wait();
+        gone
+    }
+}
+
+impl Drop for ExplorerWindow {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+fn explorer_window(dir: &std::path::Path) -> ExplorerWindow {
     let name = dir.file_name().unwrap().to_string_lossy().into_owned();
-    std::process::Command::new("explorer.exe")
+    let launcher = std::process::Command::new("explorer.exe")
         .arg(dir)
         .spawn()
         .unwrap();
+    let mut explorer = ExplorerWindow {
+        window: None,
+        launcher,
+    };
     let title: Vec<u16> = format!("{name} - File Explorer")
         .encode_utf16()
         .chain([0])
         .collect();
-    let mut found = None;
     assert!(
         wait_until(Duration::from_secs(20), || {
-            found = unsafe { FindWindowW(w!("CabinetWClass"), PCWSTR(title.as_ptr())) }.ok();
-            found.is_some()
+            explorer.window =
+                unsafe { FindWindowW(w!("CabinetWClass"), PCWSTR(title.as_ptr())) }.ok();
+            explorer.window.is_some()
         }),
         "Explorer opened {name}"
     );
-    let window = found.unwrap();
+    let window = explorer.hwnd();
     // Wholly on the screen, whatever its size: a drop point past the edge would
     // be clamped onto whatever is there instead of this window.
     let (w, h) = screen();
@@ -734,7 +838,7 @@ fn explorer_window(dir: &std::path::Path) -> HWND {
     };
     let _ = unsafe { SetForegroundWindow(window) };
     std::thread::sleep(Duration::from_millis(1500));
-    window
+    explorer
 }
 
 // ---- what a failed drop reports ---------------------------------------------------
@@ -879,12 +983,12 @@ fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
         .path()
         .join(format!("mouser-drop-{}", std::process::id()));
     std::fs::create_dir(&dir).unwrap();
-    let explorer = explorer_window(&dir);
+    let mut explorer = explorer_window(&dir);
     // Physical pixels, like the drop point the drag reports (this thread may
     // be DPI-unaware, which would hand back scaled coordinates).
     let rect = physical(|| {
         let mut rect = RECT::default();
-        unsafe { GetWindowRect(explorer, &mut rect) }.unwrap();
+        unsafe { GetWindowRect(explorer.hwnd(), &mut rect) }.unwrap();
         rect
     });
     let drop_at = (
@@ -904,7 +1008,7 @@ fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
     let result = drag.begin_incoming(vec!["hello.txt".into(), "big.bin".into()]);
     player.join().unwrap();
     // Always gathered, so that what the failure message says is exercised too.
-    let report = drop_report(explorer, &dir, drop_at, &result);
+    let report = drop_report(explorer.hwnd(), &dir, drop_at, &result);
     eprintln!("{report}");
     let folder = result.as_ref().map(|t| t.0.clone());
     assert!(folder.is_ok(), "{result:?}\n{report}");
@@ -927,16 +1031,11 @@ fn files_dragged_in_land_in_the_explorer_folder_they_were_dropped_on() {
         y: drop_at.1,
     });
     assert_eq!(same(&again.unwrap()), same(&dir));
-    unsafe {
-        PostMessageW(
-            Some(explorer),
-            WM_CLOSE,
-            Default::default(),
-            Default::default(),
-        )
-    }
-    .unwrap();
-    std::thread::sleep(Duration::from_millis(800));
+    assert!(
+        explorer.close(),
+        "the Explorer window closed\n{}",
+        shell_windows()
+    );
     drop(drag);
     settle();
 }
