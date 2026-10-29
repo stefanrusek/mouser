@@ -62,7 +62,14 @@ async fn collect_names_each_computer_that_is_not_included_and_why() {
     let join = beta.spawn(&["desk", "join", "Home"]);
     let request = alpha.pending_request().await;
     alpha.mouser(&["approve", &request.to_string()]).await;
-    drop(join);
+    // Approved, the join ends by itself; waited for rather than killed, so the
+    // coverage data it writes on the way out is whole.
+    let joined = join.wait_with_output().await.unwrap();
+    assert!(
+        joined.status.success(),
+        "{}",
+        String::from_utf8_lossy(&joined.stderr)
+    );
     alpha
         .wait_status("beta connected", |s| {
             s.computers.iter().any(|c| {
