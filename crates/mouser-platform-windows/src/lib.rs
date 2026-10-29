@@ -16,6 +16,7 @@ mod capture;
 mod capture_lost;
 mod clipboard;
 mod cursor;
+pub mod cursor_guard;
 mod diag;
 mod displays;
 mod dpi;
@@ -335,6 +336,8 @@ mod capture_lost_tests;
 mod capture_tests;
 #[cfg(test)]
 mod clipboard_tests;
+#[cfg(test)]
+mod cursor_guard_tests;
 #[cfg(test)]
 mod cursor_tests;
 #[cfg(test)]
