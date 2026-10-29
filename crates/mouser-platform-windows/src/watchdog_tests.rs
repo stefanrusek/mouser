@@ -480,6 +480,7 @@ fn the_real_desk_answers_without_error() {
     let _ = desk.skip();
     let _ = desk.foreground();
     let _ = desk.input_tick();
+    let _ = desk.lost();
 }
 
 #[test]
