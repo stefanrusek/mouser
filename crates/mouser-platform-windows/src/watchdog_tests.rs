@@ -8,6 +8,10 @@ use std::sync::{Arc, Mutex};
 struct FakeDesk {
     skip: Option<Skip>,
     probed: u32,
+    /// Someone keeps using the PC: its last-input tick moves every time it
+    /// is read. Otherwise it moves only when the test says.
+    busy: bool,
+    tick: Cell<u32>,
 }
 
 impl Surroundings for FakeDesk {
@@ -21,6 +25,13 @@ impl Surroundings for FakeDesk {
 
     fn foreground(&self) -> String {
         "game.exe".into()
+    }
+
+    fn input_tick(&self) -> u32 {
+        if self.busy {
+            self.tick.set(self.tick.get() + 1);
+        }
+        self.tick.get()
     }
 }
 
@@ -52,6 +63,8 @@ impl Cycles {
             desk: FakeDesk {
                 skip: None,
                 probed: 0,
+                busy: true,
+                tick: Cell::new(0),
             },
             sent: 0,
             reinstalls: Vec::new(),
@@ -89,7 +102,13 @@ impl Cycles {
         sent.get()
     }
 
-    /// The hooks see probes that were late.
+    /// Someone presses a key or moves the mouse; whether the hooks see it is
+    /// up to `arrive`.
+    fn someone_used_the_pc(&self) {
+        self.desk.tick.set(self.desk.tick.get() + 1);
+    }
+
+    /// The hooks see events: probes that were late, or the person's input.
     fn arrive(&self, mouse: bool, key: bool) {
         let (m, k) = self.counters.get();
         self.counters
@@ -152,6 +171,39 @@ fn a_probe_that_is_only_late_is_not_a_miss() {
             .iter()
             .any(|n| n.contains(&("outcome", "late".into())))
     );
+}
+
+#[test]
+fn a_hook_that_saw_nothing_while_nobody_used_the_pc_has_not_missed() {
+    let mut c = Cycles::new();
+    c.desk.busy = false;
+    c.reaches = (false, false);
+    assert!(c.run());
+    // Nobody touched the PC since, so the hooks' silence says nothing.
+    for _ in 0..3 {
+        c.run();
+    }
+    assert!(c.reinstalls.is_empty());
+    assert!(c.heard().is_empty());
+    // Someone types, and the hooks still see nothing: that is a miss.
+    c.someone_used_the_pc();
+    assert!(!c.run());
+    assert_eq!(c.reinstalls, [vec![Hook::Mouse, Hook::Keyboard]]);
+}
+
+#[test]
+fn probes_another_program_swallows_are_no_miss_while_real_input_arrives() {
+    // Another program's hook (AsHotplugCtrl) eats every probe before
+    // Mouser's sees it, while the person's own moves and keys get through.
+    let mut c = Cycles::new();
+    c.reaches = (false, false);
+    for _ in 0..5 {
+        assert!(c.run());
+        c.someone_used_the_pc();
+        c.arrive(true, true);
+    }
+    assert!(c.reinstalls.is_empty());
+    assert!(c.heard().is_empty());
 }
 
 #[test]
@@ -390,6 +442,7 @@ fn the_real_desk_answers_without_error() {
     desk.probed();
     let _ = desk.skip();
     let _ = desk.foreground();
+    let _ = desk.input_tick();
 }
 
 #[test]
