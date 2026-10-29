@@ -480,7 +480,52 @@ fn the_real_desk_answers_without_error() {
     let _ = desk.skip();
     let _ = desk.foreground();
     let _ = desk.input_tick();
-    let _ = desk.lost();
+}
+
+#[test]
+fn the_real_desk_finds_the_capture_not_lost_with_its_own_window_in_front() {
+    use crate::inject::{MOUSER_TAG, key_input, send};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DestroyWindow, GetForegroundWindow, SetForegroundWindow, WINDOW_EX_STYLE,
+        WS_POPUP, WS_VISIBLE,
+    };
+    let _live = crate::live_input();
+    let window = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            windows::core::w!("STATIC"),
+            windows::core::w!("watchdog test"),
+            WS_POPUP | WS_VISIBLE,
+            0,
+            0,
+            40,
+            40,
+            None,
+            None,
+            None,
+            None,
+        )
+    }
+    .unwrap();
+    // Windows lets a program bring its window to the front just after it
+    // sent input; a tap of Alt is the least a press can do.
+    send(&[
+        key_input(0x38, false, true, MOUSER_TAG),
+        key_input(0x38, false, false, MOUSER_TAG),
+    ])
+    .unwrap();
+    let _ = unsafe { SetForegroundWindow(window) };
+    let in_front = (0..100).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let front = unsafe { GetForegroundWindow() };
+        front == window
+    });
+    // This process cannot outrank itself, and this test runs on the user's
+    // own desktop.
+    let lost = Desk::default().lost();
+    let _ = unsafe { DestroyWindow(window) };
+    assert!(in_front, "the test's window came to the front");
+    assert_eq!(lost, None);
 }
 
 #[test]
