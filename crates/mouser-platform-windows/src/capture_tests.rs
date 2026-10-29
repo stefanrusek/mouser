@@ -612,6 +612,10 @@ impl Surroundings for Always {
         None
     }
 
+    fn lost(&mut self) -> Option<mouser_platform::CaptureLossReason> {
+        None
+    }
+
     fn probed(&mut self) {}
 
     fn foreground(&self) -> String {
@@ -652,19 +656,31 @@ fn the_watchdog_quietly_reinstalls_a_hook_the_system_removed() {
     let (tx, rx) = channel();
     let mut capture = WinCapture::with_watchdog(sink, Duration::from_millis(100), always);
     capture.start(tx).unwrap();
-    capture.drop_hooks(&[Hook::Keyboard]);
-    // The keyboard hook is back: keys reach it again.
-    let press = || {
-        key(0x76, true);
-        key(0x76, false);
-    };
-    arrives(&rx, press, |i| matches!(i, LocalInput::Key { .. }));
-    // Wait for a probe both hooks see after the reinstall: the miss is cured.
     let shared = capture.running().unwrap().shared.clone();
     let counts = || {
         use std::sync::atomic::Ordering::SeqCst;
         (shared.seen_mouse.load(SeqCst), shared.seen_key.load(SeqCst))
     };
+    let press = || {
+        key(0x76, true);
+        key(0x76, false);
+    };
+    capture.drop_hooks(&[Hook::Keyboard]);
+    // The hook thread removes the hook when it reads that message: wait until
+    // keys no longer reach it.
+    let removed = (0..30).any(|_| {
+        let before = counts().1;
+        press();
+        std::thread::sleep(Duration::from_millis(150));
+        counts().1 == before
+    });
+    assert!(removed, "the keyboard hook was not removed");
+    // Keys it saw before it went are not keys that reached it again.
+    while rx.try_recv().is_ok() {}
+    // Someone keeps typing, so the silent hook is missed and installed again:
+    // keys reach it again.
+    arrives(&rx, press, |i| matches!(i, LocalInput::Key { .. }));
+    // Wait for a probe both hooks see after the reinstall: the miss is cured.
     let back = counts();
     let end = Instant::now() + Duration::from_secs(5);
     while !(counts().0 > back.0 && counts().1 > back.1) {

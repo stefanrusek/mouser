@@ -13,6 +13,7 @@
 
 mod autostart;
 mod capture;
+mod capture_lost;
 mod clipboard;
 mod cursor;
 mod diag;
@@ -23,6 +24,7 @@ mod dropdir;
 mod edge;
 mod firewall;
 mod foreground;
+mod foreground_hook;
 mod fullscreen;
 mod inject;
 mod keymap;
@@ -328,6 +330,8 @@ impl Platform for WinPlatform {
 #[cfg(test)]
 mod autostart_tests;
 #[cfg(test)]
+mod capture_lost_tests;
+#[cfg(test)]
 mod capture_tests;
 #[cfg(test)]
 mod clipboard_tests;
@@ -341,6 +345,8 @@ mod displays_tests;
 mod drag_tests;
 #[cfg(test)]
 mod firewall_tests;
+#[cfg(test)]
+mod foreground_hook_tests;
 #[cfg(test)]
 mod foreground_tests;
 #[cfg(test)]

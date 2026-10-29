@@ -19,7 +19,7 @@
 //! withdrawn once every hook sees a probe again.
 
 use crate::capture::{LOST_HOLD, Problems};
-use mouser_platform::PlatformProblem;
+use mouser_platform::{CaptureLossReason, PlatformProblem};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::RemoteDesktop::{
     WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK, WTSFreeMemory,
@@ -116,6 +116,10 @@ impl Skip {
 pub(crate) trait Surroundings {
     /// Why not to probe now, if there is a reason.
     fn skip(&mut self) -> Option<Skip>;
+    /// Why the capture can no longer see this computer's input, if it
+    /// cannot: the app in front outranks Mouser, or another desktop has the
+    /// input.
+    fn lost(&mut self) -> Option<CaptureLossReason>;
     /// A probe was just sent.
     fn probed(&mut self);
     /// The foreground window's program, for the log.
@@ -190,6 +194,8 @@ pub(crate) struct Cycle<'a> {
     pub(crate) problems: &'a Problems,
     /// Writes a debug-level log line.
     pub(crate) note: &'a dyn Fn(Fields),
+    /// Takes the capture away, for this reason (`capture_lost`).
+    pub(crate) lost: &'a dyn Fn(CaptureLossReason),
 }
 
 /// One watchdog cycle: judge the probe still unseen from the last cycle and,
@@ -207,6 +213,9 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
         fields.push(("foreground", foreground.clone()));
         (cycle.note)(fields);
     };
+    if let Some(reason) = cycle.surroundings.lost() {
+        (cycle.lost)(reason);
+    }
     let now = (cycle.counters)();
     let tick = cycle.surroundings.input_tick();
     let mut failed = Vec::new();
@@ -231,6 +240,8 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
         }
     }
     if !failed.is_empty() {
+        // One real miss: the capture cannot be trusted to see input.
+        (cycle.lost)(CaptureLossReason::HooksSilent);
         (cycle.reinstall)(&failed);
         let repeated = failed
             .iter()
@@ -388,6 +399,10 @@ pub(crate) struct Desk {
 }
 
 impl Surroundings for Desk {
+    fn lost(&mut self) -> Option<CaptureLossReason> {
+        crate::capture_lost::reason_now(crate::foreground::foreground_app(), other_desktop())
+    }
+
     fn skip(&mut self) -> Option<Skip> {
         // All asked every time: each is cheap, and the watchdog asks every few seconds.
         first_reason(&[
