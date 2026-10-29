@@ -49,7 +49,10 @@ These are called across lanes (app → platform-windows), so their signatures ar
 ```rust
 // crates/mouser-platform-windows/src/cursor_guard.rs
 /// Runs the cursor guard for `parent_pid` (research V5). Returns when the parent has ended,
-/// after restoring blank system cursors. Never creates a window.
+/// after restoring blank system cursors, or when the parent has stopped its capture (it sets the
+/// named event `Local\MouserCursorGuard.<parent_pid>`; the cursors are then left alone, the parent
+/// has shown the pointer itself). Never creates a window. (Amended 2026-10-29, orchestrator: a normal
+/// stop ends the guard without TerminateProcess.)
 pub fn run(parent_pid: u32) -> std::process::ExitCode;
 
 // crates/mouser-platform-windows/src/service_client.rs
