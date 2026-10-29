@@ -542,8 +542,8 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 **Depends on**: probe P1 (T011).
 
-- [ ] T380 [P] [US1-platform-windows] Write the acceptance runner `crates/mouser-platform-windows/tests/acc_v2_us1_guard.rs` (cucumber 0.23, `[[test]] name = "acc_v2_us1_guard", harness = false` in `crates/mouser-platform-windows/Cargo.toml`, `fail_on_skipped()`) and steps `crates/mouser-platform-windows/tests/steps/v2_us1_guard.rs` for `tests/features/v2_us1_guard.feature`: a helper parent process grabs the capture (blank arrow) with a real guard child, the parent is ended with `TerminateProcess`, and the step asserts the arrow is no longer blank (`cursor.rs` blank-arrow check)
-- [ ] T381 [P] [US1-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_v2.rs` running conformance rules 10 and 11 against `WinPlatform`, with the backend's own "pointer hidden" query (`cursor.rs` blank-arrow check) for rule 10
+- [X] T380 [P] [US1-platform-windows] Write the acceptance runner `crates/mouser-platform-windows/tests/acc_v2_us1_guard.rs` (cucumber 0.23, `[[test]] name = "acc_v2_us1_guard", harness = false` in `crates/mouser-platform-windows/Cargo.toml`, `fail_on_skipped()`) and steps `crates/mouser-platform-windows/tests/steps/v2_us1_guard.rs` for `tests/features/v2_us1_guard.feature`: a helper parent process grabs the capture (blank arrow) with a real guard child, the parent is ended with `TerminateProcess`, and the step asserts the arrow is no longer blank (`cursor.rs` blank-arrow check)
+- [X] T381 [P] [US1-platform-windows] Write `crates/mouser-platform-windows/tests/contract_platform_windows_v2.rs` running conformance rules 10 and 11 against `WinPlatform`, with the backend's own "pointer hidden" query (`cursor.rs` blank-arrow check) for rule 10
 - [X] T382 [P] [US1-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/uipi_tests.rs`: `window_elevated` returns a value instead of `.expect` when the process or token cannot be opened (`uipi.rs:54-62`); the module comment states what the code does (`uipi.rs:1-3` is false today, G15)
 - [X] T383 [US1-platform-windows] Fix `crates/mouser-platform-windows/src/uipi.rs`
 - [X] T384 [P] [US1-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/foreground_tests.rs`: `foreground_app()` returns `ForegroundApp { name }` with the executable file name only from `GetForegroundWindow` → process id → `QueryFullProcessImageNameW`; `admin` is true for an elevated or SYSTEM token; `outranks_mouser` is true only when the app's integrity level is above Mouser's own (so false when Mouser runs as SYSTEM or elevated); `None` when there is no foreground window (contracts/platform-api-delta.md)
@@ -562,8 +562,8 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 - [X] T397 [US1-platform-windows] Spawn and stop the guard in `crates/mouser-platform-windows/src/capture.rs`
 - [X] T398 [US1-platform-windows] Rename the `#[allow(dead_code)]` field on `LiveInput` (`crates/mouser-platform-windows/src/lib.rs:384`) to `_guard` and delete the allow (debt G16); verified by clippy with `-D warnings`
 - [X] T399 [US1-platform-windows] Wait for the Explorer child in test teardown in `crates/mouser-platform-windows/src/drag_tests.rs` and delete `#[allow(clippy::zombie_processes)]` (line 699) (debt Tier 1); verified by clippy
-- [ ] T400 [US1-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T401 [US1-platform-windows] Commit: phase boundary "US1-platform-windows" (5.3)
+- [X] T400 [US1-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T401 [US1-platform-windows] Commit: phase boundary "US1-platform-windows" (5.3)
 
 #### Phase 20: US2-platform-windows — As a troubleshooting agent, I want the diagnostic log to show what Mouser did and why (P1)
 
