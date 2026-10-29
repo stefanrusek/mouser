@@ -430,12 +430,8 @@ impl Listener {
                     0,
                 )
             };
-            assert_ne!(
-                connected,
-                0,
-                "control pipe accepts: {}",
-                std::io::Error::last_os_error()
-            );
+            let error = std::io::Error::last_os_error();
+            assert_ne!(connected, 0, "control pipe accepts: {error}");
         }
         // The runtime was not there to see the connect: tell it.
         self.next.connect().await.expect("control pipe accepts");
