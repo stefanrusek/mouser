@@ -617,6 +617,10 @@ impl Surroundings for Always {
     fn foreground(&self) -> String {
         "test.exe".into()
     }
+
+    fn input_tick(&self) -> u32 {
+        crate::watchdog::last_input()
+    }
 }
 
 fn always() -> Box<dyn Surroundings + Send> {

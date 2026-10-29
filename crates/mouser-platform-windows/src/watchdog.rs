@@ -78,7 +78,7 @@ pub(crate) fn hooks_in(bits: usize) -> impl Iterator<Item = Hook> {
         .filter(move |hook| bits & hook.bit() != 0)
 }
 
-/// Probe events each hook has seen: (mouse, keyboard).
+/// Events each hook has seen, probes and real input alike: (mouse, keyboard).
 pub(crate) type Counts = (u32, u32);
 
 fn count(counts: Counts, hook: Hook) -> u32 {
@@ -120,6 +120,9 @@ pub(crate) trait Surroundings {
     fn probed(&mut self);
     /// The foreground window's program, for the log.
     fn foreground(&self) -> String;
+    /// The tick of the last input the system took, from anyone: it moves
+    /// when someone uses the PC.
+    fn input_tick(&self) -> u32;
 }
 
 /// Whether a probe was handed to the system.
@@ -133,10 +136,19 @@ pub(crate) enum Outcome {
 /// Consecutive misses of one hook before the owner is told.
 pub(crate) const MISSES_TO_RAISE: u32 = 2;
 
+/// A probe a hook has not seen yet.
+#[derive(Clone, Copy)]
+struct Pending {
+    /// What the hook had seen when the probe was sent.
+    count: u32,
+    /// The system's last-input tick right after it was sent.
+    tick: u32,
+}
+
 #[derive(Default)]
 struct HookState {
-    /// What the hook had seen when the probe that is still unseen was sent.
-    pending: Option<u32>,
+    /// The probe that is still unseen.
+    pending: Option<Pending>,
     /// Consecutive probes it missed.
     misses: u32,
 }
@@ -183,6 +195,11 @@ pub(crate) struct Cycle<'a> {
 /// One watchdog cycle: judge the probe still unseen from the last cycle and,
 /// unless a hook was just reinstalled or there is a reason not to, send the
 /// next one.
+///
+/// A hook that has seen any event since that probe, the probe or real input,
+/// is healthy. One that has seen nothing has missed only if someone used the
+/// PC since (the system's last-input tick moved): with nobody there, its
+/// silence says nothing, and the probe stays pending.
 pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     let foreground = cycle.surroundings.foreground();
     let note = |outcome: &str, mut fields: Fields| {
@@ -191,15 +208,18 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
         (cycle.note)(fields);
     };
     let now = (cycle.counters)();
+    let tick = cycle.surroundings.input_tick();
     let mut failed = Vec::new();
     for hook in Hook::BOTH {
         let state = judge.state(hook);
-        let Some(before) = state.pending.take() else {
+        let Some(pending) = state.pending.take() else {
             continue;
         };
-        if count(now, hook) != before {
+        if count(now, hook) != pending.count {
             state.misses = 0;
             note("late", vec![("hook", hook.name().into())]);
+        } else if tick == pending.tick {
+            state.pending = Some(pending);
         } else {
             state.misses += 1;
             failed.push(hook);
@@ -232,13 +252,18 @@ pub(crate) fn watch_cycle(judge: &mut Judge, cycle: Cycle) {
     }
     cycle.surroundings.probed();
     let after = (cycle.counters)();
+    let tick = cycle.surroundings.input_tick();
     let mut unseen = Vec::new();
     for hook in Hook::BOTH {
         let state = judge.state(hook);
         if count(after, hook) != count(now, hook) {
             state.misses = 0;
+            state.pending = None;
         } else {
-            state.pending = Some(count(now, hook));
+            state.pending = Some(Pending {
+                count: count(now, hook),
+                tick,
+            });
             unseen.push(hook.name());
         }
     }
@@ -379,6 +404,10 @@ impl Surroundings for Desk {
 
     fn foreground(&self) -> String {
         foreground_process()
+    }
+
+    fn input_tick(&self) -> u32 {
+        last_input()
     }
 }
 
