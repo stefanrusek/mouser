@@ -192,10 +192,26 @@ fn uninstall_exits_0_when_the_service_rule_and_value_are_gone_already() {
 #[test]
 fn a_mouser_process_that_ends_by_itself_meanwhile_is_no_failure() {
     let fake = installed();
-    fake.start_process("mouser-app.exe", 1);
+    // The service's process ends as the uninstaller goes to wait for it.
+    fake.slow_to_stop();
     fake.fail("open_process", 87);
+    fake.start_process("mouser-app.exe", 1);
     fake.fail("terminate", 87);
     assert_eq!(run(uninstall(&fake, ME)), (0, String::new()));
+}
+
+#[test]
+fn processes_that_cannot_be_listed_after_the_service_stopped_fail_the_uninstall() {
+    let fake = installed();
+    fake.pass("processes");
+    fake.fail("processes", 5);
+    assert_eq!(
+        run(uninstall(&fake, ME)),
+        (
+            1,
+            "ending mouser-app.exe: processes failed (error 5)\n".into()
+        )
+    );
 }
 
 #[test]
