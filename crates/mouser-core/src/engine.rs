@@ -723,6 +723,7 @@ impl Engine {
         self.ctx.tasks.wait().await;
         self.ctx.transport.wait_idle().await;
         control::server::cleanup(&self.control_path);
+        self.ctx.transport.shutdown().await;
     }
 }
 

@@ -81,12 +81,14 @@ fn free_port() -> u16 {
         let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         20_000 + (std::process::id().wrapping_mul(97).wrapping_add(n) % 20_000) as u16
     })
-    .find(|port| {
-        *port != 32121
-            && std::net::UdpSocket::bind(("0.0.0.0", *port)).is_ok()
-            && std::net::UdpSocket::bind(("::", *port)).is_ok()
-    })
+    .find(|port| *port != 32121 && port_is_free(*port))
     .expect("an endless iterator")
+}
+
+/// Whether nothing holds `port` on either address family.
+fn port_is_free(port: u16) -> bool {
+    std::net::UdpSocket::bind(("0.0.0.0", port)).is_ok()
+        && std::net::UdpSocket::bind(("::", port)).is_ok()
 }
 
 fn control_path(dir: &tempfile::TempDir, name: &str) -> PathBuf {
@@ -264,17 +266,32 @@ impl HeadlessWorld {
         let task = tokio::spawn(headless::run(params, async {
             stopped.await.unwrap();
         }));
-        self.running = Some(Running { stop, task });
         let control = self.beta().control.clone();
-        until("the control socket", || control.exists()).await;
+        until("the control socket or the host ending", || {
+            control.exists() || task.is_finished()
+        })
+        .await;
+        if task.is_finished() {
+            // The host ended before it served: say why, not that it was late.
+            match task.await {
+                Err(fault) => std::panic::resume_unwind(fault.into_panic()),
+                Ok(()) => panic!("the headless host ended before opening its control socket"),
+            }
+        }
+        self.running = Some(Running { stop, task });
         self.beta().connect().await;
     }
 
     pub async fn stop(&mut self) {
         self.beta().client = None;
         if let Some(Running { stop, task }) = self.running.take() {
-            stop.send(()).unwrap();
-            task.await.unwrap();
+            // A host that already ended says why (its panic) before anything
+            // is made of the stop signal going nowhere.
+            let asked = stop.send(());
+            if let Err(fault) = task.await {
+                std::panic::resume_unwind(fault.into_panic());
+            }
+            asked.expect("the headless host was still running to be stopped");
         }
         if let Some((_, engine)) = self.alpha.take() {
             engine.shutdown().await;
@@ -345,6 +362,11 @@ async fn on_a_desk(world: &mut HeadlessWorld) {
     // Beta's user quits Mouser; the desk remembers it.
     world.beta().client = None;
     beta_engine.shutdown().await;
+    // The endpoint's socket is released by its driver task a moment after
+    // shutdown returns (see mouser-core testing.rs `boot_with`); the headless
+    // Beta binds the same port, so wait for the port rather than race it.
+    let beta_port = port_of(world.beta()) as u16;
+    until("Beta's port to be released", || port_is_free(beta_port)).await;
 }
 
 fn port_of(computer: &Computer) -> u32 {

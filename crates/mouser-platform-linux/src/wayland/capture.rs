@@ -378,17 +378,23 @@ async fn enable(capture: CaptureSession, tx: Sender<LocalInput>, shared: &Shared
 }
 
 /// Closes the session and the libei connection and waits for the reader.
-/// The portal objects are dropped on the portal runtime, which they need.
+/// The portal objects are dropped on the portal runtime, which they need,
+/// also when a step fails (elsewhere their drop panics again and aborts).
 fn teardown(running: Running) {
     let (capture, listener) = (running.capture, running.listener);
-    running.stop_listening.send(()).unwrap();
+    let stop_listening = running.stop_listening;
     block_on(async move {
+        stop_listening.send(()).unwrap();
         listener.await.unwrap();
         capture.session.close().await.unwrap();
         drop(capture);
     });
     running.socket.shutdown(std::net::Shutdown::Both).unwrap();
-    running.reader.join().unwrap();
+    let joined = running.reader.join();
+    // A second panic while one is unwinding would abort the process.
+    if !std::thread::panicking() {
+        joined.unwrap();
+    }
 }
 
 impl InputCapture for WaylandCapture {

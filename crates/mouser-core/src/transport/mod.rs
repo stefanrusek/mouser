@@ -31,6 +31,7 @@ use serde::de::DeserializeOwned;
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::identity::Identity;
+use crate::lock::LockExt;
 
 /// Application protocol negotiated in the TLS handshake.
 pub const ALPN: &[u8] = b"mouser/1";
@@ -212,12 +213,20 @@ fn udp_socket(addr: SocketAddr) -> std::io::Result<std::net::UdpSocket> {
     Ok(socket.into())
 }
 
-/// One computer's QUIC endpoint.
-pub struct Transport {
+struct Live {
     endpoint: Endpoint,
     /// The bound sockets, kept so the endpoint can be moved onto other
     /// handles of them: the configured port never changes.
     sockets: socket::Sockets,
+}
+
+/// One computer's QUIC endpoint.
+pub struct Transport {
+    /// The endpoint and its sockets until [`shutdown`](Self::shutdown) takes
+    /// them, so that nothing keeps the port once it returns (the engine's
+    /// context outlives its shutdown while handles of it are held).
+    live: std::sync::Mutex<Option<Live>>,
+    addr: SocketAddr,
     certificate: CertificateDer<'static>,
     pkcs8: Vec<u8>,
 }
@@ -250,15 +259,20 @@ impl Transport {
         )
         .expect("QUIC endpoint");
         Self {
-            endpoint,
-            sockets,
+            addr: endpoint.local_addr().expect("bound endpoint"),
+            live: std::sync::Mutex::new(Some(Live { endpoint, sockets })),
             certificate,
             pkcs8,
         }
     }
 
+    /// A handle of the endpoint; `None` once shut down.
+    fn endpoint(&self) -> Option<Endpoint> {
+        self.live.guard().as_ref().map(|live| live.endpoint.clone())
+    }
+
     pub fn local_addr(&self) -> SocketAddr {
-        self.endpoint.local_addr().expect("bound endpoint")
+        self.addr
     }
 
     /// Dial `addr`; with `expected`, fail unless the peer is that computer.
@@ -279,7 +293,10 @@ impl Transport {
             QuicClientConfig::try_from(tls).expect("QUIC-capable TLS"),
         ));
         client.transport_config(transport_config());
-        self.endpoint
+        // A dial after shutdown (a control call that outlived the engine) is a
+        // dial that failed.
+        self.endpoint()
+            .ok_or(ConnectionError::LocallyClosed)?
             .connect_with(client, addr, "mouser")
             .expect("valid dial parameters")
             .await
@@ -287,7 +304,7 @@ impl Transport {
 
     /// The next incoming connection attempt; `None` once the endpoint is closed.
     pub async fn accept(&self) -> Option<Incoming> {
-        self.endpoint.accept().await
+        self.endpoint()?.accept().await
     }
 
     /// Finish the handshake of an incoming attempt.
@@ -297,15 +314,33 @@ impl Transport {
 
     /// Stop accepting and close every connection.
     pub fn close(&self) {
-        self.endpoint.close(
-            0u32.into(),
-            crate::session::close_reason::CloseReason::Quit.bytes(),
-        );
+        if let Some(endpoint) = self.endpoint() {
+            endpoint.close(
+                0u32.into(),
+                crate::session::close_reason::CloseReason::Quit.bytes(),
+            );
+        }
     }
 
     /// Wait until every connection has been closed.
     pub async fn wait_idle(&self) {
-        self.endpoint.wait_idle().await;
+        if let Some(endpoint) = self.endpoint() {
+            endpoint.wait_idle().await;
+        }
+    }
+
+    /// Close every connection, then give the port back: returns once the
+    /// endpoint's driver and every duplicated handle of the sockets are gone,
+    /// so the port can be bound again at once.
+    pub async fn shutdown(&self) {
+        self.close();
+        self.wait_idle().await;
+        let Some(live) = self.live.guard().take() else {
+            return;
+        };
+        let released = live.sockets.released();
+        drop(live);
+        released.await;
     }
 }
 

@@ -10,6 +10,7 @@
 //! kernel checks the port against IPv4 sockets and delivers IPv4 to us
 //! (foundational notes, "IPv4 through a dual-stack socket").
 
+use std::future::Future;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
 use std::pin::Pin;
@@ -19,11 +20,14 @@ use std::task::{Context, Poll};
 
 use quinn::udp::{RecvMeta, Transmit};
 use quinn::{AsyncUdpSocket, Runtime, TokioRuntime, UdpPoller};
+use tokio::sync::watch;
 
 /// The bound sockets: IPv4, and IPv6 on the same port where it can be had.
 pub(super) struct Sockets {
     v4: UdpSocket,
     v6: Option<UdpSocket>,
+    /// How many quinn sockets (and their pollers) are alive; see [`Held`].
+    held: Arc<watch::Sender<usize>>,
 }
 
 impl Sockets {
@@ -46,11 +50,31 @@ impl Sockets {
             let ipv4 = bind(addr).map_err(|e| format!("{addr}: {e}"))?;
             let port = ipv4.local_addr().expect("bound socket").port();
             match v6.map(|ip| bind(SocketAddr::from((ip, port)))).transpose() {
-                Ok(ipv6) => return Ok(Self { v4: ipv4, v6: ipv6 }),
+                Ok(ipv6) => return Ok(Self::new(ipv4, ipv6)),
                 // The port the IPv4 socket was given is taken on IPv6: another.
                 Err(e) if requested == 0 && e.kind() == io::ErrorKind::AddrInUse => {}
-                Err(_) => return Ok(Self { v4: ipv4, v6: None }),
+                Err(_) => return Ok(Self::new(ipv4, None)),
             }
+        }
+    }
+
+    fn new(v4: UdpSocket, v6: Option<UdpSocket>) -> Self {
+        Self {
+            v4,
+            v6,
+            held: Arc::new(watch::channel(0).0),
+        }
+    }
+
+    /// Resolves once every quinn socket made by [`quinn`](Self::quinn) (and
+    /// its pollers) has been dropped, that is once the last duplicated handle
+    /// of the sockets is closed. Taken before the owner is dropped.
+    pub(super) fn released(&self) -> impl Future<Output = ()> + use<> {
+        let mut held = self.held.subscribe();
+        async move {
+            held.wait_for(|n| *n == 0)
+                .await
+                .expect("the count is kept until the last handle is gone");
         }
     }
 
@@ -63,14 +87,89 @@ impl Sockets {
                 .wrap_udp_socket(handle)
                 .expect("socket joins the runtime")
         };
-        match &self.v6 {
+        let inner: Arc<dyn AsyncUdpSocket> = match &self.v6 {
             None => wrap(&self.v4),
             Some(v6) => Arc::new(Pair {
                 v4: wrap(&self.v4),
                 v6: wrap(v6),
                 v6_first: AtomicBool::new(false),
             }),
-        }
+        };
+        self.held.send_modify(|n| *n += 1);
+        Arc::new(Counted {
+            inner,
+            _held: Arc::new(Held(self.held.clone())),
+        })
+    }
+}
+
+/// Counts as one while alive, in [`Sockets`]' count of quinn sockets.
+#[derive(Debug)]
+struct Held(Arc<watch::Sender<usize>>);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.0.send_modify(|n| *n -= 1);
+    }
+}
+
+/// A quinn socket that is counted while it, or any poller made from it, is
+/// alive. `_held` is declared last so it goes after what it guards: the
+/// count reaches zero only once the sockets are really closed.
+#[derive(Debug)]
+struct Counted {
+    inner: Arc<dyn AsyncUdpSocket>,
+    _held: Arc<Held>,
+}
+
+impl AsyncUdpSocket for Counted {
+    fn create_io_poller(self: Arc<Self>) -> Pin<Box<dyn UdpPoller>> {
+        Box::pin(CountedPoller {
+            inner: self.inner.clone().create_io_poller(),
+            _held: self._held.clone(),
+        })
+    }
+
+    fn try_send(&self, transmit: &Transmit) -> io::Result<()> {
+        self.inner.try_send(transmit)
+    }
+
+    fn poll_recv(
+        &self,
+        cx: &mut Context,
+        bufs: &mut [io::IoSliceMut<'_>],
+        meta: &mut [RecvMeta],
+    ) -> Poll<io::Result<usize>> {
+        self.inner.poll_recv(cx, bufs, meta)
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.inner.local_addr()
+    }
+
+    fn max_transmit_segments(&self) -> usize {
+        self.inner.max_transmit_segments()
+    }
+
+    fn max_receive_segments(&self) -> usize {
+        self.inner.max_receive_segments()
+    }
+
+    fn may_fragment(&self) -> bool {
+        self.inner.may_fragment()
+    }
+}
+
+/// A poller that keeps its socket counted.
+#[derive(Debug)]
+struct CountedPoller {
+    inner: Pin<Box<dyn UdpPoller>>,
+    _held: Arc<Held>,
+}
+
+impl UdpPoller for CountedPoller {
+    fn poll_writable(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.inner.as_mut().poll_writable(cx)
     }
 }
 

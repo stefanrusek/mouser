@@ -5,7 +5,7 @@
 //! process of this binary that starts with `WAYLAND_DISPLAY` already set.
 
 use crate::compositor::Compositor;
-use crate::daemon::{Daemon, wait_until};
+use crate::daemon::{Daemon, Process, wait_until};
 use crate::portals::{PortalConfig, Portals};
 use crate::{Machine, full_portals, machine_with};
 use mouser_platform::{ClipRep, Platform};
@@ -62,17 +62,30 @@ fn without_the_portal_clipboard_kde_uses_data_control() {
         None => {
             let dir = tempfile::tempdir().unwrap();
             let socket = dir.path().join("wayland-test");
-            let out = std::process::Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", NAME, "--test-threads=1", "--nocapture"])
-                .env(CHILD, &socket)
-                .env("WAYLAND_DISPLAY", &socket)
-                .output()
-                .unwrap();
+            // Output goes to files, not pipes: whatever the child leaves
+            // running cannot keep this test waiting for the end of a pipe.
+            let (out, err) = (dir.path().join("out"), dir.path().join("err"));
+            let mut child = Process(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", NAME, "--test-threads=1", "--nocapture"])
+                    .env(CHILD, &socket)
+                    .env("WAYLAND_DISPLAY", &socket)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::fs::File::create(&out).unwrap())
+                    .stderr(std::fs::File::create(&err).unwrap())
+                    .spawn()
+                    .unwrap(),
+            );
+            let mut status = None;
+            wait_until("the child test", || {
+                status = child.0.try_wait().unwrap();
+                status.is_some()
+            });
             assert!(
-                out.status.success(),
+                status.unwrap().success(),
                 "{}\n{}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
+                std::fs::read_to_string(&out).unwrap(),
+                std::fs::read_to_string(&err).unwrap()
             );
         }
         Some(socket) => scenario(socket.into()),

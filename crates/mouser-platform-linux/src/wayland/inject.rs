@@ -123,11 +123,19 @@ impl InputInject for WaylandInject {
 
 impl Drop for WaylandInject {
     fn drop(&mut self) {
+        // A second panic while one is unwinding would abort the process.
+        let unwinding = std::thread::panicking();
         for code in std::mem::take(&mut self.keys) {
-            self.send_key(code, false).unwrap();
+            let released = self.send_key(code, false);
+            if !unwinding {
+                released.unwrap();
+            }
         }
         for button in std::mem::take(&mut self.buttons) {
-            self.send_button(button, false).unwrap();
+            let released = self.send_button(button, false);
+            if !unwinding {
+                released.unwrap();
+            }
         }
         // The session closes with its last holder.
         self.link.take();

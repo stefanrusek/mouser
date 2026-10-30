@@ -202,7 +202,11 @@ impl Drop for Link {
             drop(desktop);
         });
         self.socket.shutdown(std::net::Shutdown::Both).unwrap();
-        self.reader.take().unwrap().join().unwrap();
+        let joined = self.reader.take().unwrap().join();
+        // A second panic while one is unwinding would abort the process.
+        if !std::thread::panicking() {
+            joined.unwrap();
+        }
     }
 }
 

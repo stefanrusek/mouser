@@ -297,7 +297,6 @@ impl Lab {
         dir: tempfile::TempDir,
         tweak: impl FnOnce(&mut EngineParams),
     ) -> TestNode {
-        tokio::time::sleep(Duration::from_millis(100)).await;
         self.launch_with(
             name,
             platform,
@@ -328,9 +327,6 @@ impl Lab {
         dir: tempfile::TempDir,
         protocol: u16,
     ) -> TestNode {
-        // The previous endpoint's socket is released by its driver task a tick
-        // after shutdown; a real restart is a new process and never races.
-        tokio::time::sleep(Duration::from_millis(100)).await;
         self.launch(name, platform, dir, protocol, "0.1.0").await
     }
 }
