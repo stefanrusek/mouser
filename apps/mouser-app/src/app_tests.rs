@@ -403,17 +403,100 @@ async fn starting_the_app_installs_the_panic_hook_on_the_engines_log() {
     assert_eq!(fault["fields"]["where"], "app-t231");
 }
 
-// v2 placeholder: T330
+/// A Windows that answers the restart as administrator with `answer`.
+#[cfg(target_os = "windows")]
+struct AnsweringShell {
+    answer: crate::elevation::RunAs,
+    accept: bool,
+    started: std::sync::Mutex<Vec<String>>,
+}
+
+#[cfg(target_os = "windows")]
+impl crate::elevation::Shell for AnsweringShell {
+    fn start(
+        &self,
+        _exe: &std::path::Path,
+        args: &str,
+        as_admin: bool,
+    ) -> Result<(), crate::elevation::RunAs> {
+        assert!(as_admin);
+        self.started.lock().unwrap().push(args.to_string());
+        if self.accept {
+            Ok(())
+        } else {
+            Err(self.answer.clone())
+        }
+    }
+
+    fn wait_for_process(&self, _pid: u32) {}
+
+    fn process_alive(&self, _pid: u32) -> bool {
+        false
+    }
+
+    fn message_box(&self, _text: &str) {}
+}
+
+#[cfg(target_os = "windows")]
+fn shell_that(accept: bool) -> AnsweringShell {
+    AnsweringShell {
+        answer: crate::elevation::RunAs::Declined,
+        accept,
+        started: std::sync::Mutex::new(Vec::new()),
+    }
+}
+
+#[cfg(target_os = "windows")]
 #[tokio::test(flavor = "multi_thread")]
-async fn a_restart_request_does_nothing_until_the_restart_sequence_exists() {
+async fn a_restart_request_whose_prompt_is_declined_leaves_mouser_running() {
+    use std::sync::Arc;
     let f = fixture().await;
+    let path = crate::support_tests::control_path_in(&f._dir);
     let app = app_with(f.host);
+    app.state::<crate::host::Host>()
+        .control()
+        .call(Method::LoggingSet, Some(json!({"enabled": true})))
+        .await
+        .unwrap();
+    let shell = Arc::new(shell_that(false));
+    app.manage(crate::app::ElevationShell(shell.clone()));
     let notifier = FakeNotifier::default();
     handle_event(
         app.handle(),
         &notifier,
         mouser_core::EngineEvent::RestartElevated,
     );
-    assert!(notifier.shown.lock().unwrap().is_empty());
-    assert!(app.handle().webview_windows().is_empty());
+    let dir = f._dir.path().to_path_buf();
+    let outcomes = move || -> Vec<serde_json::Value> {
+        crate::support_tests::log_records(&dir)
+            .iter()
+            .filter(|r| r["event"] == "elevation.restart")
+            .map(|r| r["fields"]["outcome"].clone())
+            .collect()
+    };
+    // The answer is logged after Windows answered.
+    crate::support_tests::eventually(|| outcomes().len() == 2).await;
+    assert_eq!(outcomes(), ["prompted", "declined"]);
+    let pid = std::process::id();
+    assert_eq!(
+        *shell.started.lock().unwrap(),
+        [format!("--wait-for {pid}")]
+    );
+    assert!(path.exists(), "the engine runs on");
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn an_accepted_restart_shuts_the_engine_down_then_exits() {
+    let (app, path, _dir) = tauri::async_runtime::block_on(async {
+        let f = fixture().await;
+        let path = crate::support_tests::control_path_in(&f._dir);
+        (app_with(f.host), path, f._dir)
+    });
+    let exited_after_shutdown = std::cell::Cell::new(None);
+    let state = crate::app::restart_elevated(app.handle(), &shell_that(true), || {
+        exited_after_shutdown.set(Some(!path.exists()));
+    });
+    assert_eq!(state, crate::elevation::State::HandingOver);
+    assert_eq!(exited_after_shutdown.get(), Some(true));
 }

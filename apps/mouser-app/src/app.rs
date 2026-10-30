@@ -127,9 +127,40 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
         EngineEvent::QuickJumpHide => quickjump_windows::hide(app),
         // v2 placeholder: none (no Phase 9 task owns it; core logs the fault, nothing to show)
         EngineEvent::Fault { .. } => {}
-        // v2 placeholder: T330 (the US5 app lane runs the restart sequence)
+        #[cfg(target_os = "windows")]
+        EngineEvent::RestartElevated => {
+            let app = app.clone();
+            let shell = app.state::<ElevationShell>().0.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                restart_elevated(&app, shell.as_ref(), || app.exit(0));
+            });
+        }
+        // Only a portable Windows computer is asked to restart elevated.
+        #[cfg(not(target_os = "windows"))]
         EngineEvent::RestartElevated => {}
     }
+}
+
+/// What the restart as administrator asks of Windows; tests put a fake here.
+#[cfg(target_os = "windows")]
+pub struct ElevationShell(pub Arc<dyn crate::elevation::Shell + Send + Sync>);
+
+/// Restarts Mouser as administrator (FR-005): when the new instance is
+/// starting, the engine is shut down and the app `exit`s; when the prompt
+/// was declined, nothing changes.
+#[cfg(target_os = "windows")]
+pub fn restart_elevated<R: Runtime>(
+    app: &AppHandle<R>,
+    shell: &dyn crate::elevation::Shell,
+    exit: impl FnOnce(),
+) -> crate::elevation::State {
+    let exe = std::env::current_exe().expect("the executable has a path");
+    let log = app.state::<Host>().log();
+    let state = crate::elevation::restart(shell, &exe, std::process::id(), &log);
+    if state == crate::elevation::State::HandingOver {
+        crate::exit::quit(app, exit);
+    }
+    state
 }
 
 /// This computer's id, from the engine's status.
