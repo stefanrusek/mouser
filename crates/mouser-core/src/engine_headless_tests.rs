@@ -165,3 +165,109 @@ async fn exporting_copies_the_desk_key() {
         .unwrap();
     assert_eq!(store.get(&desk_key_name(&desk)).unwrap(), Some(key));
 }
+
+#[tokio::test]
+async fn an_installer_copies_the_identity_from_the_users_folder_and_store() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let node = &nodes[0];
+    let user = node.platform.secrets();
+    let machine = tempfile::tempdir().unwrap();
+    let mut store = secrets_in(machine.path());
+    crate::engine_headless::export_identity(node.dir.path(), &*user, machine.path(), &mut store)
+        .unwrap();
+    let state = crate::state::LocalState::load(&machine.path().join(crate::state::FILE));
+    let desk = state.desk.as_ref().unwrap().desk_id;
+    for name in [DEVICE_KEY.to_string(), desk_key_name(&desk)] {
+        assert_eq!(
+            store.get(&name).unwrap(),
+            user.get(&name).unwrap(),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        state,
+        crate::state::LocalState::load(&node.dir.path().join(crate::state::FILE))
+    );
+}
+
+#[test]
+fn a_user_who_never_joined_a_desk_has_only_the_device_key_copied() {
+    let user = tempfile::tempdir().unwrap();
+    let mut user_store = secrets_in(user.path());
+    user_store.set(DEVICE_KEY, b"key").unwrap();
+    let machine = tempfile::tempdir().unwrap();
+    let mut store = secrets_in(machine.path());
+    crate::engine_headless::export_identity(user.path(), &user_store, machine.path(), &mut store)
+        .unwrap();
+    assert_eq!(store.get(DEVICE_KEY).unwrap(), Some(b"key".to_vec()));
+    assert_eq!(
+        crate::state::LocalState::load(&machine.path().join(crate::state::FILE)),
+        crate::state::LocalState::default()
+    );
+}
+
+#[test]
+fn an_identity_that_cannot_be_read_is_not_copied_and_says_why() {
+    let machine = tempfile::tempdir().unwrap();
+    let mut store = secrets_in(machine.path());
+    // No device key.
+    let user = tempfile::tempdir().unwrap();
+    let empty = secrets_in(user.path());
+    let missing =
+        crate::engine_headless::export_identity(user.path(), &empty, machine.path(), &mut store);
+    assert_eq!(missing, Err("device_key is not in the user's store".into()));
+    // A store that cannot be read: a folder where the key should be.
+    std::fs::create_dir_all(user.path().join("locked").join(DEVICE_KEY)).unwrap();
+    let unreadable = FileSecrets::new(user.path().join("locked"));
+    let failed = crate::engine_headless::export_identity(
+        user.path(),
+        &unreadable,
+        machine.path(),
+        &mut store,
+    );
+    assert!(failed.unwrap_err().starts_with("device_key: "));
+    // A state.json that is not one.
+    std::fs::write(user.path().join(crate::state::FILE), b"{").unwrap();
+    let mut keyed = secrets_in(user.path());
+    keyed.set(DEVICE_KEY, b"key").unwrap();
+    let failed =
+        crate::engine_headless::export_identity(user.path(), &keyed, machine.path(), &mut store);
+    assert!(failed.unwrap_err().starts_with("state.json: "));
+    // A state.json that cannot be read: it is a folder.
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join(crate::state::FILE)).unwrap();
+    let failed =
+        crate::engine_headless::export_identity(folder.path(), &keyed, machine.path(), &mut store);
+    assert!(failed.unwrap_err().starts_with("state.json: "));
+    assert_eq!(store.get(DEVICE_KEY).unwrap(), None);
+    assert!(!machine.path().join(crate::state::FILE).exists());
+}
+
+#[test]
+fn an_identity_that_cannot_be_written_says_why() {
+    let user = tempfile::tempdir().unwrap();
+    let mut user_store = secrets_in(user.path());
+    user_store.set(DEVICE_KEY, b"key").unwrap();
+    let machine = tempfile::tempdir().unwrap();
+    // The machine store's folder is a file.
+    std::fs::write(machine.path().join("file"), b"").unwrap();
+    let mut store = FileSecrets::new(machine.path().join("file"));
+    let failed = crate::engine_headless::export_identity(
+        user.path(),
+        &user_store,
+        machine.path(),
+        &mut store,
+    );
+    assert!(failed.unwrap_err().starts_with("device_key: "));
+    // The machine folder cannot hold state.json: it is a folder there.
+    std::fs::create_dir(machine.path().join(crate::state::FILE)).unwrap();
+    let mut store = secrets_in(machine.path());
+    let failed = crate::engine_headless::export_identity(
+        user.path(),
+        &user_store,
+        machine.path(),
+        &mut store,
+    );
+    assert!(failed.unwrap_err().starts_with("state.json: "));
+}
