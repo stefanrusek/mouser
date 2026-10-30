@@ -237,6 +237,17 @@ async fn the_ui_reaches_all_the_commands_over_ipc() {
     assert_eq!(status["computer"]["name"], "Desk Mac");
     let missing = ipc("control", json!({"request": {}})).unwrap_err();
     assert!(missing.as_str().unwrap().contains("method"));
+    // An answer the UI sends without what it needs is refused, not guessed at.
+    for (cmd, body) in [
+        ("fix", json!({"problemId": id})),
+        ("transfer_resolve", json!({"transferId": "ab12"})),
+    ] {
+        let refused = ipc(cmd, body).unwrap_err();
+        assert!(
+            refused.as_str().unwrap().contains("missing"),
+            "{cmd}: {refused}"
+        );
+    }
     let unknown = ipc("control", json!({"request": {"method": "nope"}})).unwrap_err();
     assert_eq!(unknown["code"], -32601);
 
