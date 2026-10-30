@@ -106,10 +106,25 @@ impl Pad {
     }
 }
 
+/// The pad's window on its way to the main queue to be closed. Unlike `Pad`
+/// it has no `Drop`, so dropping it after the close queues nothing more.
+struct Closing(Retained<NSWindow>);
+
+// The window is only touched from the main queue.
+unsafe impl Send for Closing {}
+
+impl Closing {
+    /// Takes the whole wrapper, so the closure that calls it captures the
+    /// `Send` wrapper rather than just the window inside it.
+    fn close(self) {
+        self.0.close();
+    }
+}
+
 impl Drop for Pad {
     fn drop(&mut self) {
-        let window = Pad(self.0.clone());
-        DispatchQueue::main().exec_async(move || window.0.close());
+        let window = Closing(self.0.clone());
+        DispatchQueue::main().exec_async(move || window.close());
     }
 }
 
