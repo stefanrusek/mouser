@@ -34,9 +34,12 @@ impl Transport {
     /// fresh handles of those sockets: that is what makes every connection
     /// probe its path (QUIC migration, research R2). Returns the address.
     pub fn rebind(&self) -> SocketAddr {
-        self.endpoint
-            .rebind_abstract(self.sockets.quinn())
-            .expect("endpoint can rebind");
+        // After shutdown there is no endpoint to move.
+        if let Some(live) = self.live.guard().as_ref() {
+            live.endpoint
+                .rebind_abstract(live.sockets.quinn())
+                .expect("endpoint can rebind");
+        }
         self.local_addr()
     }
 }

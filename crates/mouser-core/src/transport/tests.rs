@@ -262,33 +262,6 @@ async fn binding_a_port_that_is_taken_panics_with_the_reason() {
     super::Transport::bind(&id, held.0.local_addr().unwrap().port());
 }
 
-/// Regression: an endpoint that is closed and dropped gives its port back
-/// within a scheduler tick, so the same port binds again at once, every
-/// time (a restart on the fixed port must not fail spuriously).
-#[tokio::test]
-async fn a_port_binds_again_right_after_its_endpoint_is_closed() {
-    let id = crate::identity::Identity::from_seed([3; 32]);
-    let probe = std::net::UdpSocket::bind(("::", 0)).unwrap();
-    let port = probe.local_addr().unwrap().port();
-    drop(probe);
-    for _ in 0..200 {
-        let endpoint = super::Transport::bind(&id, port);
-        assert_eq!(endpoint.local_addr().port(), port);
-        endpoint.close();
-        endpoint.wait_idle().await;
-        drop(endpoint);
-        // The endpoint's driver lets go of the socket on its next turn.
-        let mut turns = 0;
-        while std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_err()
-            || super::udp_socket(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port))).is_err()
-        {
-            turns += 1;
-            assert!(turns < 100, "the port was never released");
-            tokio::task::yield_now().await;
-        }
-    }
-}
-
 /// Regression: on macOS an IPv6 socket's port is checked against IPv6 sockets
 /// only, so a dual-stack `[::]:p` bound although an IPv4 socket held
 /// `0.0.0.0:p`, and every IPv4 datagram to the port went to that socket: the
@@ -462,4 +435,46 @@ async fn a_001_status_without_problems_is_read_too() {
         acceptor.reader.recv::<ControlMessage>().await,
         Some(ControlMessage::Status(status))
     );
+}
+
+/// The port is free the moment a transport's shutdown returns: no turn of
+/// the scheduler is waited for. One attempt can win the race by luck, so the
+/// same port is bound and shut down repeatedly; every round must succeed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_port_is_free_the_moment_shutdown_returns() {
+    let id = crate::identity::Identity::from_seed([3; 32]);
+    let probe = std::net::UdpSocket::bind(("::", 0)).unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    for _ in 0..200 {
+        let transport = super::Transport::bind(&id, port);
+        transport.shutdown().await;
+        std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).expect("IPv4 port is free");
+        super::udp_socket(SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port)))
+            .expect("IPv6 port is free");
+    }
+}
+
+/// A transport that has been shut down is quiet when asked to do anything: a
+/// dial fails, nothing is accepted, a rebind does nothing, and shutting down
+/// again (or closing) changes nothing. The engine shuts down while a network
+/// change, a dial from a control call or a second shutdown may still arrive.
+#[tokio::test]
+async fn a_transport_that_has_been_shut_down_is_quiet() {
+    let id = identity(5);
+    let other = Transport::bind(&identity(6), 0);
+    let transport = Transport::bind(&id, 0);
+    let addr = transport.local_addr();
+    transport.shutdown().await;
+    assert!(transport.accept().await.is_none());
+    assert!(
+        transport
+            .connect(loopback(&other), None)
+            .await
+            .is_err_and(|e| matches!(e, ConnectionError::LocallyClosed))
+    );
+    assert_eq!(transport.rebind(), addr);
+    transport.close();
+    transport.wait_idle().await;
+    transport.shutdown().await;
 }

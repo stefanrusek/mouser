@@ -295,3 +295,36 @@ async fn a_state_that_cannot_be_saved_is_a_fault_in_the_log_and_the_state_is_kep
         "{location}"
     );
 }
+
+/// Shutdown returns with the port given back, so an engine restarted on the
+/// same port (an update, a headless restart) binds it at once. Rounds repeat
+/// because one can win the race by luck.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_port_is_free_the_moment_shutdown_returns() {
+    let lab = Lab::new();
+    for _ in 0..20 {
+        let node = lab.start("Alpha").await;
+        let port = node.engine.local_addr().port();
+        node.engine.shutdown().await;
+        std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, port))
+            .expect("IPv4 port is free");
+    }
+}
+
+/// A network change that arrives after shutdown has begun does nothing: the
+/// engine neither panics nor rebinds the port it gave back.
+#[tokio::test]
+async fn a_network_change_after_shutdown_is_ignored() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let ctx = node.engine.ctx.clone();
+    node.engine.shutdown().await;
+    // The physical address moves, so the change would rebind the endpoint.
+    node.platform
+        .set_interfaces(vec![mouser_platform::NetInterface {
+            name: "eth0".into(),
+            kind: mouser_platform::InterfaceKind::PhysicalLan,
+            addrs: vec![std::net::Ipv4Addr::new(192, 168, 7, 7).into()],
+        }]);
+    ctx.on_network_change();
+}
