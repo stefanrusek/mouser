@@ -55,6 +55,27 @@ impl DiagHook {
     }
 }
 
+/// A desktop, as a line names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagDesktop {
+    /// The user's own.
+    Default,
+    /// The login screen, the lock screen and permission prompts.
+    Winlogon,
+    /// Any other (a screen saver).
+    Other,
+}
+
+impl DiagDesktop {
+    fn name(self) -> &'static str {
+        match self {
+            DiagDesktop::Default => "default",
+            DiagDesktop::Winlogon => "winlogon",
+            DiagDesktop::Other => "other",
+        }
+    }
+}
+
 /// What became of a watchdog probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProbeOutcome {
@@ -143,6 +164,8 @@ pub enum DiagEvent {
     CaptureReinstall { hook: DiagHook, ok: bool },
     /// `capture.probe`.
     CaptureProbe(Probe),
+    /// `capture.desktop`: the capture followed the input to this desktop.
+    CaptureDesktop { desktop: DiagDesktop },
 }
 
 impl DiagEvent {
@@ -155,13 +178,14 @@ impl DiagEvent {
             DiagEvent::CaptureHookThread { .. } => "capture.hook_thread",
             DiagEvent::CaptureReinstall { .. } => "capture.reinstall",
             DiagEvent::CaptureProbe(_) => "capture.probe",
+            DiagEvent::CaptureDesktop { .. } => "capture.desktop",
         }
     }
 
     /// The event's level in the catalog.
     pub fn level(&self) -> DiagLevel {
         match self {
-            DiagEvent::PointerShownByGuard => DiagLevel::Info,
+            DiagEvent::PointerShownByGuard | DiagEvent::CaptureDesktop { .. } => DiagLevel::Info,
             DiagEvent::CaptureLost { .. } => DiagLevel::Warn,
             _ => DiagLevel::Debug,
         }
@@ -194,6 +218,7 @@ impl DiagEvent {
                 vec![("hook", text(hook.name())), ("ok", DiagValue::Bool(*ok))]
             }
             DiagEvent::CaptureProbe(probe) => probe.fields(),
+            DiagEvent::CaptureDesktop { desktop } => vec![("desktop", text(desktop.name()))],
         }
     }
 }

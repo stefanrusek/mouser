@@ -81,6 +81,8 @@ pub(crate) fn check_sent(sent: u32, expected: usize) -> Result<()> {
 }
 
 pub(crate) fn send(inputs: &[INPUT]) -> Result<()> {
+    // Input goes to the calling thread's desktop: follow the capture there.
+    crate::desktop::follow_this_thread();
     check_sent(
         unsafe { SendInput(inputs, size_of::<INPUT>() as i32) },
         inputs.len(),

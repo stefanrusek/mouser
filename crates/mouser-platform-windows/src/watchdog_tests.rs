@@ -655,5 +655,16 @@ fn desktops_are_told_apart_by_name() {
         )
     }
     .unwrap();
-    assert!(default_desktop(named));
+    assert!(on_desktop(named, crate::desktop::InputDesk::Default));
+    // The capture followed the input elsewhere: the user's own is another.
+    let again = unsafe {
+        OpenDesktopW(
+            windows::core::w!("Default"),
+            DESKTOP_CONTROL_FLAGS(0),
+            false,
+            DESKTOP_READOBJECTS.0,
+        )
+    }
+    .unwrap();
+    assert!(!on_desktop(again, crate::desktop::InputDesk::Winlogon));
 }

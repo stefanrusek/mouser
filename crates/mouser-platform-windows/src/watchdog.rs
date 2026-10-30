@@ -19,6 +19,7 @@
 //! withdrawn once every hook sees a probe again.
 
 use crate::capture::{LOST_HOLD, Problems};
+use crate::desktop::InputDesk;
 use crate::diag::{DiagHook, Probe, ProbeOutcome};
 use mouser_platform::{CaptureLossReason, PlatformProblem};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -387,18 +388,21 @@ pub(crate) fn desktop_name(desk: HDESK) -> String {
     String::from_utf16_lossy(&name[..len])
 }
 
-/// Whether `desk` is the user's own desktop; closes it.
-pub(crate) fn default_desktop(desk: HDESK) -> bool {
-    let ours = desktop_name(desk) == "Default";
+/// Whether `desk` is the desktop the capture is on (`followed`); closes it.
+pub(crate) fn on_desktop(desk: HDESK, followed: InputDesk) -> bool {
+    let ours = InputDesk::of_name(&desktop_name(desk)) == followed;
     let _ = unsafe { CloseDesktop(desk) };
     ours
 }
 
-/// Whether a desktop other than the user's own has the input; one this
-/// process may not even open (the secure desktop) is another.
+/// Whether a desktop other than the one the capture is on has the input:
+/// the user's own, unless the capture followed the input elsewhere
+/// (`desktop`). One this process may not even open (the secure desktop,
+/// for a Mouser that is not SYSTEM) is another.
 pub(crate) fn other_desktop() -> bool {
+    let followed = crate::desktop::THIS_PROCESS.followed();
     let opened = unsafe { OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) };
-    !opened.is_ok_and(default_desktop)
+    !opened.is_ok_and(|desk| on_desktop(desk, followed))
 }
 
 /// The file name of process `pid`'s program.
