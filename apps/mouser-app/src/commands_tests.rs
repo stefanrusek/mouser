@@ -57,7 +57,7 @@ async fn every_permission_opens_its_own_system_screen() {
 }
 
 /// The id of the open problem about `kind`, once the engine has noticed it is missing.
-async fn missing_permission_problem(f: &crate::support_tests::Fixture) -> String {
+pub(crate) async fn missing_permission_problem(f: &crate::support_tests::Fixture) -> String {
     f.platform.set_permission(
         mouser_platform::PermissionKind::Accessibility,
         mouser_platform::PermissionState::Missing,
@@ -90,6 +90,7 @@ async fn fixes_run_through_the_engine_open_the_join_prompt_or_the_arranger_and_t
         &id,
         FixAction::OpenSystemSettings(PermissionKind::Accessibility),
     )
+    .await
     .unwrap();
     assert_eq!(
         platform.opened_permission_settings(),
@@ -102,14 +103,17 @@ async fn fixes_run_through_the_engine_open_the_join_prompt_or_the_arranger_and_t
             "nope",
             FixAction::OpenSystemSettings(PermissionKind::Accessibility)
         )
+        .await
         .unwrap_err()
         .contains("nope is not an open problem")
     );
     assert!(!has_window(&handle, "main"));
-    run_fix(&handle, &host, "x", FixAction::ApproveJoin).unwrap();
+    run_fix(&handle, &host, "x", FixAction::ApproveJoin)
+        .await
+        .unwrap();
     assert!(has_window(&handle, "main"));
     assert_eq!(
-        run_fix(&handle, &host, "x", FixAction::OpenUpdate),
+        run_fix(&handle, &host, "x", FixAction::OpenUpdate).await,
         Err("The fix \"open_update\" is not available yet.".to_string())
     );
 }
@@ -124,7 +128,7 @@ async fn the_edge_fix_opens_the_arranger_on_the_edge_the_problem_names_and_asks_
     let id = "crossing_blocked:aa/DP-1/right";
     // No such notice is open here, so the engine says so; the arranger still goes to the edge.
     assert_eq!(
-        run_fix(&handle, &host, id, FixAction::OpenArrangerEdge),
+        run_fix(&handle, &host, id, FixAction::OpenArrangerEdge).await,
         Err(format!("{id} is not an open problem"))
     );
     assert!(has_window(&handle, "main"));
