@@ -85,18 +85,12 @@ impl Drop for LinkGuard {
     }
 }
 
-async fn read_loop(
-    ctx: Arc<Ctx>,
-    peer: ComputerId,
-    link_id: u64,
-    conn: quinn::Connection,
-    mut reader: FrameReader,
-) {
-    let _guard = LinkGuard {
-        ctx: ctx.clone(),
-        peer,
-        link_id,
-    };
+/// Reads `peer`'s control stream until the link ends. The guard is an
+/// argument, not made in the body, so it is part of the task from the moment
+/// the task is spawned: a task stopped before it first runs (adopted as the
+/// engine shut down) still forgets the link, and with it the connection.
+async fn read_loop(guard: LinkGuard, conn: quinn::Connection, mut reader: FrameReader) {
+    let (ctx, peer, link_id) = (guard.ctx.clone(), guard.peer, guard.link_id);
     while let Some(msg) = reader.recv::<ControlMessage>().await {
         // A link that was replaced by a newer connection to the same
         // computer no longer speaks for it.
@@ -177,8 +171,9 @@ impl Drop for DialingGuard {
     }
 }
 
-async fn watch_closed(ctx: Arc<Ctx>, peer: ComputerId, link_id: u64, conn: quinn::Connection) {
-    let _guard = LinkGuard { ctx, peer, link_id };
+/// Waits for an incompatible peer's link to end; the guard is an argument
+/// for the reason given at [`read_loop`].
+async fn watch_closed(_guard: LinkGuard, conn: quinn::Connection) {
     conn.closed().await;
 }
 
@@ -366,7 +361,11 @@ impl Ctx {
                 .clear(ProblemKind::IncompatibleVersion, &peer.to_string(), peer);
             let log = self.log.clone();
             reader.on_unknown(move |variant| log.write(events::wire_unknown(peer, variant)));
-            self.spawn(read_loop(self.clone(), peer, link_id, conn.clone(), reader));
+            self.spawn(read_loop(
+                self.link_guard(peer, link_id),
+                conn.clone(),
+                reader,
+            ));
             self.spawn(motion_loop(self.clone(), peer, link_id, conn.clone()));
             self.spawn(file_loop(self.clone(), peer, conn.clone()));
         } else {
@@ -383,9 +382,18 @@ impl Ctx {
             if join.is_some() {
                 self.fail_pending(&text);
             }
-            self.spawn(watch_closed(self.clone(), peer, link_id, conn));
+            self.spawn(watch_closed(self.link_guard(peer, link_id), conn));
         }
         self.notify_status();
+    }
+
+    /// Forgets the link `link_id` to `peer` when dropped.
+    fn link_guard(self: &Arc<Self>, peer: ComputerId, link_id: u64) -> LinkGuard {
+        LinkGuard {
+            ctx: self.clone(),
+            peer,
+            link_id,
+        }
     }
 
     /// Whether `link_id` is the current connection to `peer`.

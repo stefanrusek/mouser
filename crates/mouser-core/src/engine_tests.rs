@@ -328,3 +328,35 @@ async fn a_network_change_after_shutdown_is_ignored() {
         }]);
     ctx.on_network_change();
 }
+
+/// A link adopted once shutdown has stopped the engine's tasks (its
+/// handshake finished on another thread as the engine quit) is forgotten
+/// all the same: nothing keeps its connection, which would hold the
+/// endpoint's socket and keep shutdown from ever giving the port back.
+#[tokio::test]
+async fn a_link_adopted_after_the_tasks_stopped_is_forgotten() {
+    use crate::identity::Identity;
+    use crate::transport::{Link, Transport};
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let ctx = node.engine.ctx.clone();
+    node.engine.shutdown().await;
+    let (ia, ib) = (Identity::from_seed([1; 32]), Identity::from_seed([2; 32]));
+    let (a, b) = (Transport::bind(&ia, 0), Transport::bind(&ib, 0));
+    let to = std::net::SocketAddr::from(([127, 0, 0, 1], b.local_addr().port()));
+    let (dialed, _accepted) = handshake(&a, &b, to, Some(ib.computer_id())).await;
+    let link = Link::open(dialed).await.expect("the connection is open");
+    let hello = crate::session::handshake::PeerHello {
+        computer_id: ib.computer_id(),
+        mouser_version: "0.3.0".into(),
+        protocol_version: mouser_proto::wire::PROTOCOL_VERSION,
+        display_name: "Beta".into(),
+        os: mouser_proto::model::Os::Macos,
+        desk_id: None,
+    };
+    ctx.adopt(link, hello, None, true);
+    eventually("the late link to be forgotten", || async {
+        ctx.core.guard().peers.is_empty()
+    })
+    .await;
+}
