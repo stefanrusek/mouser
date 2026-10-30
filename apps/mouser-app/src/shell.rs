@@ -178,7 +178,7 @@ fn run_session_engine(os: mouser_platform::Os, paths: &mouser_core::paths::Paths
     tauri::async_runtime::block_on(crate::headless::serve(
         params,
         Arc::new(OnService(platform)),
-        crate::headless::stop_signal(),
+        Box::pin(crate::headless::stop_signal()),
     ));
 }
 
