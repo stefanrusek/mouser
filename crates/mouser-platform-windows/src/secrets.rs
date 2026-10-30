@@ -63,7 +63,7 @@ fn protect(data: &[u8]) -> Vec<u8> {
     take(out)
 }
 
-fn unprotect(blob: &[u8]) -> Vec<u8> {
+fn unprotect(blob: &[u8]) -> Result<Vec<u8>> {
     let mut out = CRYPT_INTEGER_BLOB::default();
     unsafe {
         CryptUnprotectData(
@@ -76,8 +76,8 @@ fn unprotect(blob: &[u8]) -> Vec<u8> {
             &mut out,
         )
     }
-    .expect("CryptUnprotectData");
-    take(out)
+    .map_err(|e| Error::Os(format!("CryptUnprotectData: {e}")))?;
+    Ok(take(out))
 }
 
 /// The SID of the user running this process, as `S-1-5-21-...`.
@@ -161,7 +161,7 @@ pub(crate) fn protect_dir(dir: &Path, sddl: &str) {
 impl SecretStore for DpapiStore {
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>> {
         match std::fs::read(path_of(&self.dir, name)) {
-            Ok(blob) => Ok(Some(unprotect(&blob))),
+            Ok(blob) => unprotect(&blob).map(Some),
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
             Err(e) => Err(io(e)),
         }
