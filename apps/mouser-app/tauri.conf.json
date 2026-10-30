@@ -47,7 +47,8 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "perMachine",
+        "installerHooks": "windows/hooks.nsh",
         "displayLanguageSelector": false
       }
     },

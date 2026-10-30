@@ -25,16 +25,21 @@ jobs:
           # the app signature valid on both. Costs a second compile of the app.
           - os: macos-14
             sidecar: universal-apple-darwin
+            config: tauri.release.conf.json
             tauri_args: --target universal-apple-darwin --bundles app,dmg
             bundle_dir: target/universal-apple-darwin/release/bundle
             artifact: macos
           - os: windows-2025
             sidecar: x86_64-pc-windows-msvc
+            # The CLI and MouserService sidecars; the installer is per-machine
+            # and unsigned (FR-004).
+            config: tauri.release.windows.conf.json
             tauri_args: --bundles nsis
             bundle_dir: target/release/bundle
             artifact: windows
           - os: ubuntu-24.04
             sidecar: x86_64-unknown-linux-gnu
+            config: tauri.release.conf.json
             tauri_args: --bundles appimage,deb
             bundle_dir: target/release/bundle
             artifact: linux
@@ -89,7 +94,7 @@ jobs:
           security find-identity -v -p codesigning "$keychain" | grep -F "$APPLE_SIGNING_IDENTITY" \
             || { echo "secret APPLE_SIGNING_IDENTITY not found in the imported certificate"; exit 1; }
 
-      - name: Build the CLI sidecar and stage the UI
+      - name: Build the sidecars and stage the UI
         shell: bash
         run: |
           apps/mouser-app/scripts/build-sidecar.sh "${{ matrix.sidecar }}"
@@ -112,9 +117,9 @@ jobs:
           else
             unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_P8
           fi
-          npx --yes "$TAURI_CLI" build --features gui --config tauri.release.conf.json ${{ matrix.tauri_args }}
+          npx --yes "$TAURI_CLI" build --features gui --config ${{ matrix.config }} ${{ matrix.tauri_args }}
 
-      - name: Verify the Windows PE subsystems (app = GUI, CLI = console)
+      - name: Verify the Windows PE subsystems (app = GUI, CLI and service = console)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -125,9 +130,15 @@ jobs:
           }
           $app = Get-Subsystem "target/release/mouser-app.exe"
           $cli = Get-Subsystem "target/x86_64-pc-windows-msvc/release/mouser.exe"
-          "mouser-app.exe subsystem=$app (want 2), mouser.exe subsystem=$cli (want 3)"
+          $svc = Get-Subsystem "target/x86_64-pc-windows-msvc/release/mouser-service.exe"
+          "mouser-app.exe subsystem=$app (want 2), mouser.exe subsystem=$cli (want 3), mouser-service.exe subsystem=$svc (want 3)"
           if ($app -ne 2) { throw "mouser-app.exe must be the windows (GUI) subsystem" }
           if ($cli -ne 3) { throw "mouser.exe must be the console subsystem" }
+          if ($svc -ne 3) { throw "mouser-service.exe must be the console subsystem" }
+          # The installer carries the service beside the app (its hooks run it).
+          $setup = (Get-Item target/release/bundle/nsis/*-setup.exe).FullName
+          $listing = 7z l $setup | Out-String
+          if ($listing -notmatch 'mouser-service\.exe') { throw "the installer has no mouser-service.exe" }
 
       - name: Verify the macOS app is signed, notarized and stapled
         if: runner.os == 'macOS'
@@ -162,7 +173,8 @@ jobs:
           v="$(node -p "require('./apps/mouser-app/tauri.conf.json').version")"
           # The app (the same cargo binary the installer ships; the WebView2
           # loader is statically linked, so there is no DLL to add) and the
-          # CLI sidecar, flat in one folder. The zip's explicit MouserData/
+          # CLI sidecar, flat in one folder, without MouserService (portable Mouser
+          # installs nothing). The zip's explicit MouserData/
           # directory entry is what turns portable mode on once extracted
           # (Paths::resolve checks for that directory beside the exe).
           python - "$v" <<'PY'
@@ -227,5 +239,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The Windows build is unsigned (FR-004): say how to get past SmartScreen.
+          cat > "$RUNNER_TEMP/notes.md" <<'NOTES'
+          **Installing on Windows:** Mouser's Windows installer is not signed, so Windows may show "Windows protected your PC". Choose **More info**, then **Run anyway**, and approve the one administrator prompt that follows.
+          NOTES
           gh release create "$GITHUB_REF_NAME" --prerelease --verify-tag \
-            --title "Mouser $GITHUB_REF_NAME" --generate-notes assets/*
+            --title "Mouser $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes assets/*

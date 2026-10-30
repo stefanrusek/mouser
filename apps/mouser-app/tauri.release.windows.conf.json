@@ -1,0 +1,7 @@
+{
+  "build": { "frontendDist": "dist-release" },
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/mouser", "binaries/mouser-service"]
+  }
+}
