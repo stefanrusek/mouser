@@ -9,6 +9,8 @@ pub mod diagnostics;
 #[cfg(target_os = "windows")]
 pub mod elevation;
 pub mod exit;
+#[cfg(target_os = "windows")]
+pub mod guard_log;
 pub mod headless;
 pub mod host;
 pub mod hotkeys;
@@ -47,6 +49,8 @@ mod diagnostics_tests;
 mod elevation_tests;
 #[cfg(test)]
 mod exit_tests;
+#[cfg(all(test, target_os = "windows"))]
+mod guard_log_tests;
 #[cfg(test)]
 mod headless_tests;
 #[cfg(test)]

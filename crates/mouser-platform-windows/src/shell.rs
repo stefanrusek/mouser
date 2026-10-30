@@ -92,6 +92,15 @@ pub fn this_process_elevated() -> bool {
     crate::foreground::is_admin(crate::uipi::integrity_level(std::process::id()))
 }
 
+/// The SID of the LocalSystem account.
+pub const LOCAL_SYSTEM: &str = "S-1-5-18";
+
+/// Whether this process runs as LocalSystem, as MouserService and its
+/// session engine do.
+pub fn this_process_is_local_system() -> bool {
+    crate::secrets::current_user_sid() == LOCAL_SYSTEM
+}
+
 /// Shows `text` in a message box titled "Mouser" and waits until it is
 /// closed.
 pub fn message_box(text: &str) {
