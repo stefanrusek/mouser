@@ -148,18 +148,24 @@ fn browse_results_group_computers_by_desk() {
     assert_eq!(others[0].desk_id, DeskId([2; 16]));
 }
 
-fn host_interfaces() -> Vec<NetInterface> {
+/// The loopback interface only (127.0.0.1, and ::1 where present), presented to
+/// discovery as the computer's LAN interface. macOS 15's Local Network Privacy
+/// blocks multicast on real LAN interfaces for a process that was never
+/// granted the permission (an unattended CI binary cannot be); loopback is
+/// exempt, and mDNS runs on it unchanged, so the whole real stack is still
+/// exercised.
+fn loopback_interfaces() -> Vec<NetInterface> {
     let mut by_name: BTreeMap<String, NetInterface> = BTreeMap::new();
-    for i in if_addrs::get_if_addrs().unwrap() {
+    for i in if_addrs::get_if_addrs()
+        .unwrap()
+        .into_iter()
+        .filter(|i| i.is_loopback())
+    {
         by_name
             .entry(i.name.clone())
             .or_insert_with(|| NetInterface {
                 name: i.name.clone(),
-                kind: if i.is_loopback() {
-                    InterfaceKind::Loopback
-                } else {
-                    InterfaceKind::PhysicalLan
-                },
+                kind: InterfaceKind::PhysicalLan,
                 addrs: Vec::new(),
             })
             .addrs
@@ -189,11 +195,11 @@ fn wait_for(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
 #[test]
 fn real_mdns_announces_browses_and_unregisters_on_stop() {
     let (a_id, b_id) = (ComputerId([0xa1; 16]), ComputerId([0xb2; 16]));
-    let b = MdnsDiscovery::new(b_id, host_interfaces());
+    let b = MdnsDiscovery::new(b_id, loopback_interfaces());
     // Multicast is lossy: if the goodbye is lost, announce and stop again.
     let mut gone = false;
     for _ in 0..3 {
-        let a = MdnsDiscovery::new(a_id, host_interfaces());
+        let a = MdnsDiscovery::new(a_id, loopback_interfaces());
         a.announce(&advert(0xa1, Some((9, "Mdns test desk")), 47811));
         // On a repeat, a lost goodbye leaves the previous run's (unjoined)
         // record in B until this announcement replaces it.
