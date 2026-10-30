@@ -437,37 +437,6 @@ async fn a_re_dial_that_succeeded_leaves_nothing_to_dial() {
     assert!(!a.engine.ctx.core.lock().unwrap().redial.contains(&peer));
 }
 
-/// Both computers' addresses change, one right after the other: each
-/// re-dials once, and the connection the second one dialled is kept.
-#[tokio::test]
-async fn addresses_changing_one_after_the_other_settle_on_the_last_re_dial() {
-    let lab = Lab::simulated();
-    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
-    let (dialler, acceptor) = roles(&nodes);
-    let (d, a) = (&nodes[dialler], &nodes[acceptor]);
-    change_address_of(a);
-    eventually("the acceptor's re-dial", || async {
-        link_of(a, d).is_some_and(|(_, dialled, _)| dialled)
-    })
-    .await;
-    // At once, the other computer's address changes: it now holds the
-    // accepted connection and dials again.
-    d.sim.as_ref().unwrap().add_interface(interface(
-        "en7",
-        InterfaceKind::PhysicalLan,
-        [192, 168, 7, 7],
-    ));
-    eventually("the other computer's re-dial", || async {
-        link_of(d, a).is_some_and(|(_, dialled, phase)| dialled && phase == Phase::Authed)
-    })
-    .await;
-    let kept = link_of(d, a).unwrap().0;
-    // Several ticks later it is still the connection in use.
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    assert_eq!(link_of(d, a).unwrap().0, kept);
-    assert!(link_of(d, a).unwrap().1);
-}
-
 /// A computer still to be dialled again whose connection ends first is left
 /// to the ordinary reconnection: nothing is left to re-dial.
 #[tokio::test]
@@ -549,4 +518,82 @@ async fn a_new_connection_that_cannot_take_the_session_over_ends_it() {
             .connection_of(id, Instant::now()),
         ConnectionState::Reconnecting
     );
+}
+
+/// Both computers' addresses change, one right after the other: each
+/// re-dials once, and the connection the second one dialled is kept.
+#[tokio::test]
+async fn addresses_changing_one_after_the_other_settle_on_the_last_re_dial() {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (dialler, acceptor) = roles(&nodes);
+    let (d, a) = (&nodes[dialler], &nodes[acceptor]);
+    let before = link_of(d, a).unwrap().0;
+    change_address_of(a);
+    eventually("the acceptor's re-dial", || async {
+        link_of(a, d).is_some_and(|(_, dialled, _)| dialled)
+    })
+    .await;
+    // The other computer's address changes: it dials again over a new link.
+    d.sim.as_ref().unwrap().add_interface(interface(
+        "en7",
+        InterfaceKind::PhysicalLan,
+        [192, 168, 7, 7],
+    ));
+    eventually("the other computer's re-dial", || async {
+        link_of(d, a).is_some_and(|(link, dialled, phase)| {
+            link != before && dialled && phase == Phase::Authed
+        })
+    })
+    .await;
+    let kept = link_of(d, a).unwrap().0;
+    // Several ticks later it is still the connection in use.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(link_of(d, a).unwrap().0, kept);
+    assert!(link_of(d, a).unwrap().1);
+}
+
+/// Regression (T537): this computer's address changes while it is still
+/// accepting a connection (the peer's re-dial after its own address
+/// changed). The connection it had dialled itself follows the move, so
+/// there was nothing to re-dial then; the accepted one, which replaces it
+/// once greeted, was set up at the old address and cannot follow. It is
+/// dialled again once it is taken over.
+#[tokio::test]
+async fn an_address_change_while_a_connection_is_being_accepted_re_dials_it() {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (dialler, acceptor) = roles(&nodes);
+    let (d, a) = (&nodes[dialler], &nodes[acceptor]);
+    let before = link_of(d, a).unwrap().0;
+    let hold = &d.engine.ctx.accept_hold;
+    let held = hold.gate.lock().await;
+    // The acceptor's address changes and it dials again: the original
+    // dialler has that connection, not yet greeted, ...
+    change_address_of(a);
+    eventually("the acceptor's re-dial to arrive", || async {
+        hold.waiting.load(std::sync::atomic::Ordering::SeqCst) == 1
+    })
+    .await;
+    // ... when its own address changes, still holding the link it dialled.
+    let announced = d.discovery.announcements().len();
+    d.sim.as_ref().unwrap().add_interface(interface(
+        "en7",
+        InterfaceKind::PhysicalLan,
+        [192, 168, 7, 7],
+    ));
+    eventually("the move to be handled", || async {
+        d.discovery.announcements().len() > announced
+    })
+    .await;
+    assert_eq!(link_of(d, a).unwrap().0, before);
+    drop(held);
+    // It takes the accepted connection over, and then dials one of its own.
+    eventually("the other computer's re-dial", || async {
+        link_of(d, a).is_some_and(|(link, dialled, phase)| {
+            link != before && dialled && phase == Phase::Authed
+        })
+    })
+    .await;
+    wait_connection(d, a, ConnectionState::Connected).await;
 }

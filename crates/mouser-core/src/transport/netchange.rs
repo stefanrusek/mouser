@@ -66,8 +66,13 @@ impl Ctx {
     pub(crate) fn on_network_change(self: &Arc<Self>) {
         let interfaces = self.platform.interfaces();
         let physical = physical_addrs(&interfaces);
-        let moved =
-            std::mem::replace(&mut self.core.guard().physical, physical.clone()) != physical;
+        let moved = {
+            let mut core = self.core.guard();
+            let moved = std::mem::replace(&mut core.physical, physical.clone()) != physical;
+            // Connections being accepted now were set up at the old address.
+            core.moves += u64::from(moved);
+            moved
+        };
         self.discovery.interfaces_changed(interfaces);
         if moved {
             self.transport.rebind();
