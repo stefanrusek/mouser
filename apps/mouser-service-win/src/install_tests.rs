@@ -145,7 +145,8 @@ fn uninstall_waits_for_a_service_that_takes_its_time_to_stop() {
     fake.slow_to_stop();
     let ending = std::thread::scope(|scope| {
         let uninstalling = scope.spawn(|| uninstall(&fake, ME));
-        fake.await_calls(|calls| calls.contains(&Call::StopService("MouserService".into())));
+        // It is waiting for the service's own process to end.
+        fake.await_calls(|calls| calls.contains(&Call::OpenProcess(service)));
         assert!(!uninstalling.is_finished());
         fake.exit(service, 0);
         uninstalling.join().unwrap()

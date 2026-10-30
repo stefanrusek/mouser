@@ -243,7 +243,12 @@ fn uninstalls(world: &mut ServiceWorld) {
         .await_calls(|calls| calls.contains(&Call::StopService("MouserService".into())));
     world.control(Control::Stop);
     world.service.take().unwrap().join().unwrap();
-    world.fake.exit(world.service_pid, 0);
+    // The uninstaller waits for the service's own process, which then ends.
+    let service = world.service_pid;
+    world
+        .fake
+        .await_calls(|calls| calls.contains(&Call::OpenProcess(service)));
+    world.fake.exit(service, 0);
     uninstalling.join().unwrap().unwrap();
 }
 

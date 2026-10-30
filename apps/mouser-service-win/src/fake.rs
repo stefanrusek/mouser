@@ -36,6 +36,8 @@ pub enum Call {
         pipe_mode: u32,
     },
     DuplicateToken(u32),
+    /// `OpenProcess` of a process to wait for.
+    OpenProcess(u32),
     CreateProcess {
         token: Handle,
         application: PathBuf,
@@ -438,6 +440,7 @@ impl WinApi for FakeWin {
     }
 
     fn open_process(&self, pid: u32) -> ApiResult<Handle> {
+        self.call(Call::OpenProcess(pid));
         self.take_failure("open_process")?;
         Ok(self.update(|s| {
             let process = Self::handle(s);
