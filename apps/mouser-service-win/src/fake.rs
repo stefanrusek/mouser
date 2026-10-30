@@ -91,7 +91,8 @@ struct State {
     registry: HashMap<(String, String), u32>,
     services: HashMap<String, (ServiceSpec, bool)>,
     rules: Vec<FirewallRule>,
-    failures: HashMap<&'static str, VecDeque<ApiError>>,
+    /// What the next calls of a method do: fail, or (`None`) succeed.
+    failures: HashMap<&'static str, VecDeque<Option<ApiError>>>,
     calls: Vec<Call>,
     /// A stopped service's process goes on running.
     slow_stop: bool,
@@ -153,6 +154,7 @@ impl FakeWin {
             .failures
             .get_mut(method)
             .and_then(VecDeque::pop_front)
+            .flatten()
         {
             Some(e) => Err(e),
             None => Ok(()),
@@ -170,10 +172,15 @@ impl FakeWin {
             s.failures
                 .entry(method)
                 .or_default()
-                .push_back(error(code, &format!("{method} failed")))
+                .push_back(Some(error(code, &format!("{method} failed"))))
         });
     }
 
+    /// The next call to `method` succeeds; one queued with [`fail`](Self::fail)
+    /// after it fails the call after that.
+    pub fn pass(&self, method: &'static str) {
+        self.update(|s| s.failures.entry(method).or_default().push_back(None));
+    }
     /// Every call so far, in order.
     pub fn calls(&self) -> Vec<Call> {
         self.state().calls.clone()
@@ -363,9 +370,11 @@ impl FakeWin {
 }
 
 fn exit(state: &mut State, pid: u32, code: u32) {
-    if let Some(p) = state.processes.iter_mut().find(|p| p.entry.pid == pid) {
-        p.exit.get_or_insert(code);
-    }
+    let process = state.processes.iter_mut().find(|p| p.entry.pid == pid);
+    process
+        .expect("a process this computer has")
+        .exit
+        .get_or_insert(code);
     for pipe in state.pipes.values_mut() {
         if pipe.client == Some(pid) {
             pipe.gone = true;
@@ -511,18 +520,20 @@ impl WinApi for FakeWin {
     }
 
     fn disconnect_pipe(&self, pipe: Handle) -> ApiResult<()> {
-        self.call(Call::Disconnect(pipe));
-        self.take_failure("disconnect_pipe")?;
+        let done = self.take_failure("disconnect_pipe");
+        // Seen and done at once: a test that waits for it may connect next.
         self.update(|s| {
-            let p = s.pipes.get_mut(&pipe).unwrap();
-            p.client = None;
-            p.inbox.clear();
+            s.calls.push(Call::Disconnect(pipe));
+            if done.is_ok() {
+                let p = s.pipes.get_mut(&pipe).unwrap();
+                p.client = None;
+                p.inbox.clear();
+            }
         });
-        Ok(())
+        done
     }
 
     fn open_pipe_client(&self, name: &str) -> ApiResult<Handle> {
-        self.take_failure("open_pipe_client")?;
         self.update(|s| {
             let (_, pipe) = Self::open_pipe(s, name).expect("the pipe is open");
             if pipe.client.is_some() {
@@ -534,7 +545,6 @@ impl WinApi for FakeWin {
     }
 
     fn read_pipe(&self, pipe: Handle, buf: &mut [u8]) -> ApiResult<usize> {
-        self.take_failure("read_pipe")?;
         let mut state = self.wait_while(|s| {
             let p = &s.pipes[&pipe];
             !p.inbox.is_empty() || p.gone
