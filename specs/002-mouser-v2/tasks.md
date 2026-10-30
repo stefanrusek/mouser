@@ -567,12 +567,12 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 20: US2-platform-windows — As a troubleshooting agent, I want the diagnostic log to show what Mouser did and why (P1)
 
-- [ ] T402 [P] [US2-platform-windows] Write the contract test `crates/mouser-platform-windows/tests/contract_log_events_windows.rs` (consumer side of the log-events catalog): every event name and field the `diag` sink can write — `pointer.hidden`, `pointer.shown`, `capture.lost {reason: elevated_foreground|other_desktop|hooks_silent, foreground?}`, `capture.desktop {desktop: default|winlogon|other}`, `capture.probe` (with outcome `live`), `capture.reinstall`, `capture.hook_thread`, `capture.start` — validates against the `mouser-proto` schema `schemas/log-events.schema.json`
-- [ ] T403 [US2-platform-windows] Constrain `crates/mouser-platform-windows/src/diag.rs` to catalog names and fields (closed per event)
-- [ ] T404 [P] [US2-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/capture_tests.rs`: the backend writes no `pointer.hidden`/`pointer.shown` of its own on grab/ungrab (core writes them with the catalog reasons; amended 2026-10-29, orchestrator: avoids double records) except `pointer.shown {reason: guard}` from the cursor guard; a capture loss writes `capture.lost` with the foreground program name only; a watchdog cycle judged healthy on real input writes `capture.probe` outcome `live` (Story 2 sc. 3)
-- [ ] T405 [US2-platform-windows] Write those records from `crates/mouser-platform-windows/src/capture.rs` and `crates/mouser-platform-windows/src/capture_lost.rs`
-- [ ] T406 [US2-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T407 [US2-platform-windows] Commit: phase boundary "US2-platform-windows" (5.3)
+- [X] T402 [P] [US2-platform-windows] Write the contract test `crates/mouser-platform-windows/tests/contract_log_events_windows.rs` (consumer side of the log-events catalog): every event name and field the `diag` sink can write — `pointer.hidden`, `pointer.shown`, `capture.lost {reason: elevated_foreground|other_desktop|hooks_silent, foreground?}`, `capture.desktop {desktop: default|winlogon|other}`, `capture.probe` (with outcome `live`), `capture.reinstall`, `capture.hook_thread`, `capture.start` — validates against the `mouser-proto` schema `schemas/log-events.schema.json`
+- [X] T403 [US2-platform-windows] Constrain `crates/mouser-platform-windows/src/diag.rs` to catalog names and fields (closed per event)
+- [X] T404 [P] [US2-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/capture_tests.rs`: the backend writes no `pointer.hidden`/`pointer.shown` of its own on grab/ungrab (core writes them with the catalog reasons; amended 2026-10-29, orchestrator: avoids double records) except `pointer.shown {reason: guard}` from the cursor guard; a capture loss writes `capture.lost` with the foreground program name only; a watchdog cycle judged healthy on real input writes `capture.probe` outcome `live` (Story 2 sc. 3)
+- [X] T405 [US2-platform-windows] Write those records from `crates/mouser-platform-windows/src/capture.rs` and `crates/mouser-platform-windows/src/capture_lost.rs`
+- [X] T406 [US2-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T407 [US2-platform-windows] Commit: phase boundary "US2-platform-windows" (5.3)
 
 #### Phase 21: US3-platform-windows — As a desk owner, I want one Mouser window where I can find everything (P2)
 
