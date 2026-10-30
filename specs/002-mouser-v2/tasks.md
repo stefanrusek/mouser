@@ -649,47 +649,47 @@ Package `apps/mouser-service-win` (built as `mouser-service.exe`; `MouserService
 
 **Depends on**: probe P2 (T012).
 
-- [ ] T447 [US5-service-win] Set the binary name to `mouser-service` and add the `[[test]] name = "acc_v2_us5_service", harness = false` entry in `apps/mouser-service-win/Cargo.toml` (dependencies were added in Foundational T018)
-- [ ] T448 [US5-service-win] Declare the `WinApi` trait (console session id, winlogon token duplication, `CreateProcessAsUserW`, process wait/exit code, process enumeration by image name across sessions and terminate, named pipe create/connect/client PID, `SendSAS`, registry read/write/delete, SCM create/delete/start/stop, firewall rule add/remove) in `apps/mouser-service-win/src/winapi.rs` (declarations only; verified by `cargo check -p mouser-service-win`)
-- [ ] T449 [US5-service-win] Implement the real `WinApi` in `apps/mouser-service-win/src/winapi_sys.rs` as pass-through only: each method is one call to the matching Windows API plus mapping its error to `Err(String)`, with no other branching (excluded from coverage by OD-5; verified by `cargo clippy -p mouser-service-win --all-targets -- -D warnings` and later by probe P2's findings and R8)
-- [ ] T450 [US5-service-win] Write the acceptance runner `apps/mouser-service-win/tests/acc_v2_us5_service.rs` (`harness = false`, `fail_on_skipped()`) and steps `apps/mouser-service-win/tests/steps/v2_us5_service.rs` for every scenario in `tests/features/v2_us5_service.feature`, over a fake `WinApi`
-- [ ] T451 [P] [US5-service-win] Write `apps/mouser-service-win/tests/contract_service_ipc.rs` (producer side): the service's frames (`SasResult`, `Shutdown`) and the engine's frames (`Hello`, `SendSas`, `Stopping`) round-trip against `mouser_proto::service_ipc`
-- [ ] T452 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/ipc_tests.rs`: the pipe is `engine_pipe_name(session)` created with security descriptor exactly `D:P(A;;GA;;;SY)`, `PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_TYPE_BYTE | PIPE_REJECT_REMOTE_CLIENTS`; after `ConnectNamedPipe` a client whose `GetNamedPipeClientProcessId` differs from the launched PID is disconnected; a `Hello` with a different version is logged and `SendSas` is still served
-- [ ] T453 [US5-service-win] Implement the pipe server in `apps/mouser-service-win/src/ipc.rs`
-- [ ] T454 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/session_tests.rs` for `ServiceState`: "`Starting → WaitingForSession (session id 0xFFFFFFFF) → Running(session, pid)`"; `WaitingForSession` is left only on a `SERVICE_CONTROL_SESSIONCHANGE` after which the console session id is real (no polling, sleep or timer); on a console session change "`Running → Relaunching → Running`" (send `Shutdown`, wait for exit, new pipe, launch); "If the engine exits: `Running → Relaunching`" with no back-off and no timer; on stop "`Stopping` (it sends `Shutdown` and ends the engine)"; each transition logs `service.session` / `service.engine_started` / `service.engine_exited` (Story 5 sc. 2)
-- [ ] T455 [US5-service-win] Implement the state machine in `apps/mouser-service-win/src/session.rs`
-- [ ] T456 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/launch_tests.rs`: the engine is launched in the console session as `mouser-app.exe --headless --machine` (the executable beside `mouser-service.exe`) with `CreateProcessAsUserW`, a duplicate of that session's `winlogon.exe` token, and `lpDesktop = "winsta0\\default"`, after the pipe exists (Story 5 sc. 1)
-- [ ] T457 [US5-service-win] Implement the launch in `apps/mouser-service-win/src/launch.rs`
-- [ ] T458 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/sas_tests.rs`: `SendSas` reads `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\SoftwareSASGeneration`; a value other than 1 or 3 answers `SasResult::PolicyBlocked`; otherwise it calls `SendSAS(FALSE)` and answers `Sent`, or `Failed(reason)`; it logs `service.sas {result}` (Story 5 sc. 3)
-- [ ] T459 [US5-service-win] Implement `SendSas` handling in `apps/mouser-service-win/src/sas.rs`
-- [ ] T460 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/log_tests.rs`: the service writes `service.log` in the machine folder `C:\ProgramData\Mouser` starting with `log.header` (mode `service`) and rotating under the same two-file `max_log_mb/2` rule as the engine; only `service.*` catalog events are written
-- [ ] T461 [US5-service-win] Implement the service log in `apps/mouser-service-win/src/log.rs`
-- [ ] T462 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/service_tests.rs`: the SCM entry dispatches `SERVICE_CONTROL_SESSIONCHANGE`, `SERVICE_CONTROL_STOP` and `SERVICE_CONTROL_PRESHUTDOWN` to the state machine and reports `SERVICE_RUNNING` / `SERVICE_STOPPED`
-- [ ] T463 [US5-service-win] Implement the SCM entry point with `windows-service` in `apps/mouser-service-win/src/service.rs`
-- [ ] T464 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` creates `MouserService` (LocalSystem, automatic start, display name "Mouser") (FR-013)
-- [ ] T465 [US5-service-win] Implement service creation for `--install` in `apps/mouser-service-win/src/install.rs`
-- [ ] T466 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` sets `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\SoftwareSASGeneration=1`
-- [ ] T467 [US5-service-win] Set `SoftwareSASGeneration` in `apps/mouser-service-win/src/install.rs`
-- [ ] T468 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` adds the inbound firewall rule for UDP 47801 for `mouser-app.exe`
-- [ ] T469 [US5-service-win] Add the firewall rule in `apps/mouser-service-win/src/install.rs`
-- [ ] T470 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` starts the service last and exits 0; if any step fails it exits 1 with that step's reason on stderr
-- [ ] T471 [US5-service-win] Start the service and report the exit code in `apps/mouser-service-win/src/install.rs`
-- [ ] T472 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/migrate_tests.rs`: during `--install`, a readable user-scope identity (device key, desk key, `state.json`) of the installing user is copied to machine scope with `Engine::export_machine_scope`; when it is not readable the session engine starts without a desk and the computer rejoins with one approval (research V12a; OD-2)
-- [ ] T473 [US5-service-win] Implement identity migration in `apps/mouser-service-win/src/migrate.rs`
-- [ ] T474 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` stops the service (which sends `Shutdown` to the session engine and waits for it to exit) and deletes it (FR-013)
-- [ ] T475 [US5-service-win] Implement service stop and delete for `--uninstall` in `apps/mouser-service-win/src/install.rs`
-- [ ] T476 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` ends every remaining `mouser-app.exe` process in every session (UI-mode tray apps and `--cursor-guard` processes) (FR-013)
-- [ ] T477 [US5-service-win] End remaining Mouser processes in `apps/mouser-service-win/src/install.rs`
-- [ ] T478 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` removes the firewall rule `--install` added
-- [ ] T479 [US5-service-win] Remove the firewall rule in `apps/mouser-service-win/src/install.rs`
-- [ ] T480 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` deletes the `SoftwareSASGeneration` value Mouser set
-- [ ] T481 [US5-service-win] Delete the `SoftwareSASGeneration` value in `apps/mouser-service-win/src/install.rs`
-- [ ] T482 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` exits 0 when the service, rule or value is already absent
-- [ ] T483 [US5-service-win] Treat absent items as done in `--uninstall` in `apps/mouser-service-win/src/install.rs`
-- [ ] T484 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/args_tests.rs`: `--install`, `--uninstall`, and no arguments (run under the SCM) select the matching entry; any other argument exits 3
-- [ ] T485 [US5-service-win] Replace the stub `fn main() {}` in `apps/mouser-service-win/src/main.rs` with argument dispatch in `apps/mouser-service-win/src/args.rs`
-- [ ] T486 [US5-service-win] Gate: `cargo xtask gate --packages mouser-service-win --lane service-win` on the Windows runner
-- [ ] T487 [US5-service-win] Commit: phase boundary "US5-service-win" (5.3)
+- [X] T447 [US5-service-win] Set the binary name to `mouser-service` and add the `[[test]] name = "acc_v2_us5_service", harness = false` entry in `apps/mouser-service-win/Cargo.toml` (dependencies were added in Foundational T018)
+- [X] T448 [US5-service-win] Declare the `WinApi` trait (console session id, winlogon token duplication, `CreateProcessAsUserW`, process wait/exit code, process enumeration by image name across sessions and terminate, named pipe create/connect/client PID, `SendSAS`, registry read/write/delete, SCM create/delete/start/stop, firewall rule add/remove) in `apps/mouser-service-win/src/winapi.rs` (declarations only; verified by `cargo check -p mouser-service-win`)
+- [X] T449 [US5-service-win] Implement the real `WinApi` in `apps/mouser-service-win/src/winapi_sys.rs` as pass-through only: each method is one call to the matching Windows API plus mapping its error to `Err(String)`, with no other branching (excluded from coverage by OD-5; verified by `cargo clippy -p mouser-service-win --all-targets -- -D warnings` and later by probe P2's findings and R8)
+- [X] T450 [US5-service-win] Write the acceptance runner `apps/mouser-service-win/tests/acc_v2_us5_service.rs` (`harness = false`, `fail_on_skipped()`) and steps `apps/mouser-service-win/tests/steps/v2_us5_service.rs` for every scenario in `tests/features/v2_us5_service.feature`, over a fake `WinApi`
+- [X] T451 [P] [US5-service-win] Write `apps/mouser-service-win/tests/contract_service_ipc.rs` (producer side): the service's frames (`SasResult`, `Shutdown`) and the engine's frames (`Hello`, `SendSas`, `Stopping`) round-trip against `mouser_proto::service_ipc`
+- [X] T452 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/ipc_tests.rs`: the pipe is `engine_pipe_name(session)` created with security descriptor exactly `D:P(A;;GA;;;SY)`, `PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_TYPE_BYTE | PIPE_REJECT_REMOTE_CLIENTS`; after `ConnectNamedPipe` a client whose `GetNamedPipeClientProcessId` differs from the launched PID is disconnected; a `Hello` with a different version is logged and `SendSas` is still served
+- [X] T453 [US5-service-win] Implement the pipe server in `apps/mouser-service-win/src/ipc.rs`
+- [X] T454 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/session_tests.rs` for `ServiceState`: "`Starting → WaitingForSession (session id 0xFFFFFFFF) → Running(session, pid)`"; `WaitingForSession` is left only on a `SERVICE_CONTROL_SESSIONCHANGE` after which the console session id is real (no polling, sleep or timer); on a console session change "`Running → Relaunching → Running`" (send `Shutdown`, wait for exit, new pipe, launch); "If the engine exits: `Running → Relaunching`" with no back-off and no timer; on stop "`Stopping` (it sends `Shutdown` and ends the engine)"; each transition logs `service.session` / `service.engine_started` / `service.engine_exited` (Story 5 sc. 2)
+- [X] T455 [US5-service-win] Implement the state machine in `apps/mouser-service-win/src/session.rs`
+- [X] T456 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/launch_tests.rs`: the engine is launched in the console session as `mouser-app.exe --headless --machine` (the executable beside `mouser-service.exe`) with `CreateProcessAsUserW`, a duplicate of that session's `winlogon.exe` token, and `lpDesktop = "winsta0\\default"`, after the pipe exists (Story 5 sc. 1)
+- [X] T457 [US5-service-win] Implement the launch in `apps/mouser-service-win/src/launch.rs`
+- [X] T458 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/sas_tests.rs`: `SendSas` reads `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\SoftwareSASGeneration`; a value other than 1 or 3 answers `SasResult::PolicyBlocked`; otherwise it calls `SendSAS(FALSE)` and answers `Sent`, or `Failed(reason)`; it logs `service.sas {result}` (Story 5 sc. 3)
+- [X] T459 [US5-service-win] Implement `SendSas` handling in `apps/mouser-service-win/src/sas.rs`
+- [X] T460 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/log_tests.rs`: the service writes `service.log` in the machine folder `C:\ProgramData\Mouser` starting with `log.header` (mode `service`) and rotating under the same two-file `max_log_mb/2` rule as the engine; only `service.*` catalog events are written
+- [X] T461 [US5-service-win] Implement the service log in `apps/mouser-service-win/src/log.rs`
+- [X] T462 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/service_tests.rs`: the SCM entry dispatches `SERVICE_CONTROL_SESSIONCHANGE`, `SERVICE_CONTROL_STOP` and `SERVICE_CONTROL_PRESHUTDOWN` to the state machine and reports `SERVICE_RUNNING` / `SERVICE_STOPPED`
+- [X] T463 [US5-service-win] Implement the SCM entry point with `windows-service` in `apps/mouser-service-win/src/service.rs`
+- [X] T464 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` creates `MouserService` (LocalSystem, automatic start, display name "Mouser") (FR-013)
+- [X] T465 [US5-service-win] Implement service creation for `--install` in `apps/mouser-service-win/src/install.rs`
+- [X] T466 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` sets `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\SoftwareSASGeneration=1`
+- [X] T467 [US5-service-win] Set `SoftwareSASGeneration` in `apps/mouser-service-win/src/install.rs`
+- [X] T468 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` adds the inbound firewall rule for UDP 47801 for `mouser-app.exe`
+- [X] T469 [US5-service-win] Add the firewall rule in `apps/mouser-service-win/src/install.rs`
+- [X] T470 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--install` starts the service last and exits 0; if any step fails it exits 1 with that step's reason on stderr
+- [X] T471 [US5-service-win] Start the service and report the exit code in `apps/mouser-service-win/src/install.rs`
+- [X] T472 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/migrate_tests.rs`: during `--install`, a readable user-scope identity (device key, desk key, `state.json`) of the installing user is copied to machine scope with `Engine::export_machine_scope`; when it is not readable the session engine starts without a desk and the computer rejoins with one approval (research V12a; OD-2)
+- [X] T473 [US5-service-win] Implement identity migration in `apps/mouser-service-win/src/migrate.rs`
+- [X] T474 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` stops the service (which sends `Shutdown` to the session engine and waits for it to exit) and deletes it (FR-013)
+- [X] T475 [US5-service-win] Implement service stop and delete for `--uninstall` in `apps/mouser-service-win/src/install.rs`
+- [X] T476 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` ends every remaining `mouser-app.exe` process in every session (UI-mode tray apps and `--cursor-guard` processes) (FR-013)
+- [X] T477 [US5-service-win] End remaining Mouser processes in `apps/mouser-service-win/src/install.rs`
+- [X] T478 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` removes the firewall rule `--install` added
+- [X] T479 [US5-service-win] Remove the firewall rule in `apps/mouser-service-win/src/install.rs`
+- [X] T480 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` deletes the `SoftwareSASGeneration` value Mouser set
+- [X] T481 [US5-service-win] Delete the `SoftwareSASGeneration` value in `apps/mouser-service-win/src/install.rs`
+- [X] T482 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/install_tests.rs`: `--uninstall` exits 0 when the service, rule or value is already absent
+- [X] T483 [US5-service-win] Treat absent items as done in `--uninstall` in `apps/mouser-service-win/src/install.rs`
+- [X] T484 [P] [US5-service-win] Write unit tests in `apps/mouser-service-win/src/args_tests.rs`: `--install`, `--uninstall`, and no arguments (run under the SCM) select the matching entry; any other argument exits 3
+- [X] T485 [US5-service-win] Replace the stub `fn main() {}` in `apps/mouser-service-win/src/main.rs` with argument dispatch in `apps/mouser-service-win/src/args.rs`
+- [X] T486 [US5-service-win] Gate: `cargo xtask gate --packages mouser-service-win --lane service-win` on the Windows runner
+- [X] T487 [US5-service-win] Commit: phase boundary "US5-service-win" (5.3)
 
 ---
 
