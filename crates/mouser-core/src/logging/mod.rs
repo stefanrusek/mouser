@@ -34,6 +34,8 @@ use crate::engine::Ctx;
 
 /// File name inside `<config dir>/logs`.
 pub const FILE: &str = "mouser.log";
+/// The service's log beside it (Windows installed, research V9).
+pub const SERVICE_FILE: &str = "service.log";
 
 #[cfg(target_os = "macos")]
 const BUILT_FOR: Os = Os::Macos;
@@ -115,9 +117,23 @@ impl Log {
         max_mb: u32,
         context: Context,
     ) -> Self {
+        Self::named(config_dir, FILE, computer, name, enabled, max_mb, context)
+    }
+
+    /// A log in `<config dir>/logs/<file>`, rotating to `<file>.1` under the
+    /// same rule; the service's is [`SERVICE_FILE`].
+    pub fn named(
+        config_dir: &Path,
+        file: &str,
+        computer: ComputerId,
+        name: String,
+        enabled: bool,
+        max_mb: u32,
+        context: Context,
+    ) -> Self {
         let log = Self {
             computer,
-            path: config_dir.join("logs").join(FILE),
+            path: config_dir.join("logs").join(file),
             inner: Mutex::new(Inner {
                 enabled,
                 name,
@@ -239,18 +255,17 @@ impl Log {
         self.append(&mut inner, &line);
     }
 
-    /// The bytes of the log files, `mouser.log` and then `mouser.log.1`
-    /// where it exists, as they are at one moment: nothing is written (and
-    /// nothing rotates) while they are read.
+    /// The bytes of the log files where they exist, `mouser.log` and
+    /// `mouser.log.1`, then the service's `service.log` and `service.log.1`
+    /// beside them (Windows installed), as they are at one moment: nothing
+    /// is written (and nothing rotates) here while they are read.
     pub fn snapshot(&self) -> Vec<(String, Vec<u8>)> {
         let _quiet = self.inner.guard();
-        [
-            (FILE, self.path.clone()),
-            ("mouser.log.1", self.path.with_extension("log.1")),
-        ]
-        .into_iter()
-        .filter_map(|(name, path)| Some((name.to_string(), std::fs::read(path).ok()?)))
-        .collect()
+        let dir = self.path.parent().expect("log has a directory");
+        [FILE, "mouser.log.1", SERVICE_FILE, "service.log.1"]
+            .into_iter()
+            .filter_map(|name| Some((name.to_string(), std::fs::read(dir.join(name)).ok()?)))
+            .collect()
     }
 
     /// What a platform backend reports through its diagnostics sink: a

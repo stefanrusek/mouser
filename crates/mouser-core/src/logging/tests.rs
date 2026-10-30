@@ -227,3 +227,25 @@ fn a_record_that_cannot_rotate_the_file_is_dropped_and_logging_recovers() {
     assert_eq!(written[0]["event"], "log.header");
     assert_eq!(written[1]["event"], "wire.unknown");
 }
+
+#[test]
+fn a_snapshot_holds_the_services_log_beside_the_engines_when_it_is_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = Log::new(dir.path(), ME, "Alpha".into(), true, 8);
+    let names = |log: &Log| -> Vec<String> { log.snapshot().into_iter().map(|(n, _)| n).collect() };
+    assert_eq!(names(&log), ["mouser.log"]);
+    let service = Log::named(
+        dir.path(),
+        "service.log",
+        ME,
+        "Alpha".into(),
+        true,
+        8,
+        Context::fallback(),
+    );
+    service.write(some_event());
+    std::fs::write(dir.path().join("logs").join("service.log.1"), b"older\n").unwrap();
+    assert_eq!(names(&log), ["mouser.log", "service.log", "service.log.1"]);
+    let (_, older) = log.snapshot().pop().unwrap();
+    assert_eq!(older, b"older\n");
+}

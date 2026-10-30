@@ -299,6 +299,8 @@ fn state_secrets_and_keys_are_never_in_the_zip_even_when_a_peer_names_them() {
     }
     beta.files
         .push(("service.log".into(), b"service\n".to_vec()));
+    beta.files
+        .push(("service.log.1".into(), b"older\n".to_vec()));
     let zip = build(at(), ME, Some((DESK, "Home")), &[mine(), beta]);
     let names: Vec<_> = entries(&zip).into_iter().map(|(n, _)| n).collect();
     for banned in [
@@ -315,10 +317,11 @@ fn state_secrets_and_keys_are_never_in_the_zip_even_when_a_peer_names_them() {
         );
     }
     assert!(names.contains(&"Beta-bbbbbbbb/service.log".to_string()));
+    assert!(names.contains(&"Beta-bbbbbbbb/service.log.1".to_string()));
     let manifest: Value = serde_json::from_str(&text(&zip, "bundle.json")).unwrap();
     assert_eq!(
         manifest["computers"][1]["files"],
-        json!(["mouser.log", "mouser.log.1", "service.log"])
+        json!(["mouser.log", "mouser.log.1", "service.log", "service.log.1"])
     );
     assert!(validator().is_valid(&manifest));
 }

@@ -96,3 +96,35 @@ fn the_limit_follows_the_config() {
     record(&log, 12);
     assert!(log.path().with_extension("log.1").exists());
 }
+
+#[test]
+fn a_named_log_rotates_to_its_own_name_with_1_under_the_same_rule() {
+    let dir = tempfile::tempdir().unwrap();
+    let context = super::Context {
+        mode: mouser_proto::wire::ComputerMode::Service,
+        ..super::Context::fallback()
+    };
+    let log = Log::named(
+        dir.path(),
+        "service.log",
+        ME,
+        "A".repeat(100_000),
+        true,
+        1,
+        context,
+    );
+    let logs = dir.path().join("logs");
+    assert_eq!(log.path(), logs.join("service.log"));
+    for n in 0..4 {
+        record(&log, n);
+    }
+    let rotated = logs.join("service.log.1");
+    assert_eq!(peers(&rotated).len(), 3);
+    assert_eq!(peers(&log.path()), [ComputerId([3; 16]).to_string()]);
+    assert!(!logs.join("mouser.log").exists());
+    for file in [log.path(), rotated] {
+        let first = &lines(&file)[0];
+        assert_eq!(first["event"], "log.header");
+        assert_eq!(first["fields"]["mode"], "service");
+    }
+}

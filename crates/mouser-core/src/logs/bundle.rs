@@ -19,7 +19,7 @@ use crate::paths::Env;
 
 /// The only files a computer's folder in the zip holds besides
 /// `computer.json` and `config.toml`.
-const LOG_FILES: [&str; 3] = ["mouser.log", "mouser.log.1", "service.log"];
+const LOG_FILES: [&str; 4] = ["mouser.log", "mouser.log.1", "service.log", "service.log.1"];
 
 /// The settings file, in the folder and in the manifest.
 const SETTINGS: &str = "config.toml";

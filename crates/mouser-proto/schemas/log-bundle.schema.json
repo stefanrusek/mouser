@@ -33,7 +33,7 @@
           "reason": { "enum": ["offline", "logging_off", "older_version"] },
           "folder": { "type": "string" },
           "settings_file": { "type": "string" },
-          "files": { "type": "array", "items": { "enum": ["mouser.log", "mouser.log.1", "service.log"] } }
+          "files": { "type": "array", "items": { "enum": ["mouser.log", "mouser.log.1", "service.log", "service.log.1"] } }
         },
         "if": { "properties": { "included": { "const": false } } },
         "then": { "required": ["reason"] }
