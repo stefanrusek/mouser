@@ -11,6 +11,8 @@
 use crate::lock::LockExt;
 use std::sync::Arc;
 
+use mouser_proto::ids::ComputerId;
+
 use crate::engine::{Ctx, Phase};
 
 impl Ctx {
@@ -29,26 +31,37 @@ impl Ctx {
         self.redial_pending();
     }
 
+    /// A connection from `peer`, accepted across our address change, has
+    /// been taken over: it is to be dialled again, once it is proven.
+    pub(crate) fn redial_moved(self: &Arc<Self>, peer: ComputerId) {
+        self.core.guard().redial.insert(peer);
+        self.redial_pending();
+    }
+
     /// Dial the computers still to be dialled again, until the new
     /// connection is up. A computer whose connection has ended is left to
     /// the ordinary reconnection (the lower `ComputerId` dials), so a pair
     /// never dials each other at once; one that is not visible on the
-    /// network is tried again on the next tick.
+    /// network is tried again on the next tick. An accepted connection
+    /// still proving membership is dialled again once it has.
     pub(crate) fn redial_pending(self: &Arc<Self>) {
         let found = self.discovery.found();
         let mut core = self.core.guard();
         let pending: Vec<_> = core.redial.iter().copied().collect();
         for peer in pending {
-            let waiting = core
-                .peers
-                .get(&peer)
-                .is_some_and(|p| !p.dialed && p.phase == Phase::Authed);
-            if !waiting {
-                core.redial.remove(&peer);
-            } else if let Some(f) = found.iter().find(|f| f.computer == peer)
-                && core.dialing.insert(peer)
-            {
-                self.spawn(self.clone().dial_found(f.clone()));
+            let accepted = core.peers.get(&peer).filter(|p| !p.dialed).map(|p| p.phase);
+            match accepted {
+                Some(Phase::Authed) => {
+                    if let Some(f) = found.iter().find(|f| f.computer == peer)
+                        && core.dialing.insert(peer)
+                    {
+                        self.spawn(self.clone().dial_found(f.clone()));
+                    }
+                }
+                Some(Phase::Greeted) => {}
+                _ => {
+                    core.redial.remove(&peer);
+                }
             }
         }
     }

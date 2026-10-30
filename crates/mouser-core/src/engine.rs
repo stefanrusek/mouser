@@ -226,6 +226,8 @@ pub(crate) struct Core {
     pub absent: crate::session::liveness::AbsentPeers,
     /// Desk-mates to dial again after this computer's address changed.
     pub redial: BTreeSet<ComputerId>,
+    /// How often this computer's physical LAN addresses have changed.
+    pub moves: u64,
     /// Physical LAN addresses of this computer when last looked at.
     pub physical: BTreeSet<std::net::IpAddr>,
     pub dialing: BTreeSet<ComputerId>,
@@ -287,6 +289,9 @@ pub(crate) struct Ctx {
     /// Streams awaited as answers to `LogsRequest`.
     pub(crate) logs_waiters: Mutex<Vec<crate::logs::collect::Waiter>>,
     pub next_link: AtomicU64,
+    /// Tests hold an incoming connection before it is greeted.
+    #[cfg(test)]
+    pub accept_hold: crate::session::AcceptHold,
     stop: CancellationToken,
     tasks: TaskTracker,
 }
@@ -558,6 +563,7 @@ impl Engine {
                 peers: BTreeMap::new(),
                 absent: BTreeMap::new(),
                 redial: BTreeSet::new(),
+                moves: 0,
                 physical: crate::transport::netchange::physical_addrs(&interfaces),
                 dialing: BTreeSet::new(),
                 requests: Requests::default(),
@@ -568,6 +574,8 @@ impl Engine {
                 release,
             }),
             next_link: AtomicU64::new(0),
+            #[cfg(test)]
+            accept_hold: Default::default(),
             stop: CancellationToken::new(),
             tasks: TaskTracker::new(),
         });

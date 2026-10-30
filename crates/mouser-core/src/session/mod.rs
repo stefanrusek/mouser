@@ -273,11 +273,21 @@ impl Ctx {
     }
 
     /// Finish an incoming connection, exchange `Hello`s and take it over.
+    /// A connection set up before this computer's address changed cannot
+    /// follow the move (only the side that dialled migrates): it is dialled
+    /// again once taken over, as the ones already held are (T537).
     pub(crate) async fn accept_one(self: Arc<Self>, incoming: quinn::Incoming) -> Option<()> {
+        let moves = self.core.guard().moves;
         let conn = Transport::complete(incoming).await.ok()?;
         let mut link = Link::accepted(conn).await?;
+        #[cfg(test)]
+        let _held = self.accept_hold.wait().await;
         let hello = exchange(&mut link, self.hello()).await?;
+        let peer = link.peer;
         self.adopt(link, hello, None, false);
+        if self.core.guard().moves != moves {
+            self.redial_moved(peer);
+        }
         Some(())
     }
 
@@ -547,5 +557,23 @@ impl Ctx {
             ControlMessage::RestartElevated => self.on_restart_elevated(),
             other => Err(format!("unexpected message {other:?}")),
         }
+    }
+}
+
+/// Tests hold incoming connections, accepted but not yet greeted, and see
+/// how many are waiting.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct AcceptHold {
+    pub gate: Arc<tokio::sync::Mutex<()>>,
+    pub waiting: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(test)]
+impl AcceptHold {
+    async fn wait(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.waiting
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.gate.lock().await
     }
 }
