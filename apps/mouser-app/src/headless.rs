@@ -73,7 +73,9 @@ pub fn params(
         version,
     );
     params.mode = mode;
-    if machine_scope(os, mode) {
+    // Windows' own store is machine scope already (DPAPI in the machine
+    // directory's `secrets`): files of plain keys there would collide with it.
+    if machine_scope(os, mode) && os != Os::Windows {
         params.secrets = Some(Box::new(FileSecrets::new(secrets_dir(&data_dir))));
     }
     params

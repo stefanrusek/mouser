@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mouser_core::paths::Paths;
-use mouser_platform::Os;
+use mouser_platform::{Os, Platform};
 use mouser_proto::wire::ComputerMode;
 use mouser_testkit::VirtualPlatform;
 
@@ -392,6 +392,47 @@ async fn the_machine_service_keeps_its_secrets_in_the_machine_directory() {
     ));
     let served = crate::support_tests::served_at(&control, ComputerMode::Service);
     crate::support_tests::eventually(|| served.exists() && secrets_dir(dir.path()).is_dir()).await;
+    stop.send(()).unwrap();
+    task.await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_windows_session_engine_keeps_its_secrets_in_the_platforms_machine_scope_store() {
+    // On Windows the platform's store is already machine scope (DPAPI in
+    // C:\ProgramData\Mouser\secrets); a second store of plain files in the
+    // same folder would read its blobs as keys.
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let control = control_path_in(&dir);
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let platform = VirtualPlatform::new();
+    let task = tokio::spawn(run(
+        params(
+            Arc::new(platform.clone()),
+            Os::Windows,
+            dir.path().to_path_buf(),
+            control.clone(),
+            "Windows service".into(),
+            "1.2.3".into(),
+            ComputerMode::Service,
+        ),
+        async {
+            stopped.await.unwrap();
+        },
+    ));
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists()).await;
+    assert!(!secrets_dir(dir.path()).exists());
+    assert!(
+        platform
+            .secrets()
+            .get(mouser_core::identity::DEVICE_KEY)
+            .unwrap()
+            .is_some()
+    );
     stop.send(()).unwrap();
     task.await.unwrap();
 }
