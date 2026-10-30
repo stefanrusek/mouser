@@ -1,7 +1,8 @@
 //! What the app asks of Windows around starting and restarting itself
 //! (FR-005; research V2; probe P3): restarting as administrator through the
 //! UAC prompt, waiting for the instance it replaces, telling whether an
-//! elevated instance is still running, and saying so in a message box.
+//! elevated instance is still running, and saying so in a message box; and
+//! whether `MouserService` runs, which puts the tray app in UI mode.
 
 use std::path::Path;
 use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, WAIT_TIMEOUT};
@@ -96,4 +97,23 @@ pub fn this_process_elevated() -> bool {
 pub fn message_box(text: &str) {
     let flags = MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND;
     unsafe { MessageBoxW(None, &HSTRING::from(text), w!("Mouser"), flags) };
+}
+
+/// Whether the Windows service `name` is installed and running.
+pub fn service_running(name: &str) -> bool {
+    use windows::Win32::System::Services::{
+        CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_MANAGER_CONNECT,
+        SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
+    };
+    unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }.is_ok_and(|manager| {
+        let mut status = SERVICE_STATUS::default();
+        let running = unsafe { OpenServiceW(manager, &HSTRING::from(name), SERVICE_QUERY_STATUS) }
+            .is_ok_and(|service| {
+                let queried = unsafe { QueryServiceStatus(service, &mut status) };
+                let _ = unsafe { CloseServiceHandle(service) };
+                queried.is_ok() && status.dwCurrentState == SERVICE_RUNNING
+            });
+        let _ = unsafe { CloseServiceHandle(manager) };
+        running
+    })
 }

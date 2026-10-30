@@ -3,7 +3,9 @@
 
 use std::sync::Arc;
 
-use mouser_core::{ControlHandle, EngineEvent};
+use mouser_core::EngineEvent;
+
+use crate::host::Control;
 use mouser_proto::control::{Notification, Topic};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::sync::broadcast::Receiver;
@@ -130,9 +132,10 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
         #[cfg(target_os = "windows")]
         EngineEvent::RestartElevated => {
             let app = app.clone();
-            let shell = app.state::<ElevationShell>().0.clone();
+            let elevation = app.state::<ElevationShell>();
+            let (shell, exit) = (elevation.shell.clone(), elevation.exit.clone());
             tauri::async_runtime::spawn_blocking(move || {
-                restart_elevated(&app, shell.as_ref(), || app.exit(0));
+                restart_elevated(&app, shell.as_ref(), &*exit);
             });
         }
         // Only a portable Windows computer is asked to restart elevated.
@@ -141,9 +144,13 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
     }
 }
 
-/// What the restart as administrator asks of Windows; tests put a fake here.
+/// What the restart as administrator asks of Windows, and how the app then
+/// exits; tests put fakes here.
 #[cfg(target_os = "windows")]
-pub struct ElevationShell(pub Arc<dyn crate::elevation::Shell + Send + Sync>);
+pub struct ElevationShell {
+    pub shell: Arc<dyn crate::elevation::Shell + Send + Sync>,
+    pub exit: Arc<dyn Fn() + Send + Sync>,
+}
 
 /// Restarts Mouser as administrator (FR-005): when the new instance is
 /// starting, the engine is shut down and the app `exit`s; when the prompt
@@ -204,7 +211,7 @@ pub async fn pump_events<R: Runtime>(
 /// read, for [`pump`].
 pub async fn start<R: Runtime>(
     app: &AppHandle<R>,
-    control: &ControlHandle,
+    control: &Control,
     tray: &TrayController,
 ) -> Receiver<Notification> {
     mouser_core::faults::install(app.state::<Host>().log());

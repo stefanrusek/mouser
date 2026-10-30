@@ -1,7 +1,7 @@
 //! "Send Ctrl-Alt-Del" (Story 12 scenario 4): the tray line that asks the
 //! engine to send the secure attention sequence to the active computer.
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 use mouser_proto::control::{Method, Status};
 use mouser_proto::model::Os;
 
@@ -30,7 +30,7 @@ pub fn entry(status: &Status) -> Option<Entry> {
 }
 
 /// Call `send_cad`; the error is the engine's plain-language message.
-pub async fn send(control: &ControlHandle) -> Result<(), String> {
+pub async fn send(control: &Control) -> Result<(), String> {
     control
         .call(Method::SendCad, None)
         .await

@@ -6,7 +6,7 @@ use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 use mouser_core::paths::Env;
 use mouser_platform::{Os, PermissionKind as PlatformKind};
 use mouser_proto::control::{
@@ -35,7 +35,7 @@ fn platform_kind(kind: PermissionKind) -> PlatformKind {
 
 /// Call a control-API method by its JSON-RPC name.
 pub async fn call(
-    control: &ControlHandle,
+    control: &Control,
     method: &str,
     params: Option<Value>,
 ) -> Result<Value, RpcError> {
@@ -158,9 +158,19 @@ pub fn reveal_in_file_manager(manager: State<'_, Box<dyn FileManager>>, path: St
 /// `logs.collect {}` on this app's engine, as `{path, computers}`.
 #[tauri::command]
 pub async fn collect_logs(host: State<'_, Host>) -> Result<Value, RpcError> {
-    host.control()
-        .call(Method::LogsCollect, Some(serde_json::json!({})))
-        .await
+    match host.control() {
+        // UI mode: the session engine streams the bundle, written here (OD-7).
+        #[cfg(target_os = "windows")]
+        crate::host::Control::Remote(remote) => {
+            let machine = crate::headless::machine_dir(mouser_platform::Os::Windows);
+            collect_logs_via(&remote, &mouser_core::paths::Env::from_process(), &machine).await
+        }
+        control => {
+            control
+                .call(Method::LogsCollect, Some(serde_json::json!({})))
+                .await
+        }
+    }
 }
 
 /// A bundle as `logs.collect_stream` delivers it: its description, and the
@@ -204,8 +214,12 @@ pub async fn collect_logs_via(
 
 /// Answer an `awaiting_overwrite_decision` question of a dragged-file transfer.
 #[tauri::command]
-pub fn transfer_resolve(host: State<'_, Host>, transfer_id: String, overwrite: bool) {
-    host.control().resolve_transfer(&transfer_id, overwrite);
+pub fn transfer_resolve(
+    host: State<'_, Host>,
+    transfer_id: String,
+    overwrite: bool,
+) -> Result<(), String> {
+    host.control().resolve_transfer(&transfer_id, overwrite)
 }
 
 /// Hide the calling window (it is created again when needed).

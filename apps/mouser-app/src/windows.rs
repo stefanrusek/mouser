@@ -7,7 +7,7 @@ use mouser_proto::model::PermissionState;
 use tauri::WindowEvent;
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 
 /// The one normal window.
 pub const LABEL: &str = "main";
@@ -108,7 +108,7 @@ pub fn needs_setup(status: &Status) -> bool {
 
 /// Open the window the owner wants now: setup while it is unfinished, the
 /// desk after that.
-pub async fn open_home<R: Runtime>(app: &AppHandle<R>, control: &ControlHandle) {
+pub async fn open_home<R: Runtime>(app: &AppHandle<R>, control: &Control) {
     let status = control
         .call(Method::Status, None)
         .await

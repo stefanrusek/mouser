@@ -238,7 +238,7 @@ async fn pause_and_resume_lines_act_on_the_engine_and_the_others_are_handed_on()
     assert!(!has_window(&handle, "main"));
 }
 
-async fn eventually_paused(control: &mouser_core::ControlHandle, paused: bool) {
+async fn eventually_paused(control: &crate::host::Control, paused: bool) {
     for _ in 0..200 {
         if (current_status(control).await.state == EngineState::Paused) == paused {
             return;

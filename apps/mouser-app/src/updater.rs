@@ -16,10 +16,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
+use crate::host::Control;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use ed25519_dalek::{Signer as _, SigningKey};
-use mouser_core::ControlHandle;
 use mouser_core::release::{Bundle, Installer};
 use mouser_proto::control::{Method, RpcError, UpdateResult};
 use serde_json::Value;
@@ -190,7 +190,7 @@ pub fn line(update: &UpdateResult) -> (Option<&'static str>, String) {
 }
 
 /// `update.check` as the tray uses it.
-pub async fn check(control: &ControlHandle) -> Result<UpdateResult, RpcError> {
+pub async fn check(control: &Control) -> Result<UpdateResult, RpcError> {
     let value = control.call(Method::UpdateCheck, None).await?;
     Ok(serde_json::from_value(value).expect("update.check matches its schema"))
 }
@@ -204,7 +204,7 @@ pub fn show(tray: &TrayController, result: Result<UpdateResult, RpcError>) {
 }
 
 /// Ask `update.check` every [`POLL`] and show the answer; the first ask is now.
-pub async fn poll(control: ControlHandle, tray: Arc<TrayController>) {
+pub async fn poll(control: Control, tray: Arc<TrayController>) {
     let mut ticks = tokio::time::interval(POLL);
     loop {
         ticks.tick().await;
@@ -213,7 +213,7 @@ pub async fn poll(control: ControlHandle, tray: Arc<TrayController>) {
 }
 
 /// Install the offered release (the tray's "Update to Y" line).
-pub async fn apply(control: &ControlHandle) -> Value {
+pub async fn apply(control: &Control) -> Value {
     control
         .call(Method::UpdateApply, None)
         .await

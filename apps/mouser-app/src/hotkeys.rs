@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 use mouser_proto::config::Config;
 use mouser_proto::control::{EngineState, Method};
 use serde_json::Value;
@@ -50,7 +50,7 @@ type Binding = (String, Hotkey);
 
 pub struct Hotkeys {
     shortcuts: Box<dyn Shortcuts>,
-    control: ControlHandle,
+    control: Control,
     config: Box<dyn Fn() -> Config + Send + Sync>,
     forward: Press,
     registered: Mutex<Vec<Binding>>,
@@ -62,7 +62,7 @@ impl Hotkeys {
     /// hotkeys the engine acts on itself rather than through the control API.
     pub fn new(
         shortcuts: Box<dyn Shortcuts>,
-        control: ControlHandle,
+        control: Control,
         config: Box<dyn Fn() -> Config + Send + Sync>,
         forward: Press,
     ) -> Arc<Self> {

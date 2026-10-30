@@ -82,6 +82,13 @@ fn os(what: &str, e: impl std::fmt::Display) -> Error {
     Error::Os(format!("{what}: {e}"))
 }
 
+/// A pipe call that failed: the service has gone. One function for every
+/// such call, whether it failed as it started or as it finished, which is
+/// up to timing.
+fn gone(e: windows::core::Error) -> Error {
+    os("the Mouser service is gone", e)
+}
+
 /// A manual-reset event. Windows fails to make one only when it is out of
 /// resources: an internal fault, not an answer to give the caller.
 fn event() -> Handle {
@@ -104,7 +111,7 @@ fn transfer(pipe: &Handle, stop: Option<&Handle>, buf: Buffer) -> Result<Option<
     if let Err(e) = started
         && e.code() != ERROR_IO_PENDING.to_hresult()
     {
-        return Err(os("the Mouser service is gone", e));
+        return Err(gone(e));
     }
     let waits: Vec<HANDLE> = [Some(done.0), stop.map(|s| s.0)]
         .into_iter()
@@ -121,7 +128,7 @@ fn transfer(pipe: &Handle, stop: Option<&Handle>, buf: Buffer) -> Result<Option<
     if stopped {
         return Ok(None);
     }
-    finished.map_err(|e| os("the Mouser service is gone", e))?;
+    finished.map_err(gone)?;
     Ok(Some(moved as usize))
 }
 
