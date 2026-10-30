@@ -347,7 +347,13 @@ impl Ctx {
                 core.redial.remove(&peer);
             }
             if let Some(old) = core.peers.insert(peer, entry) {
-                old.conn.close(0u32.into(), CloseReason::Replaced.bytes());
+                // A connection taking the session over closes the old one
+                // once it proves membership (`on_desk_auth`): by then the
+                // other computer has it too, and the close cannot reach that
+                // computer first and end the session there.
+                if core.peers[&peer].previous.is_none() {
+                    old.conn.close(0u32.into(), CloseReason::Replaced.bytes());
+                }
                 self.log.write(events::peer_disconnected(
                     peer,
                     CloseReason::Replaced.loss(),
@@ -430,6 +436,11 @@ impl Ctx {
                 return;
             }
             let gone = core.peers.remove(&peer).expect("checked above");
+            // A new connection that never proved membership ends the session
+            // it was to take over.
+            if let Some(previous) = &gone.previous {
+                previous.close(CloseReason::Replaced);
+            }
             // A link the peer finished may end before its close arrives: the
             // peer then left.
             let reason = gone.closing.unwrap_or_else(|| {

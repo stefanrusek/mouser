@@ -515,6 +515,26 @@ async fn a_new_connection_that_cannot_take_the_session_over_ends_it() {
     let _session = member_rogue(&node, &desk, 0x71).await;
     let rogue = crate::testing::Rogue::new(0x71);
     let id = rogue.identity.computer_id();
+    // On the desk, so its absence is kept (not forgotten by the next tick).
+    node.engine
+        .ctx
+        .core
+        .lock()
+        .unwrap()
+        .state
+        .desk
+        .as_mut()
+        .unwrap()
+        .state
+        .members
+        .push(mouser_proto::model::Member {
+            computer_id: id,
+            device_public_key: rogue.identity.public_key(),
+            display_name: "Rogue".into(),
+            os: mouser_proto::model::Os::Linux,
+            mouser_version: mouser_proto::wire::V2_SINCE.into(),
+            joined_at: crate::problems::now(),
+        });
     let _other = rogue.dial(&node, None).await;
     eventually("the new connection to replace the session's", || async {
         node.engine.ctx.core.lock().unwrap().peers[&id].phase == Phase::Greeted

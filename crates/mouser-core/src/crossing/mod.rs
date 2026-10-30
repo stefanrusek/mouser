@@ -110,6 +110,11 @@ impl Wire {
         let _ = self.out.send(Outgoing::Message(msg));
     }
 
+    /// Close this connection for `why`.
+    pub fn close(&self, why: crate::session::close_reason::CloseReason) {
+        self.conn.close(0u32.into(), why.bytes());
+    }
+
     /// Whether `other` is the same connection.
     pub fn same_link(&self, other: &Wire) -> bool {
         self.conn.stable_id() == other.conn.stable_id()

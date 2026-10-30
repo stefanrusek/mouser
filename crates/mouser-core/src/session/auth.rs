@@ -89,7 +89,10 @@ impl Ctx {
             return Ok(());
         }
         entry.phase = Phase::Authed;
-        entry.previous = None;
+        // The session's old connection, if this one took it over, is done.
+        if let Some(previous) = entry.previous.take() {
+            previous.close(CloseReason::Replaced);
+        }
         self.log.write(events::peer_connected(
             peer,
             &entry.hello.mouser_version,

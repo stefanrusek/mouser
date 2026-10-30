@@ -183,3 +183,91 @@ async fn the_controlled_display_leaving_the_layout_releases_what_the_still_conne
     })
     .await;
 }
+
+/// A desk with one hand-driven member (`seed`) in session, and a second
+/// connection from that same computer, greeted and asked for its proof: the
+/// session's connection, the new one and the computer's id.
+async fn resuming(
+    node: &TestNode,
+    seed: u8,
+) -> (
+    crate::transport::Link,
+    crate::transport::Link,
+    mouser_proto::ids::ComputerId,
+    [u8; 32],
+) {
+    let desk: mouser_proto::control::Desk = call(
+        node,
+        mouser_proto::control::Method::DeskCreate,
+        serde_json::json!({"name": "Home office"}),
+    )
+    .await;
+    let session = member_rogue(node, &desk, seed).await;
+    let rogue = Rogue::new(seed);
+    let (mut new, _) = rogue
+        .dial_as(node, Some(desk.desk_id), mouser_proto::wire::V2_SINCE)
+        .await;
+    assert!(matches!(
+        new.reader
+            .recv::<mouser_proto::wire::ControlMessage>()
+            .await,
+        Some(mouser_proto::wire::ControlMessage::DeskAuth { .. })
+    ));
+    let key: [u8; 32] = mouser_platform::Platform::secrets(&node.platform)
+        .get(&crate::state::desk_key_name(&desk.desk_id))
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let id = rogue.identity.computer_id();
+    let proof = crate::session::auth::proof(
+        &key,
+        &crate::session::auth::export(&new.conn),
+        &desk.desk_id,
+        &id,
+    );
+    (session, new, id, proof)
+}
+
+/// Why `conn` was closed by the node.
+async fn closed_with(conn: &quinn::Connection) -> Vec<u8> {
+    match conn.closed().await {
+        quinn::ConnectionError::ApplicationClosed(close) => close.reason.to_vec(),
+        other => panic!("closed by the node with a reason, not {other:?}"),
+    }
+}
+
+/// T536: the computer that takes a new connection first keeps the session's
+/// one open until the new one proves membership. Closed earlier, the close
+/// could reach the other computer before it has the new connection, and that
+/// computer would end the session (seen on the Linux and Windows CI runners).
+#[tokio::test]
+async fn the_session_connection_stays_open_until_the_new_one_proves_membership() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let (session, mut new, id, proof) = resuming(&node, 0x72).await;
+    {
+        let core = node.engine.ctx.core.lock().unwrap();
+        let previous = core.peers[&id].previous.as_ref().expect("a resumption");
+        assert!(previous.conn.close_reason().is_none(), "still open");
+    }
+    new.writer
+        .send(&mouser_proto::wire::ControlMessage::DeskAuth { hmac: proof })
+        .await
+        .unwrap();
+    assert_eq!(closed_with(&session.conn).await, b"replaced");
+}
+
+/// A new connection that never proves membership ends the session, and the
+/// session's connection with it.
+#[tokio::test]
+async fn a_new_connection_that_fails_its_proof_closes_the_session_connection() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let (session, mut new, _, _) = resuming(&node, 0x73).await;
+    new.writer
+        .send(&mouser_proto::wire::ControlMessage::DeskAuth { hmac: [0; 32] })
+        .await
+        .unwrap();
+    assert_eq!(closed_with(&session.conn).await, b"replaced");
+}
