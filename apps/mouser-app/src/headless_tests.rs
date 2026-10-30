@@ -432,23 +432,24 @@ impl FakeService {
 #[tokio::test]
 async fn a_voluntary_exit_tells_the_service_why_first() {
     let service = Arc::new(FakeService::default());
-    report_to(service.clone(), async { Ended::Asked }).await;
+    report_to(service.clone(), Box::pin(async { Ended::Asked })).await;
     assert_eq!(service.told(), [StopReason::Quit]);
 }
 
 #[tokio::test]
 async fn a_shutdown_the_service_asked_for_is_not_told_back() {
     let service = Arc::new(FakeService::default());
-    report_to(service.clone(), async { Ended::Service }).await;
+    report_to(service.clone(), Box::pin(async { Ended::Service })).await;
     assert!(service.told().is_empty());
 }
 
 #[tokio::test]
 async fn a_fault_that_ends_the_engine_is_told_and_still_ends_it() {
     let service = Arc::new(FakeService::default());
-    let reporting = tokio::spawn(report_to(service.clone(), async {
-        panic!("the engine went wrong")
-    }));
+    let reporting = tokio::spawn(report_to(
+        service.clone(),
+        Box::pin(async { panic!("the engine went wrong") }),
+    ));
     let ended = reporting.await.expect_err("the fault still ends it");
     assert!(ended.is_panic());
     assert_eq!(service.told(), [StopReason::Fault]);
@@ -474,7 +475,7 @@ async fn the_services_shutdown_stops_the_engine_and_tells_nothing_back() {
             ComputerMode::Service,
         ),
         service.clone(),
-        std::future::pending(),
+        Box::pin(std::future::pending()),
     ));
     let served = crate::support_tests::served_at(&control, ComputerMode::Service);
     crate::support_tests::eventually(|| served.exists()).await;
@@ -506,9 +507,9 @@ async fn the_session_engine_asked_to_stop_by_the_system_tells_the_service_it_qui
             ComputerMode::Service,
         ),
         service.clone(),
-        async {
+        Box::pin(async {
             stopped.await.unwrap();
-        },
+        }),
     ));
     let served = crate::support_tests::served_at(&control, ComputerMode::Service);
     crate::support_tests::eventually(|| served.exists()).await;
@@ -542,9 +543,9 @@ async fn a_service_that_went_without_a_word_leaves_the_engine_running() {
             ComputerMode::Service,
         ),
         service.clone(),
-        async {
+        Box::pin(async {
             stopped.await.unwrap();
-        },
+        }),
     ));
     let served = crate::support_tests::served_at(&control, ComputerMode::Service);
     crate::support_tests::eventually(|| served.exists()).await;
