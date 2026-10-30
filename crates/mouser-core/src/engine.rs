@@ -182,6 +182,10 @@ pub(crate) struct Peer {
     /// The peer told us it is paused (Story 2 scenario 12).
     pub paused: bool,
     pub last_seen: String,
+    /// The authenticated connection this one replaced (a re-dial after an
+    /// address change): until this one proves membership the session goes
+    /// on, the computer stays connected and the input path keeps this wire.
+    pub previous: Option<crate::crossing::Wire>,
 }
 
 impl Peer {

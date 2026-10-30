@@ -2,8 +2,9 @@
 //! (Story 3 scenario 5, edge case "no stuck keys").
 //!
 //! A computer is lost when its link ends: a path silent for the 3 s idle
-//! timeout, a peer that shut down, a connection replaced by a re-dial. The
-//! layout snapshot then no longer has it ([`Crossing::set_map`]), and:
+//! timeout, a peer that shut down, a new connection that never proved
+//! membership. The layout snapshot then no longer has it
+//! ([`Crossing::set_map`]), and:
 //!
 //! * as the controller, the pointer was on the lost computer: the grab ends,
 //!   the pointer is placed where it left this computer's display, and the
@@ -14,12 +15,44 @@
 //!   so nothing here is left pressed.
 //! * as the receiver, whatever the lost controller left pressed is released
 //!   here and its input is no longer accepted.
+//!
+//! A connection replaced by a new one to the same computer (a re-dial after an
+//! address change, Story 3 scenarios 1 and 3) does not lose it: the session
+//! goes on over the new connection once that proves membership, and the
+//! computer being controlled keeps the pointer.
 
 use super::controller::Return;
-use super::{Crossing, edges, state};
+use super::state::Pressed;
+use super::{Crossing, DeskMap, edges, state};
 use crate::logging::events::ControlHow;
 
 impl Crossing {
+    /// The computer being controlled is now reached over a new connection.
+    /// What was sent over the old one may have been lost with it, so the
+    /// session starts again, clean, where the pointer is: nothing stays
+    /// pressed there that this computer no longer holds.
+    pub(super) fn resume_on_new_link(&mut self, before: &DeskMap) {
+        let state::Control::Remote(r) = &self.session.control else {
+            return;
+        };
+        let (Some(old), Some(new), Some(to)) = (
+            before.wires.get(&r.computer),
+            self.map.wires.get(&r.computer).cloned(),
+            edges::index_of(&self.map.placed, &r.display),
+        ) else {
+            return;
+        };
+        if old.same_link(&new) {
+            return;
+        }
+        let (display, at) = (
+            r.display.clone(),
+            edges::to_local(&self.map.placed[to], r.at),
+        );
+        self.enter(&new, display, at);
+        self.session.sent = Pressed::default();
+    }
+
     /// Return control and stop receiving for every computer the current map
     /// no longer holds.
     pub(super) fn drop_lost(&mut self) {

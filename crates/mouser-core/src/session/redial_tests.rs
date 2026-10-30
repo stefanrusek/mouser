@@ -128,8 +128,87 @@ async fn a_peer_that_cannot_be_found_is_left_alone() {
     assert!(a.engine.ctx.core.lock().unwrap().dialing.is_empty());
 }
 
+/// Wait until both computers of `nodes` hold an authenticated connection
+/// other than `links` (each one's link id of the other, before).
+async fn wait_replaced(nodes: &[TestNode], links: (u64, u64)) {
+    let (a, b) = (&nodes[0], &nodes[1]);
+    eventually("both sides on the new connection", || async {
+        link_of(a, b).is_some_and(|(link, _, phase)| link != links.0 && phase == Phase::Authed)
+            && link_of(b, a)
+                .is_some_and(|(link, _, phase)| link != links.1 && phase == Phase::Authed)
+    })
+    .await;
+}
+
+/// T536 (Story 3 scenarios 1 and 3, quickstart R1): an address change while
+/// the pointer is on the other computer hands the session over to the new
+/// connection. The other computer never stops being connected, the pointer
+/// stays where it is (nothing warps home) and typing carries on there.
+#[tokio::test]
+async fn an_address_change_while_controlling_keeps_the_pointer_where_it_is() {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let beta = b.engine.computer_id();
+    push_right(a);
+    injected_where(&b.platform, "the pointer on Beta", |i| {
+        matches!(i, Injected::MotionAbs { .. })
+    })
+    .await;
+    let warps = a.platform.warps().len();
+    let links = (link_of(a, b).unwrap().0, link_of(b, a).unwrap().0);
+
+    let (_, acceptor) = roles(&nodes);
+    change_address_of(&nodes[acceptor]);
+    let seen = std::sync::Mutex::new(Vec::new());
+    eventually("both sides on the new connection", || async {
+        let now = Instant::now();
+        seen.lock().unwrap().extend([
+            a.engine.ctx.core.lock().unwrap().connection_of(beta, now),
+            b.engine
+                .ctx
+                .core
+                .lock()
+                .unwrap()
+                .connection_of(a.engine.computer_id(), now),
+        ]);
+        link_of(a, b).is_some_and(|(link, _, phase)| link != links.0 && phase == Phase::Authed)
+            && link_of(b, a)
+                .is_some_and(|(link, _, phase)| link != links.1 && phase == Phase::Authed)
+    })
+    .await;
+    let seen = seen.into_inner().unwrap();
+    assert!(
+        seen.iter().all(|c| *c == ConnectionState::Connected),
+        "{seen:?}"
+    );
+
+    // Typing carries on on Beta.
+    a.platform.send_input(LocalInput::Key {
+        usage: 0x0007_0005,
+        down: true,
+    });
+    injected_where(&b.platform, "the key typed after the change", |i| {
+        *i == Injected::Key {
+            usage: 0x0007_0005,
+            down: true,
+        }
+    })
+    .await;
+    assert!(a.platform.is_grabbed(), "the mouse is still on Beta");
+    assert_eq!(a.platform.warps().len(), warps, "nothing warped home");
+    assert_eq!(a.engine.ctx.crossing.lock().unwrap().active(), Some(beta));
+    assert_eq!(
+        b.engine.ctx.crossing.lock().unwrap().active(),
+        Some(beta),
+        "Beta is still being controlled"
+    );
+}
+
 /// Regression (constitution VI): a connection replaced by a new one to the
-/// same computer must not leave the old session's keys held down.
+/// same computer must not leave the old session's keys held down: what was
+/// sent before the change (some of it perhaps lost with the old connection)
+/// is released, and the session carries on over the new one.
 #[tokio::test]
 async fn replacing_a_connection_releases_what_the_old_session_held() {
     let lab = Lab::simulated();
@@ -152,6 +231,8 @@ async fn replacing_a_connection_releases_what_the_old_session_held() {
     })
     .await;
 
+    let links = (link_of(a, b).unwrap().0, link_of(b, a).unwrap().0);
+
     // Whichever computer accepted the connection dials again.
     let (_, acceptor) = roles(&nodes);
     change_address_of(&nodes[acceptor]);
@@ -162,11 +243,9 @@ async fn replacing_a_connection_releases_what_the_old_session_held() {
         }
     })
     .await;
-    eventually("the mouse to come back to Alpha", || async {
-        !a.platform.is_grabbed()
-    })
-    .await;
+    wait_replaced(&nodes, links).await;
     wait_connection(a, b, ConnectionState::Connected).await;
+    assert!(a.platform.is_grabbed(), "the mouse is still on Beta");
 }
 
 /// Regression: a message still queued on a link that was replaced must not
@@ -418,4 +497,36 @@ async fn a_peer_whose_connection_ended_is_no_longer_to_be_dialled_again() {
         a.engine.ctx.core.lock().unwrap().redial.is_empty()
     })
     .await;
+}
+
+/// T536: only a new connection that is to take the session over keeps it. One
+/// from the same computer that is not on this desk ends the session: the
+/// computer is reconnecting until a connection proves membership again.
+#[tokio::test]
+async fn a_new_connection_that_cannot_take_the_session_over_ends_it() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let desk: mouser_proto::control::Desk = call(
+        &node,
+        mouser_proto::control::Method::DeskCreate,
+        serde_json::json!({"name": "Home office"}),
+    )
+    .await;
+    let _session = member_rogue(&node, &desk, 0x71).await;
+    let rogue = crate::testing::Rogue::new(0x71);
+    let id = rogue.identity.computer_id();
+    let _other = rogue.dial(&node, None).await;
+    eventually("the new connection to replace the session's", || async {
+        node.engine.ctx.core.lock().unwrap().peers[&id].phase == Phase::Greeted
+    })
+    .await;
+    assert_eq!(
+        node.engine
+            .ctx
+            .core
+            .lock()
+            .unwrap()
+            .connection_of(id, Instant::now()),
+        ConnectionState::Reconnecting
+    );
 }

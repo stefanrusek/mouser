@@ -89,6 +89,7 @@ impl Ctx {
             return Ok(());
         }
         entry.phase = Phase::Authed;
+        entry.previous = None;
         self.log.write(events::peer_connected(
             peer,
             &entry.hello.mouser_version,

@@ -49,9 +49,13 @@ impl Core {
 
     /// Where the connection to `peer` stands at `now`.
     pub fn connection_of(&self, peer: ComputerId, now: Instant) -> ConnectionState {
-        match self.peers.get(&peer).map(|p| p.phase) {
-            Some(Phase::Authed) => ConnectionState::Connected,
-            Some(Phase::Incompatible) => ConnectionState::Incompatible,
+        match self
+            .peers
+            .get(&peer)
+            .map(|p| (p.phase, p.previous.is_some()))
+        {
+            Some((Phase::Authed, _) | (_, true)) => ConnectionState::Connected,
+            Some((Phase::Incompatible, _)) => ConnectionState::Incompatible,
             _ => match self.absent.get(&peer) {
                 Some(absent) if now.duration_since(absent.since) < OFFLINE_GRACE => {
                     ConnectionState::Reconnecting

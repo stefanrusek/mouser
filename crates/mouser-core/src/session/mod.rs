@@ -312,6 +312,15 @@ impl Ctx {
             let mut core = self.core.guard();
             let same_desk = core.state.desk.as_ref().map(|d| d.desk_id) == hello.desk_id
                 && hello.desk_id.is_some();
+            // A new connection to a computer we are in a session with (a
+            // re-dial after an address change) takes the session over once it
+            // proves membership, as this computer is about to ask it to.
+            let resumed = core
+                .peers
+                .get(&peer)
+                .filter(|old| old.phase == Phase::Authed && same_desk && compatible)
+                .filter(|_| join.is_none())
+                .map(|old| (old.wire(), old.paused));
             let phase = match (compatible, join.is_some()) {
                 (false, _) => Phase::Incompatible,
                 (true, true) => Phase::AwaitingDecision,
@@ -327,8 +336,9 @@ impl Ctx {
                 phase,
                 displays: Vec::new(),
                 status: None,
-                paused: false,
+                paused: resumed.as_ref().is_some_and(|(_, paused)| *paused),
                 last_seen: crate::problems::now(),
+                previous: resumed.map(|(wire, _)| wire),
             };
             // A connection we dialled is what a re-dial waits for: it is done
             // now, not at the next tick, by when the peer may have replaced
@@ -342,11 +352,12 @@ impl Ctx {
                     peer,
                     CloseReason::Replaced.loss(),
                 ));
-                // The old connection's session is over: whatever it held
-                // down is released and control comes back here, and until
-                // the new connection proves membership the computer is
-                // reconnecting, not offline.
-                if old.phase == Phase::Authed {
+                // Unless the new connection takes the session over, the old
+                // connection's session is over: whatever it held down is
+                // released and control comes back here, and until the new
+                // connection proves membership the computer is reconnecting,
+                // not offline.
+                if old.phase == Phase::Authed && core.peers[&peer].previous.is_none() {
                     core.mark_absent(peer, old.last_seen, Instant::now());
                 }
                 self.refresh_map(&core);

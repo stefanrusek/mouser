@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use mouser_platform::{Error, LocalInput};
 use mouser_proto::ids::ComputerId;
+use mouser_proto::model::DisplayId;
 use mouser_proto::wire::ControlMessage;
 
 use super::Crossing;
@@ -168,16 +169,7 @@ impl Crossing {
         // This computer's own devices take over: whoever was driving it stops
         // being obeyed (what it held is released here).
         self.end_receiving();
-        // A computer that kept something pressed from before starts clean.
-        let seq = self.session.next_seq();
-        wire.send(ControlMessage::ReleaseAll { seq });
-        wire.send(ControlMessage::Enter {
-            display_id: display.clone(),
-            x: x as f32,
-            y: y as f32,
-            seq_base: seq,
-            modifiers_down: held_modifiers(&self.session.held.keys),
-        });
+        self.enter(&wire, display.clone(), (x, y));
         self.hand_off_drag(display.computer);
         self.panic.reset();
         let computer = display.computer;
@@ -190,6 +182,20 @@ impl Crossing {
         });
         self.moved(from, computer, how);
         self.dirty.notify_one();
+    }
+
+    /// Start a session on `wire` at `x`, `y` of `display`: a computer that
+    /// kept something pressed from before starts clean.
+    pub(super) fn enter(&mut self, wire: &super::Wire, display: DisplayId, (x, y): (f64, f64)) {
+        let seq = self.session.next_seq();
+        wire.send(ControlMessage::ReleaseAll { seq });
+        wire.send(ControlMessage::Enter {
+            display_id: display,
+            x: x as f32,
+            y: y as f32,
+            seq_base: seq,
+            modifiers_down: held_modifiers(&self.session.held.keys),
+        });
     }
 
     /// Give control back to this computer. `at` is where the pointer lands in

@@ -110,6 +110,11 @@ impl Wire {
         let _ = self.out.send(Outgoing::Message(msg));
     }
 
+    /// Whether `other` is the same connection.
+    pub fn same_link(&self, other: &Wire) -> bool {
+        self.conn.stable_id() == other.conn.stable_id()
+    }
+
     /// Send an unreliable motion datagram.
     pub fn datagram(&self, motion: &MotionDatagram) {
         let bytes = postcard::to_stdvec(motion).expect("datagram serializes");
@@ -267,7 +272,8 @@ impl Crossing {
     /// computer or display went away) comes back here, and a controller that
     /// went away releases whatever it had pressed.
     pub fn set_map(&mut self, map: DeskMap) {
-        self.map = map;
+        let before = std::mem::replace(&mut self.map, map);
+        self.resume_on_new_link(&before);
         self.drop_lost();
     }
 
@@ -305,6 +311,17 @@ pub(crate) fn supported<T>(result: mouser_platform::Result<T>) -> Option<T> {
     result.ok()
 }
 
+impl crate::engine::Peer {
+    /// This connection as the input path sees it.
+    pub(crate) fn wire(&self) -> Wire {
+        Wire {
+            out: self.out.clone(),
+            conn: self.conn.clone(),
+            os: self.hello.os,
+        }
+    }
+}
+
 impl Ctx {
     /// Rebuild the input path's view of the layout and peers.
     pub(crate) fn refresh_map(&self, core: &Core) {
@@ -312,15 +329,15 @@ impl Ctx {
         let mut displays = mine.clone();
         let mut wires = BTreeMap::new();
         let mut paused = BTreeSet::new();
-        for (id, peer) in core.peers.iter().filter(|(_, p)| p.phase == Phase::Authed) {
-            wires.insert(
-                *id,
-                Wire {
-                    out: peer.out.clone(),
-                    conn: peer.conn.clone(),
-                    os: peer.hello.os,
-                },
-            );
+        for (id, peer) in &core.peers {
+            // A connection that replaced the session's one is used once it
+            // proves membership; until then the session's one stands.
+            let wire = match (peer.phase, &peer.previous) {
+                (Phase::Authed, _) => peer.wire(),
+                (_, Some(previous)) => previous.clone(),
+                _ => continue,
+            };
+            wires.insert(*id, wire);
             if peer.paused {
                 paused.insert(*id);
             } else {
