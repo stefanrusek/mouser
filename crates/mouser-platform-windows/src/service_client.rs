@@ -82,15 +82,17 @@ fn os(what: &str, e: impl std::fmt::Display) -> Error {
     Error::Os(format!("{what}: {e}"))
 }
 
-fn event() -> Result<Handle> {
+/// A manual-reset event. Windows fails to make one only when it is out of
+/// resources: an internal fault, not an answer to give the caller.
+fn event() -> Handle {
     let made = unsafe { CreateEventW(None, true, false, None) };
-    made.map(Handle).map_err(|e| os("CreateEventW", e))
+    Handle(made.expect("CreateEventW for the service pipe"))
 }
 
 /// One overlapped read or write of `pipe`, waited for; `stop`, when set,
 /// cancels it. The bytes moved, or `None` when stopped.
 fn transfer(pipe: &Handle, stop: Option<&Handle>, buf: Buffer) -> Result<Option<usize>> {
-    let done = event()?;
+    let done = event();
     let mut ov = OVERLAPPED {
         hEvent: done.0,
         ..Default::default()
@@ -176,7 +178,7 @@ pub(crate) fn connect_to(name: &str, version: &str) -> Result<ServiceClient> {
     let (answers, sas) = channel();
     let inner = Arc::new(Inner {
         pipe,
-        stop: event()?,
+        stop: event(),
         writing: Mutex::new(()),
         sas: Mutex::new(sas),
         state: Mutex::new(State::default()),

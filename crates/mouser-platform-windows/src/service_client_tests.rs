@@ -238,6 +238,24 @@ fn a_service_that_goes_before_it_answers_is_an_os_error() {
 }
 
 #[test]
+fn a_frame_from_the_service_that_does_not_decode_counts_as_the_service_gone() {
+    let name = unique_name();
+    let service = serve(&name, |end| {
+        end.read();
+        // A length of 1 and a body no message starts with.
+        end.0.write_all(&[0, 0, 0, 1, 0xFF]).unwrap();
+        // The request still arrives; its answer could no longer be read.
+        end.read()
+    });
+    let client = connect_to(&name, "0.3.0").unwrap();
+    client.wait_for_shutdown_for_tests();
+    let result = client.send_sas();
+    drop(client);
+    assert_eq!(service.join().unwrap(), Some(EngineMessage::SendSas));
+    assert!(matches!(result, Err(Error::Os(_))), "{result:?}");
+}
+
+#[test]
 fn the_engine_pipe_is_named_for_the_console_session() {
     use windows::Win32::System::RemoteDesktop::WTSGetActiveConsoleSessionId;
     assert_eq!(console_session_id(), unsafe {
