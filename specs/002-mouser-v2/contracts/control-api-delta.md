@@ -22,6 +22,8 @@ These are changes to `specs/001-mouser-v1/contracts/control-api.md`: newline-del
 | `desk.rename` | `{computer: id, name: string}` (1–64 chars, trimmed) | `{}` | -32602 if the name is invalid; -32001 `data.kind=join_refused` if this computer is not on a desk |
 | `layout.keep_placement` | `{computer: id}` | `{}` | clears `needs_review` for that computer's displays and logs `layout.changed change=kept_placement` |
 | `elevation.restart` | `{computer: id}` | `{}` | for this computer: emits `EngineEvent::RestartElevated`. For a peer: sends wire `RestartElevated`. -32001 `data.kind=platform_limitation` when the target is not portable Windows, or is a peer older than 0.3.0 |
+| `problem.fix` (T530) | `{problem_id: string, computer: id}` | `{}` | Carries out the fix of the open problem `(problem_id, computer)`, as the in-process `ControlHandle::fix` does: opens the system screen for `open_system_settings:*`, clears an `open_arranger_edge` notice, then announces the new `status`. -32602 when that pair is not an open problem, or when its fix is the app's own (any other fix value) |
+| `transfer.resolve` (T530) | `{transfer_id: string, overwrite: bool}` | `{}` | Answers a `transfer` notification in state `awaiting_overwrite_decision` (the in-process `ControlHandle::resolve_transfer`). An unknown `transfer_id`, or a platform that cannot drag files, is ignored |
 
 ## Methods: changed
 
@@ -35,6 +37,14 @@ These are changes to `specs/001-mouser-v1/contracts/control-api.md`: newline-del
 - **`config` (new).** Each notification is `{key, old, new, origin, from?}`, sent once per changed key from every source: app, cli, file or desk_mate. The app re-registers OS hotkeys when it gets one.
 - **`problem` (changed).** The notification adds `problem_id` and `computer` (already present), plus `app`. Consumers key problems by `(problem_id, computer)`.
 - **`status` (changed).** It carries the v2 status.
+- **`engine_event` (new, T530).** Each notification's params is one UI-facing engine event, tagged by `event`:
+  - `{"event": "landing", "display": {computer, key}, "x": f32, "y": f32, "desktop": [f64, f64]}`
+  - `{"event": "review_offered", "computer": id, "name": string}`
+  - `{"event": "quick_jump_show", "letters": [[{computer, key}, "A"], ...]}`
+  - `{"event": "quick_jump_hide"}`
+  - `{"event": "restart_elevated"}`
+
+  These mirror the in-process engine events below, for the app in UI mode (Windows installed), which reaches the session engine only over this API. `Fault` is not sent.
 
 ## Engine events (app ↔ core, in-process, `mouser_core::EngineEvent`)
 

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ids::{ComputerId, DeskId};
-use crate::model::{Layout, Os, PermissionKind, PermissionState};
+use crate::model::{DisplayId, Layout, Os, PermissionKind, PermissionState};
 use crate::wire::ComputerMode;
 
 /// Problem kinds (data-model.md "Problem"); also `error.data.kind`.
@@ -267,10 +267,12 @@ pub enum Method {
     DeskRename,
     LayoutKeepPlacement,
     ElevationRestart,
+    ProblemFix,
+    TransferResolve,
 }
 
 impl Method {
-    pub const ALL: [Method; 25] = [
+    pub const ALL: [Method; 27] = [
         Self::Status,
         Self::DesksDiscovered,
         Self::DeskCreate,
@@ -296,6 +298,8 @@ impl Method {
         Self::DeskRename,
         Self::LayoutKeepPlacement,
         Self::ElevationRestart,
+        Self::ProblemFix,
+        Self::TransferResolve,
     ];
 
     /// The JSON-RPC method name.
@@ -326,6 +330,8 @@ impl Method {
             Self::DeskRename => "desk.rename",
             Self::LayoutKeepPlacement => "layout.keep_placement",
             Self::ElevationRestart => "elevation.restart",
+            Self::ProblemFix => "problem.fix",
+            Self::TransferResolve => "transfer.resolve",
         }
     }
 
@@ -412,6 +418,7 @@ pub enum Topic {
     JoinRequest,
     Transfer,
     Status,
+    EngineEvent,
 }
 
 /// JSON-RPC notification sent to subscribers.
@@ -620,6 +627,44 @@ pub struct KeepPlacementParams {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ElevationRestartParams {
     pub computer: ComputerId,
+}
+
+/// `problem.fix` params: the open problem `(problem_id, computer)`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProblemFixParams {
+    pub problem_id: String,
+    pub computer: ComputerId,
+}
+
+/// `transfer.resolve` params: the answer to a `transfer` notification in
+/// state `awaiting_overwrite_decision`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransferResolveParams {
+    pub transfer_id: String,
+    pub overwrite: bool,
+}
+
+/// `engine_event` topic notification: the UI-facing in-process engine
+/// events, for an app in UI mode (`{"event": "<name>", ...}`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+pub enum EngineEvent {
+    /// The pointer arrived on this computer: `x`, `y` are logical pixels of
+    /// `display`; `desktop` is the same point in desktop coordinates.
+    Landing {
+        display: DisplayId,
+        x: f32,
+        y: f32,
+        desktop: (f64, f64),
+    },
+    /// Offer the desk owner a review of a computer's placement.
+    ReviewOffered { computer: ComputerId, name: String },
+    /// Show each letter on the display it names.
+    QuickJumpShow { letters: Vec<(DisplayId, char)> },
+    /// Remove the QuickJump letters.
+    QuickJumpHide,
+    /// Run the elevated restart sequence.
+    RestartElevated,
 }
 
 /// `logging.set` params.

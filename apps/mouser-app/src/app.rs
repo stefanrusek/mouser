@@ -47,7 +47,7 @@ pub fn handle<R: Runtime>(
             tray.update_status(status);
         }
         Topic::JoinRequest => windows::navigate(app, windows::DESK),
-        Topic::Config => {}
+        Topic::Config | Topic::EngineEvent => {}
         Topic::Problem => app.state::<Host>().toast(&note, notifier),
         Topic::Transfer => {
             // Progress opens the window once; a question or a stop always brings it forward.

@@ -283,6 +283,8 @@ fn method_names_match_contract_table() {
         "desk.rename",
         "layout.keep_placement",
         "elevation.restart",
+        "problem.fix",
+        "transfer.resolve",
     ];
     assert_eq!(Method::ALL.map(Method::name), names);
     for m in Method::ALL {
@@ -335,6 +337,7 @@ fn envelope_roundtrips() {
         (Topic::Problem, "problem"),
         (Topic::Transfer, "transfer"),
         (Topic::Status, "status"),
+        (Topic::EngineEvent, "engine_event"),
     ] {
         assert_eq!(rt(&t), json!(name));
     }
@@ -613,4 +616,84 @@ fn config_topic_notification_is_a_setting_change() {
         params: serde_json::to_value(&local).unwrap(),
     };
     assert_eq!(rt(&n)["method"], "config");
+}
+
+#[test]
+fn problem_fix_and_transfer_resolve_params_serialize_as_the_contract() {
+    assert_eq!(Method::ProblemFix.name(), "problem.fix");
+    assert_eq!(Method::TransferResolve.name(), "transfer.resolve");
+    assert_eq!(
+        rt(&ProblemFixParams {
+            problem_id: "crossing_blocked:edge".into(),
+            computer: cid(3)
+        }),
+        json!({"problem_id": "crossing_blocked:edge", "computer": "03".repeat(16)})
+    );
+    assert_eq!(
+        rt(&TransferResolveParams {
+            transfer_id: "t-1".into(),
+            overwrite: true
+        }),
+        json!({"transfer_id": "t-1", "overwrite": true})
+    );
+}
+
+#[test]
+fn engine_event_topic_carries_tagged_events() {
+    let display = DisplayId {
+        computer: cid(5),
+        key: "main".into(),
+    };
+    let display_json = json!({"computer": "05".repeat(16), "key": "main"});
+    let cases = [
+        (
+            EngineEvent::Landing {
+                display: display.clone(),
+                x: 10.5,
+                y: 20.0,
+                desktop: (110.5, 220.0),
+            },
+            json!({
+                "event": "landing",
+                "display": display_json,
+                "x": 10.5,
+                "y": 20.0,
+                "desktop": [110.5, 220.0]
+            }),
+        ),
+        (
+            EngineEvent::ReviewOffered {
+                computer: cid(6),
+                name: "Laptop".into(),
+            },
+            json!({"event": "review_offered", "computer": "06".repeat(16), "name": "Laptop"}),
+        ),
+        (
+            EngineEvent::QuickJumpShow {
+                letters: vec![(display, 'A')],
+            },
+            json!({"event": "quick_jump_show", "letters": [[display_json, "A"]]}),
+        ),
+        (
+            EngineEvent::QuickJumpHide,
+            json!({"event": "quick_jump_hide"}),
+        ),
+        (
+            EngineEvent::RestartElevated,
+            json!({"event": "restart_elevated"}),
+        ),
+    ];
+    for (event, wire) in cases {
+        assert_eq!(rt(&event), wire);
+    }
+    assert!(serde_json::from_value::<EngineEvent>(json!({"event": "fault"})).is_err());
+    let n = Notification {
+        jsonrpc: "2.0".into(),
+        method: Topic::EngineEvent,
+        params: serde_json::to_value(EngineEvent::QuickJumpHide).unwrap(),
+    };
+    assert_eq!(
+        rt(&n),
+        json!({"jsonrpc": "2.0", "method": "engine_event", "params": {"event": "quick_jump_hide"}})
+    );
 }

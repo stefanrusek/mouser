@@ -8,8 +8,9 @@ use std::sync::Arc;
 
 use mouser_proto::control::{
     ConfigGetParams, ConfigSetParams, DeskCreateParams, DeskJoinParams, DeskMoveParams, Empty,
-    JoinDecideParams, LoggingSetParams, LogsCollectParams, Method, RemoveMemberParams, Request,
-    Response, RpcError, SetOrigin, SettingOrigin, SubscribeParams, Topic,
+    JoinDecideParams, LoggingSetParams, LogsCollectParams, Method, Notification,
+    RemoveMemberParams, Request, Response, RpcError, SetOrigin, SettingOrigin, SubscribeParams,
+    Topic,
 };
 #[cfg(windows)]
 use mouser_proto::wire::ComputerMode;
@@ -19,6 +20,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{self, UnboundedSender};
 
+use crate::control::ui_mode::ui_event;
 use crate::control::{invalid, status};
 use crate::discovery::group_by_desk;
 use crate::engine::Ctx;
@@ -155,6 +157,14 @@ async fn dispatch(
         }
         Method::LogsCollectStream => json(ctx.logs_collect_stream(chunks).await?),
         Method::ElevationRestart => ctx.elevation_restart(parse(params)?),
+        Method::ProblemFix => {
+            ctx.problem_fix(parse(params)?)?;
+            json(Empty {})
+        }
+        Method::TransferResolve => {
+            ctx.resolve_transfer(parse(params)?);
+            json(Empty {})
+        }
         Method::UpdateCheck => json(ctx.update_check().await?),
         Method::UpdateApply => json(ctx.update_apply().await?),
         _ => Err(unknown(format!("{name} is not available yet"))),
@@ -172,6 +182,7 @@ async fn serve_connection(ctx: Arc<Ctx>, stream: Box<dyn Duplex>) {
     let (read, mut write) = tokio::io::split(stream);
     let mut lines = BufReader::new(read).lines();
     let mut notifications = ctx.notify.subscribe();
+    let mut events = ctx.events.subscribe();
     let mut topics: Vec<Topic> = Vec::new();
     loop {
         tokio::select! {
@@ -202,6 +213,17 @@ async fn serve_connection(ctx: Arc<Ctx>, stream: Box<dyn Duplex>) {
             note = notifications.recv() => {
                 let note = note.expect("notifications are consumed in time");
                 if topics.contains(&note.method) {
+                    write_line(&mut write, &note).await;
+                }
+            }
+            event = events.recv() => {
+                let event = event.expect("engine events are consumed in time");
+                if let Some(event) = ui_event(event).filter(|_| topics.contains(&Topic::EngineEvent)) {
+                    let note = Notification {
+                        jsonrpc: "2.0".into(),
+                        method: Topic::EngineEvent,
+                        params: serde_json::to_value(event).expect("engine event serializes"),
+                    };
                     write_line(&mut write, &note).await;
                 }
             }

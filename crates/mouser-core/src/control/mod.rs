@@ -10,6 +10,7 @@ pub mod logs_stream;
 pub mod server;
 pub mod status;
 pub mod tray_connection;
+pub mod ui_mode;
 pub mod update;
 
 #[cfg(test)]
@@ -30,6 +31,8 @@ mod server_tests;
 mod status_tests;
 #[cfg(test)]
 mod tray_connection_tests;
+#[cfg(test)]
+mod ui_mode_tests;
 #[cfg(test)]
 mod update_tests;
 
@@ -83,12 +86,8 @@ impl ControlHandle {
     /// Answer the question a `transfer` notification in state
     /// `awaiting_overwrite_decision` asked: replace the file (or not).
     pub fn resolve_transfer(&self, transfer_id: &str, overwrite: bool) {
-        // No transfer task means this platform cannot drag files, and then
-        // there is no question to answer.
-        let _ = self
-            .ctx
-            .xfer
-            .send(crate::transfer::engine::Command::Resolve {
+        self.ctx
+            .resolve_transfer(mouser_proto::control::TransferResolveParams {
                 transfer_id: transfer_id.into(),
                 overwrite,
             });
@@ -99,9 +98,7 @@ impl ControlHandle {
     /// missing permission, and acknowledges `open_arranger_edge`, which
     /// clears that notice. The other fixes are the app's own.
     pub fn fix(&self, problem_id: &str) -> Result<(), String> {
-        self.ctx.apply_fix(problem_id)?;
-        self.ctx.notify_status();
-        Ok(())
+        self.ctx.fix(problem_id)
     }
 
     /// Every notification from now on (the caller filters by topic).
