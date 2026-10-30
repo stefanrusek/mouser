@@ -9,7 +9,8 @@ use std::path::Path;
 use std::process::Command;
 
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_IO_PENDING, HANDLE, HLOCAL, LocalFree, WIN32_ERROR,
+    CloseHandle, ERROR_IO_PENDING, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL, LocalFree,
+    WIN32_ERROR,
 };
 use windows::Win32::Security::Authentication::Identity::SendSAS;
 use windows::Win32::Security::Authorization::{
@@ -19,8 +20,10 @@ use windows::Win32::Security::{
     DuplicateTokenEx, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, SecurityImpersonation,
     TOKEN_ALL_ACCESS, TOKEN_DUPLICATE, TokenPrimary,
 };
-use windows::Win32::Storage::FileSystem::{FILE_FLAGS_AND_ATTRIBUTES, ReadFile, WriteFile};
-use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_NONE, OPEN_EXISTING, ReadFile, WriteFile,
+};
+use windows::Win32::System::IO::{GetOverlappedResult, OVERLAPPED};
 use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
     NAMED_PIPE_MODE,
@@ -296,8 +299,20 @@ impl WinApi for System {
         unsafe { DisconnectNamedPipe(raw(pipe)) }.map_err(api)
     }
 
-    fn cancel_io(&self, pipe: Handle) {
-        let _ = unsafe { CancelIoEx(raw(pipe), None) };
+    fn open_pipe_client(&self, name: &str) -> ApiResult<Handle> {
+        unsafe {
+            CreateFileW(
+                &HSTRING::from(name),
+                GENERIC_READ.0 | GENERIC_WRITE.0,
+                FILE_SHARE_NONE,
+                None,
+                OPEN_EXISTING,
+                FILE_FLAGS_AND_ATTRIBUTES(0),
+                None,
+            )
+        }
+        .map(ours)
+        .map_err(api)
     }
 
     fn read_pipe(&self, pipe: Handle, buf: &mut [u8]) -> ApiResult<usize> {

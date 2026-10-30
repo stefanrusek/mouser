@@ -120,8 +120,9 @@ pub trait WinApi: Send + Sync {
     fn pipe_client_pid(&self, pipe: Handle) -> ApiResult<u32>;
     /// `DisconnectNamedPipe`.
     fn disconnect_pipe(&self, pipe: Handle) -> ApiResult<()>;
-    /// `CancelIoEx`: ends a wait in [`connect_pipe`](Self::connect_pipe) or a read.
-    fn cancel_io(&self, pipe: Handle);
+    /// `CreateFileW` on the pipe `name` as its client: ends a wait in
+    /// [`connect_pipe`](Self::connect_pipe), even one not begun yet.
+    fn open_pipe_client(&self, name: &str) -> ApiResult<Handle>;
     /// `ReadFile`: some bytes; an error once the client has gone.
     fn read_pipe(&self, pipe: Handle, buf: &mut [u8]) -> ApiResult<usize>;
     /// `WriteFile`, all of `bytes`.
