@@ -139,6 +139,10 @@ impl DataControl {
 impl Drop for DataControl {
     fn drop(&mut self) {
         self.cancel.cancel();
-        self.watcher.take().unwrap().join().unwrap();
+        let joined = self.watcher.take().unwrap().join();
+        // A second panic while one is unwinding would abort the process.
+        if !std::thread::panicking() {
+            joined.unwrap();
+        }
     }
 }

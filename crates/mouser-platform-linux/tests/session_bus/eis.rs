@@ -28,6 +28,9 @@ struct Devices {
     connection: Option<reis::request::Connection>,
     pointer: Option<reis::request::Device>,
     keyboard: Option<reis::request::Device>,
+    /// What the test sent before the client had bound a device to send it
+    /// on: Mouser binds only after the portal answered Enable.
+    pending: Vec<Emit>,
 }
 
 pub struct FakeEis {
@@ -99,7 +102,11 @@ impl Drop for FakeEis {
         self.stopped.store(true, Ordering::Release);
         self.signal.stop();
         self.signal.wakeup();
-        self.thread.take().unwrap().join().unwrap();
+        let joined = self.thread.take().unwrap().join();
+        // A second panic while one is unwinding would abort the process.
+        if !std::thread::panicking() {
+            joined.unwrap();
+        }
     }
 }
 
@@ -179,6 +186,9 @@ fn run(
                                         DeviceCapability::Keyboard,
                                     ));
                                 }
+                                for what in std::mem::take(&mut d.pending) {
+                                    emit(&d, what);
+                                }
                             }
                             EisRequest::PointerMotionAbsolute(e) => log
                                 .lock()
@@ -216,62 +226,12 @@ fn run(
             let ChannelEvent::Msg(what) = event else {
                 return;
             };
-            let d = send_state.lock().unwrap();
-            let (device, time) = match what {
-                Emit::Motion(dx, dy) => {
-                    let p = d.pointer.as_ref().unwrap();
-                    p.interface::<eis::Pointer>()
-                        .unwrap()
-                        .motion_relative(dx, dy);
-                    (p, 1)
-                }
-                Emit::Button(code, down) => {
-                    let p = d.pointer.as_ref().unwrap();
-                    let state = if down {
-                        eis::button::ButtonState::Press
-                    } else {
-                        eis::button::ButtonState::Released
-                    };
-                    p.interface::<eis::Button>().unwrap().button(code, state);
-                    (p, 2)
-                }
-                Emit::Scroll(dx, dy) => {
-                    let p = d.pointer.as_ref().unwrap();
-                    p.interface::<eis::Scroll>().unwrap().scroll(dx, dy);
-                    (p, 3)
-                }
-                Emit::Discrete(dx, dy) => {
-                    let p = d.pointer.as_ref().unwrap();
-                    p.interface::<eis::Scroll>()
-                        .unwrap()
-                        .scroll_discrete(dx, dy);
-                    (p, 4)
-                }
-                Emit::Pause => {
-                    let p = d.pointer.as_ref().unwrap();
-                    p.paused();
-                    let _ = d.connection.as_ref().unwrap().flush();
-                    return;
-                }
-                Emit::Resume => {
-                    let p = d.pointer.as_ref().unwrap();
-                    p.resumed();
-                    let _ = d.connection.as_ref().unwrap().flush();
-                    return;
-                }
-                Emit::Key(code, down) => {
-                    let k = d.keyboard.as_ref().unwrap();
-                    let state = if down {
-                        eis::keyboard::KeyState::Press
-                    } else {
-                        eis::keyboard::KeyState::Released
-                    };
-                    k.interface::<eis::Keyboard>().unwrap().key(code, state);
-                    (k, 5)
-                }
-            };
-            device.frame(time);
-            let _ = d.connection.as_ref().unwrap().flush();
+            let mut d = send_state.lock().unwrap();
+            if d.pointer.is_none() {
+                d.pending.push(what);
+                return;
+            }
+            emit(&d, what);
         })
         .unwrap();
     signal.send(event_loop.get_signal()).unwrap();
@@ -283,6 +243,65 @@ fn run(
             }
         })
         .unwrap();
+}
+
+/// Sends `what` on the bound devices.
+fn emit(d: &Devices, what: Emit) {
+    let (device, time) = match what {
+        Emit::Motion(dx, dy) => {
+            let p = d.pointer.as_ref().unwrap();
+            p.interface::<eis::Pointer>()
+                .unwrap()
+                .motion_relative(dx, dy);
+            (p, 1)
+        }
+        Emit::Button(code, down) => {
+            let p = d.pointer.as_ref().unwrap();
+            let state = if down {
+                eis::button::ButtonState::Press
+            } else {
+                eis::button::ButtonState::Released
+            };
+            p.interface::<eis::Button>().unwrap().button(code, state);
+            (p, 2)
+        }
+        Emit::Scroll(dx, dy) => {
+            let p = d.pointer.as_ref().unwrap();
+            p.interface::<eis::Scroll>().unwrap().scroll(dx, dy);
+            (p, 3)
+        }
+        Emit::Discrete(dx, dy) => {
+            let p = d.pointer.as_ref().unwrap();
+            p.interface::<eis::Scroll>()
+                .unwrap()
+                .scroll_discrete(dx, dy);
+            (p, 4)
+        }
+        Emit::Pause => {
+            let p = d.pointer.as_ref().unwrap();
+            p.paused();
+            let _ = d.connection.as_ref().unwrap().flush();
+            return;
+        }
+        Emit::Resume => {
+            let p = d.pointer.as_ref().unwrap();
+            p.resumed();
+            let _ = d.connection.as_ref().unwrap().flush();
+            return;
+        }
+        Emit::Key(code, down) => {
+            let k = d.keyboard.as_ref().unwrap();
+            let state = if down {
+                eis::keyboard::KeyState::Press
+            } else {
+                eis::keyboard::KeyState::Released
+            };
+            k.interface::<eis::Keyboard>().unwrap().key(code, state);
+            (k, 5)
+        }
+    };
+    device.frame(time);
+    let _ = d.connection.as_ref().unwrap().flush();
 }
 
 /// Stopping the server as soon as it is serving must still stop it: a stop
@@ -301,4 +320,39 @@ fn a_server_dropped_the_moment_it_is_serving_stops() {
     finished
         .recv_timeout(std::time::Duration::from_secs(60))
         .expect("every server stopped when dropped");
+}
+
+/// A receiver client like Mouser's: binds the seat's pointer and returns the
+/// first motion, or `None` when the server goes away first.
+fn first_motion(stream: UnixStream) -> Option<(f32, f32)> {
+    let context = reis::ei::Context::new(stream).unwrap();
+    let (_connection, events) = context
+        .handshake_blocking("test", eis::handshake::ContextType::Receiver)
+        .ok()?;
+    for event in events {
+        match event.ok()? {
+            reis::event::EiEvent::SeatAdded(seat) => {
+                seat.seat.bind_capabilities(
+                    reis::event::DeviceCapability::Pointer
+                        | reis::event::DeviceCapability::Button
+                        | reis::event::DeviceCapability::Scroll,
+                );
+                context.flush().unwrap();
+            }
+            reis::event::EiEvent::PointerMotion(m) => return Some((m.dx, m.dy)),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Mouser binds its devices only after the portal answered Enable, so a test
+/// can send input before there is a device to send it on: it waits for the
+/// binding instead of taking the server down.
+#[test]
+fn input_sent_before_the_client_binds_arrives_once_it_has() {
+    let (server, client) = UnixStream::pair().unwrap();
+    let eis = FakeEis::serve(server, false);
+    eis.send(Emit::Motion(2.0, 1.0));
+    assert_eq!(first_motion(client), Some((2.0, 1.0)));
 }

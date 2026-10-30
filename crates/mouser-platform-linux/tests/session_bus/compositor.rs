@@ -224,6 +224,10 @@ impl wayland_server::backend::ClientData for Clients {}
 impl Drop for Compositor {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
-        self.thread.take().unwrap().join().unwrap();
+        let joined = self.thread.take().unwrap().join();
+        // A second panic while one is unwinding would abort the process.
+        if !std::thread::panicking() {
+            joined.unwrap();
+        }
     }
 }
