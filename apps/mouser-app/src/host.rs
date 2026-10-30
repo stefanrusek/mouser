@@ -235,26 +235,23 @@ impl Control {
         }
     }
 
-    pub fn fix(&self, problem_id: &str) -> Result<(), String> {
+    pub async fn fix(&self, problem_id: &str) -> Result<(), String> {
         match self {
             Control::Local(local) => local.fix(problem_id),
-            Control::Remote(remote) => remote.fix(problem_id),
+            Control::Remote(remote) => remote.fix(problem_id).await,
         }
     }
 
-    pub fn resolve_transfer(&self, transfer_id: &str, overwrite: bool) -> Result<(), String> {
+    pub async fn resolve_transfer(&self, transfer_id: &str, overwrite: bool) -> Result<(), String> {
         match self {
             Control::Local(local) => {
                 local.resolve_transfer(transfer_id, overwrite);
                 Ok(())
             }
-            Control::Remote(remote) => remote.resolve_transfer(transfer_id, overwrite),
+            Control::Remote(remote) => remote.resolve_transfer(transfer_id, overwrite).await,
         }
     }
 }
-
-/// What the session engine cannot do for the UI over the control API yet.
-pub const NOT_YET: &str = "not available while Mouser runs as a service yet";
 
 /// What a call says while the session engine is not there.
 pub const NOT_READY: &str = "the session engine is not ready";
@@ -264,12 +261,13 @@ pub const NOT_READY: &str = "the session engine is not ready";
 const RETRY: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Every topic, which the UI hears all of.
-const TOPICS: [Topic; 5] = [
+const TOPICS: [Topic; 6] = [
     Topic::Config,
     Topic::Problem,
     Topic::JoinRequest,
     Topic::Transfer,
     Topic::Status,
+    Topic::EngineEvent,
 ];
 
 /// A control-API client of the session engine: one connection for calls,
@@ -298,7 +296,7 @@ impl Remote {
             path: path.to_path_buf(),
             calls: tokio::sync::Mutex::new(None),
             notes: tokio::sync::broadcast::channel(256).0,
-            events: tokio::sync::broadcast::channel(1).0,
+            events: tokio::sync::broadcast::channel(64).0,
             ready: tokio::sync::watch::channel(false).0,
         });
         tauri::async_runtime::spawn(listen(Arc::downgrade(&shared)));
@@ -337,20 +335,67 @@ impl Remote {
         self.shared.notes.subscribe()
     }
 
-    // v2: replaced by T532 (problem.fix over the control API).
-    fn fix(&self, _problem_id: &str) -> Result<(), String> {
-        Err(NOT_YET.into())
+    /// `problem.fix` of the session engine's own open problem `problem_id`.
+    async fn fix(&self, problem_id: &str) -> Result<(), String> {
+        let status = self
+            .call(Method::Status, None)
+            .await
+            .map_err(|e| e.message)?;
+        let params = serde_json::json!({
+            "problem_id": problem_id,
+            "computer": status["computer"]["id"],
+        });
+        self.call(Method::ProblemFix, Some(params))
+            .await
+            .map(drop)
+            .map_err(|e| e.message)
     }
 
-    // v2: replaced by T532 (transfer.resolve over the control API).
-    fn resolve_transfer(&self, _transfer_id: &str, _overwrite: bool) -> Result<(), String> {
-        Err(NOT_YET.into())
+    /// `transfer.resolve`: the session engine ignores a transfer it does not know.
+    async fn resolve_transfer(&self, transfer_id: &str, overwrite: bool) -> Result<(), String> {
+        let params = serde_json::json!({"transfer_id": transfer_id, "overwrite": overwrite});
+        self.call(Method::TransferResolve, Some(params))
+            .await
+            .map(drop)
+            .map_err(|e| e.message)
     }
 
-    // v2: replaced by T532 (the engine_event topic): no engine event reaches
-    // this app yet.
+    /// The session engine's UI-facing events, from its `engine_event` topic.
     fn events(&self) -> tokio::sync::broadcast::Receiver<EngineEvent> {
         self.shared.events.subscribe()
+    }
+}
+
+/// The in-process form of an `engine_event` notification's event.
+pub(crate) fn engine_event(wire: mouser_proto::control::EngineEvent) -> EngineEvent {
+    use mouser_proto::control::EngineEvent as Wire;
+    match wire {
+        Wire::Landing {
+            display,
+            x,
+            y,
+            desktop,
+        } => EngineEvent::Landing {
+            display,
+            x,
+            y,
+            desktop,
+        },
+        Wire::ReviewOffered { computer, name } => EngineEvent::ReviewOffered { computer, name },
+        Wire::QuickJumpShow { letters } => EngineEvent::QuickJumpShow { letters },
+        Wire::QuickJumpHide => EngineEvent::QuickJumpHide,
+        Wire::RestartElevated => EngineEvent::RestartElevated,
+    }
+}
+
+/// Hands `note` on: an engine event to the events, the rest to the
+/// notifications. Nobody listening just now is fine.
+fn hand_on(shared: &Shared, note: Notification) {
+    if note.method == Topic::EngineEvent {
+        let wire = serde_json::from_value(note.params).expect("engine events match their schema");
+        let _ = shared.events.send(engine_event(wire));
+    } else {
+        let _ = shared.notes.send(note);
     }
 }
 
@@ -365,8 +410,7 @@ async fn listen(shared: std::sync::Weak<Shared>) {
             set_ready(&shared, true);
             while let Some(note) = client.next_notification().await {
                 if let Some(shared) = shared.upgrade() {
-                    // Nobody listening just now is fine.
-                    let _ = shared.notes.send(note);
+                    hand_on(&shared, note);
                 }
             }
             set_ready(&shared, false);

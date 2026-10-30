@@ -125,7 +125,8 @@ async fn a_review_offer_and_the_crossing_blocked_fix_open_the_displays() {
         &host,
         "crossing_blocked:aa/1/right",
         FixAction::OpenArrangerEdge,
-    );
+    )
+    .await;
     assert_eq!(opened_at(&handle), "displays");
 }
 
@@ -227,7 +228,7 @@ pub(crate) mod remote {
     use serde_json::json;
 
     use crate::commands::LogsLink;
-    use crate::host::{Control, Host, NOT_YET};
+    use crate::host::{Control, Host, NOT_READY};
     use crate::support_tests::{control_path_in, fixture};
 
     /// A UI-mode host talking to the engine of `f` (standing in for the
@@ -294,20 +295,131 @@ pub(crate) mod remote {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn what_the_service_engine_cannot_do_for_the_ui_yet_is_an_error_not_silence() {
-        // v2: replaced by T532 (problem.fix, transfer.resolve, the engine_event topic).
+    async fn a_fix_in_ui_mode_is_carried_out_by_the_session_engine() {
+        let f = fixture().await;
+        let id = crate::commands_tests::missing_permission_problem(&f).await;
+        let ui = ui_host(&f).await;
+        ui.control().fix(&id).await.unwrap();
+        assert_eq!(
+            f.platform.opened_permission_settings(),
+            vec![mouser_platform::PermissionKind::Accessibility]
+        );
+        assert_eq!(
+            ui.control().fix("nope").await,
+            Err("nope is not an open problem".to_string())
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_fix_or_an_answer_while_the_session_engine_is_away_says_it_is_not_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let ui = ui_host_at(&control_path_in(&dir)).await;
+        assert_eq!(ui.control().fix("x").await, Err(NOT_READY.to_string()));
+        assert_eq!(
+            ui.control().resolve_transfer("t", true).await,
+            Err(NOT_READY.to_string())
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_answer_about_a_transfer_the_session_engine_does_not_know_is_ignored() {
         let f = fixture().await;
         let ui = ui_host(&f).await;
-        assert_eq!(ui.control().fix("some-problem"), Err(NOT_YET.to_string()));
         assert_eq!(
-            ui.control().resolve_transfer("some-transfer", true),
-            Err(NOT_YET.to_string())
+            ui.control().resolve_transfer("some-transfer", true).await,
+            Ok(())
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_session_engines_events_reach_the_ui() {
+        // A portable Windows engine is asked to restart itself as
+        // administrator: the app in UI mode is who runs that sequence.
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = mouser_proto::config::Config::default();
+        config.advanced.port = u32::from(crate::support_tests::free_port());
+        mouser_core::config::save(dir.path(), &config);
+        let platform = VirtualPlatform::new();
+        let mut info = mouser_platform::Platform::info(&platform);
+        info.os = mouser_platform::Os::Windows;
+        platform.set_info(info);
+        let path = control_path_in(&dir);
+        let engine = Host::start(
+            Arc::new(platform),
+            dir.path().to_path_buf(),
+            path.clone(),
+            "Portable PC".into(),
+            "1.2.3".into(),
+            mouser_proto::wire::ComputerMode::Portable,
+            crate::host::Updates::default(),
+        )
+        .await;
+        let ui = ui_host_at(&path).await;
         let mut events = ui.control().events();
-        assert!(matches!(
-            events.try_recv(),
-            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
-        ));
+        let me = engine.control().call(Method::Status, None).await.unwrap();
+        ui.control()
+            .call(
+                Method::ElevationRestart,
+                Some(json!({"computer": me["computer"]["id"]})),
+            )
+            .await
+            .unwrap();
+        let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv())
+            .await
+            .expect("the event arrives")
+            .unwrap();
+        assert_eq!(event, mouser_core::EngineEvent::RestartElevated);
+    }
+
+    #[test]
+    fn every_engine_event_the_session_engine_sends_is_the_apps_own() {
+        use mouser_core::EngineEvent as App;
+        use mouser_proto::control::EngineEvent as Wire;
+        use mouser_proto::ids::ComputerId;
+        use mouser_proto::model::DisplayId;
+        let display = DisplayId {
+            computer: ComputerId([5; 16]),
+            key: "DP-1".into(),
+        };
+        let cases = [
+            (
+                Wire::Landing {
+                    display: display.clone(),
+                    x: 1.0,
+                    y: 2.0,
+                    desktop: (3.0, 4.0),
+                },
+                App::Landing {
+                    display: display.clone(),
+                    x: 1.0,
+                    y: 2.0,
+                    desktop: (3.0, 4.0),
+                },
+            ),
+            (
+                Wire::ReviewOffered {
+                    computer: ComputerId([2; 16]),
+                    name: "Studio".into(),
+                },
+                App::ReviewOffered {
+                    computer: ComputerId([2; 16]),
+                    name: "Studio".into(),
+                },
+            ),
+            (
+                Wire::QuickJumpShow {
+                    letters: vec![(display.clone(), 'A')],
+                },
+                App::QuickJumpShow {
+                    letters: vec![(display, 'A')],
+                },
+            ),
+            (Wire::QuickJumpHide, App::QuickJumpHide),
+            (Wire::RestartElevated, App::RestartElevated),
+        ];
+        for (wire, app) in cases {
+            assert_eq!(crate::host::engine_event(wire), app);
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

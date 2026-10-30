@@ -58,14 +58,14 @@ pub fn open_settings(host: &Host, kind: PermissionKind) -> Result<(), String> {
 
 /// Do what the open problem `problem_id`'s one-click fix says; the engine
 /// acknowledges it (opening the settings screen, clearing the notice).
-pub fn run_fix<R: Runtime>(
+pub async fn run_fix<R: Runtime>(
     app: &AppHandle<R>,
     host: &Host,
     problem_id: &str,
     fix: FixAction,
 ) -> Result<(), String> {
     match fix {
-        FixAction::OpenSystemSettings(_) => host.control().fix(problem_id),
+        FixAction::OpenSystemSettings(_) => host.control().fix(problem_id).await,
         FixAction::ApproveJoin => {
             windows::navigate(app, windows::DESK);
             Ok(())
@@ -74,7 +74,7 @@ pub fn run_fix<R: Runtime>(
             // The id names the blocked edge; the arranger opens that one.
             host.ask_for_edge(problem_id.to_string());
             windows::navigate(app, windows::DISPLAYS);
-            host.control().fix(problem_id)
+            host.control().fix(problem_id).await
         }
         other => Err(format!("The fix \"{other}\" is not available yet.")),
     }
@@ -104,13 +104,13 @@ pub fn open_permission_settings(host: State<'_, Host>, kind: PermissionKind) -> 
 }
 
 #[tauri::command]
-pub fn fix<R: Runtime>(
+pub async fn fix<R: Runtime>(
     app: AppHandle<R>,
     host: State<'_, Host>,
     problem_id: String,
     fix: FixAction,
 ) -> Result<(), String> {
-    run_fix(&app, &host, &problem_id, fix)
+    run_fix(&app, &host, &problem_id, fix).await
 }
 
 /// The latest `transfer` notification of every transfer so far, for a window
@@ -214,12 +214,14 @@ pub async fn collect_logs_via(
 
 /// Answer an `awaiting_overwrite_decision` question of a dragged-file transfer.
 #[tauri::command]
-pub fn transfer_resolve(
+pub async fn transfer_resolve(
     host: State<'_, Host>,
     transfer_id: String,
     overwrite: bool,
 ) -> Result<(), String> {
-    host.control().resolve_transfer(&transfer_id, overwrite)
+    host.control()
+        .resolve_transfer(&transfer_id, overwrite)
+        .await
 }
 
 /// Hide the calling window (it is created again when needed).
