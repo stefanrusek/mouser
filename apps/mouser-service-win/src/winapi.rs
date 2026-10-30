@@ -128,6 +128,10 @@ pub trait WinApi: Send + Sync {
     /// `WriteFile`, all of `bytes`.
     fn write_pipe(&self, pipe: Handle, bytes: &[u8]) -> ApiResult<()>;
 
+    /// Creates the folder `path` if need be and gives it the DACL `sddl`,
+    /// protected from what it would inherit (`SetNamedSecurityInfoW`).
+    fn protect_dir(&self, path: &Path, sddl: &str) -> ApiResult<()>;
+
     /// `SendSAS(FALSE)`.
     fn send_sas(&self) -> ApiResult<()>;
 

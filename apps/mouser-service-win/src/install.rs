@@ -22,6 +22,9 @@ pub const SERVICE_EXE: &str = "mouser-service.exe";
 pub const RULE_NAME: &str = "Mouser";
 /// Discovery and links (001 contracts).
 pub const UDP_PORT: u16 = 47801;
+/// The machine secrets folder: SYSTEM and Administrators only, nothing
+/// inherited.
+pub const SECRETS_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
 /// `ERROR_SERVICE_ALREADY_RUNNING`.
 const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
 /// `ERROR_SERVICE_EXISTS`.
@@ -44,8 +47,16 @@ fn step(what: &str) -> impl Fn(ApiError) -> String + '_ {
 }
 
 /// Puts Mouser's machine-wide parts in place from `dir`, the folder both
-/// executables are in, and starts the service last.
-pub fn install(api: &dyn WinApi, dir: &Path) -> Result<(), String> {
+/// executables are in, with the machine folder `machine`, and starts the
+/// service last. `migrate` copies the installing user's identity there
+/// (research V12a); when it cannot, the session engine starts without a desk
+/// and the computer rejoins with one approval (OD-2), so that is no failure.
+pub fn install(
+    api: &dyn WinApi,
+    dir: &Path,
+    machine: &Path,
+    migrate: &dyn Fn() -> Result<(), String>,
+) -> Result<(), String> {
     let spec = ServiceSpec {
         name: SERVICE_NAME.into(),
         display_name: DISPLAY_NAME.into(),
@@ -58,6 +69,12 @@ pub fn install(api: &dyn WinApi, dir: &Path) -> Result<(), String> {
     api.write_dword(POLICY_KEY, POLICY_VALUE, 1)
         .map_err(step("setting SoftwareSASGeneration"))?;
     add_rule(api, dir).map_err(step("adding the firewall rule"))?;
+    // Machine-scope DPAPI keeps the keys from other computers only: this
+    // folder's DACL keeps them from this computer's other users.
+    let secrets = machine.join("secrets");
+    api.protect_dir(&secrets, SECRETS_SDDL)
+        .map_err(|e| format!("protecting {}: {e}", secrets.display()))?;
+    let _ = migrate();
     unless(
         api.start_service(SERVICE_NAME),
         &[ERROR_SERVICE_ALREADY_RUNNING],

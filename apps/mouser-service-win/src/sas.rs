@@ -1,9 +1,12 @@
 //! Ctrl-Alt-Del for the session engine (research V10): `SendSAS` works only
 //! from a service, and only where `SoftwareSASGeneration` allows services.
 
+use std::sync::Arc;
+
 use mouser_core::logging::{Log, events};
 use mouser_proto::service_ipc::SasResult;
 
+use crate::launch::Answer;
 use crate::winapi::{ERROR_FILE_NOT_FOUND, WinApi};
 
 pub const POLICY_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
@@ -23,4 +26,9 @@ pub fn answer(api: &dyn WinApi, log: &Log) -> SasResult {
     };
     log.write(events::service_sas(&result));
     result
+}
+
+/// How the service answers its engine: [`answer`] on `api`, logged to `log`.
+pub fn answering(api: Arc<dyn WinApi>, log: Arc<Log>) -> Answer {
+    Arc::new(move || answer(api.as_ref(), &log))
 }

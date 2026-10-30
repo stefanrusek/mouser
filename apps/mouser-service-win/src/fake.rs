@@ -45,6 +45,7 @@ pub enum Call {
     Disconnect(Handle),
     Close(Handle),
     Terminate(u32),
+    ProtectDir(PathBuf, String),
     SendSas,
     ReadDword(String, String),
     WriteDword(String, String, u32),
@@ -204,6 +205,14 @@ impl FakeWin {
         })
     }
 
+    /// The session process `pid` runs in.
+    pub fn session_of(&self, pid: u32) -> Option<u32> {
+        self.state()
+            .processes
+            .iter()
+            .find(|p| p.entry.pid == pid)
+            .map(|p| p.entry.session)
+    }
     /// The processes still running, as `(name, session)`.
     pub fn running(&self) -> Vec<(String, u32)> {
         self.state()
@@ -557,6 +566,10 @@ impl WinApi for FakeWin {
         Ok(())
     }
 
+    fn protect_dir(&self, path: &Path, sddl: &str) -> ApiResult<()> {
+        self.call(Call::ProtectDir(path.into(), sddl.into()));
+        self.take_failure("protect_dir")
+    }
     fn send_sas(&self) -> ApiResult<()> {
         self.call(Call::SendSas);
         self.take_failure("send_sas")

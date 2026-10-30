@@ -7,6 +7,9 @@ use std::ffi::OsString;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Mutex;
+use std::sync::mpsc::channel;
+use std::time::Duration;
 
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_IO_PENDING, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL, LocalFree,
@@ -14,11 +17,13 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::Security::Authentication::Identity::SendSAS;
 use windows::Win32::Security::Authorization::{
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1, SE_FILE_OBJECT,
+    SetNamedSecurityInfoW,
 };
 use windows::Win32::Security::{
-    DuplicateTokenEx, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, SecurityImpersonation,
-    TOKEN_ALL_ACCESS, TOKEN_DUPLICATE, TokenPrimary,
+    ACL, DACL_SECURITY_INFORMATION, DuplicateTokenEx, GetSecurityDescriptorDacl,
+    PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
+    SecurityImpersonation, TOKEN_ALL_ACCESS, TOKEN_DUPLICATE, TokenPrimary,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_NONE, OPEN_EXISTING, ReadFile, WriteFile,
@@ -40,12 +45,21 @@ use windows::Win32::System::Threading::{
     OpenProcess, OpenProcessToken, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
     PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
 };
-use windows::core::{HSTRING, PCWSTR, PWSTR};
+use windows::core::{BOOL, HSTRING, PCWSTR, PWSTR};
+use windows_service::define_windows_service;
 use windows_service::service::{
-    ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceType,
+    ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
+    ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType, SessionChangeReason,
 };
+use windows_service::service_control_handler::{
+    self, ServiceControlHandlerResult, ServiceStatusHandle,
+};
+use windows_service::service_dispatcher;
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 
+use crate::install::SERVICE_NAME;
+use crate::machine::Started;
+use crate::service::{Control, Reported, Scm, SessionReason, dispatch};
 use crate::winapi::{
     Account, ApiError, ApiResult, FirewallRule, Handle, Launched, ProcessEntry, ServiceSpec,
     StartType, WinApi,
@@ -329,6 +343,43 @@ impl WinApi for System {
         .map(|_| ())
     }
 
+    fn protect_dir(&self, path: &Path, sddl: &str) -> ApiResult<()> {
+        std::fs::create_dir_all(path).map_err(|e| ApiError {
+            code: e.raw_os_error().unwrap_or(0) as u32,
+            message: e.to_string(),
+        })?;
+        let mut descriptor = PSECURITY_DESCRIPTOR::default();
+        unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                &HSTRING::from(sddl),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                None,
+            )
+        }
+        .map_err(api)?;
+        let (mut present, mut defaulted) = (BOOL(0), BOOL(0));
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let set = unsafe {
+            GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted)
+        }
+        .map_err(api)
+        .and_then(|()| {
+            win32(unsafe {
+                SetNamedSecurityInfoW(
+                    &HSTRING::from(path.as_os_str()),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    None,
+                    None,
+                    Some(dacl),
+                    None,
+                )
+            })
+        });
+        unsafe { LocalFree(Some(HLOCAL(descriptor.0))) };
+        set
+    }
     fn send_sas(&self) -> ApiResult<()> {
         unsafe { SendSAS(false) };
         Ok(())
@@ -448,5 +499,77 @@ impl WinApi for System {
 
     fn delete_firewall_rule(&self, name: &str) -> ApiResult<()> {
         netsh_ok(&["delete".into(), "rule".into(), format!("name={name}")])
+    }
+}
+
+/// What `MouserService` runs once the SCM has started it.
+static STARTED: Mutex<Option<Started>> = Mutex::new(None);
+
+define_windows_service!(ffi_service_main, service_main);
+
+/// `StartServiceCtrlDispatcherW`: runs `started` as `MouserService` until it
+/// stops; an error when the SCM did not start this process.
+pub fn run_under_scm(started: Started) -> ApiResult<()> {
+    *STARTED.lock().unwrap() = Some(started);
+    service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(scm)
+}
+
+fn service_main(_arguments: Vec<OsString>) {
+    let (exits, events) = channel();
+    let controls = exits.clone();
+    let handler = move |control| match dispatch(control_of(control), &controls) {
+        true => ServiceControlHandlerResult::NoError,
+        false => ServiceControlHandlerResult::NotImplemented,
+    };
+    let Ok(status) = service_control_handler::register(SERVICE_NAME, handler) else {
+        return;
+    };
+    let started = STARTED
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the service starts once");
+    started(&Status(status), exits, events);
+}
+
+fn control_of(control: ServiceControl) -> Control {
+    match control {
+        ServiceControl::Stop => Control::Stop,
+        ServiceControl::Preshutdown => Control::Preshutdown,
+        ServiceControl::Interrogate => Control::Interrogate,
+        ServiceControl::SessionChange(change) => Control::SessionChange(match change.reason {
+            SessionChangeReason::ConsoleConnect => SessionReason::ConsoleConnect,
+            SessionChangeReason::ConsoleDisconnect => SessionReason::ConsoleDisconnect,
+            SessionChangeReason::SessionLogon => SessionReason::Logon,
+            SessionChangeReason::SessionLogoff => SessionReason::Logoff,
+            _ => SessionReason::Other,
+        }),
+        _ => Control::Other,
+    }
+}
+
+struct Status(ServiceStatusHandle);
+
+impl Scm for Status {
+    /// `SetServiceStatus`.
+    fn report(&self, state: Reported) {
+        let (current_state, controls_accepted) = match state {
+            Reported::Running => (
+                ServiceState::Running,
+                ServiceControlAccept::STOP
+                    | ServiceControlAccept::PRESHUTDOWN
+                    | ServiceControlAccept::SESSION_CHANGE,
+            ),
+            Reported::Stopped => (ServiceState::Stopped, ServiceControlAccept::empty()),
+        };
+        let _ = self.0.set_service_status(ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state,
+            controls_accepted,
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        });
     }
 }

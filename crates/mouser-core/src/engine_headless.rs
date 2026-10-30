@@ -14,7 +14,7 @@
 use crate::lock::LockExt;
 use std::path::{Path, PathBuf};
 
-use mouser_platform::SecretStore;
+pub use mouser_platform::SecretStore;
 
 use crate::engine::Engine;
 use crate::identity::DEVICE_KEY;
