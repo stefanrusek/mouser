@@ -388,3 +388,34 @@ async fn addresses_changing_one_after_the_other_settle_on_the_last_re_dial() {
     assert_eq!(link_of(d, a).unwrap().0, kept);
     assert!(link_of(d, a).unwrap().1);
 }
+
+/// A computer still to be dialled again whose connection ends first is left
+/// to the ordinary reconnection: nothing is left to re-dial.
+#[tokio::test]
+async fn a_peer_whose_connection_ended_is_no_longer_to_be_dialled_again() {
+    let lab = Lab::simulated();
+    let mut nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (dialler, acceptor) = roles(&nodes);
+    let peer = nodes[dialler].engine.computer_id();
+    // Out of sight, so the re-dial waits for it.
+    lab.registry.hide(peer);
+    change_address_of(&nodes[acceptor]);
+    eventually("the re-dial to wait", || async {
+        nodes[acceptor]
+            .engine
+            .ctx
+            .core
+            .lock()
+            .unwrap()
+            .redial
+            .contains(&peer)
+    })
+    .await;
+    let d = nodes.remove(dialler);
+    d.engine.shutdown().await;
+    let a = &nodes[0];
+    eventually("nothing left to dial again", || async {
+        a.engine.ctx.core.lock().unwrap().redial.is_empty()
+    })
+    .await;
+}
