@@ -2,13 +2,18 @@
 //! through `control`, which is the control API, method for method.
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
 
 use mouser_core::ControlHandle;
+use mouser_core::paths::Env;
 use mouser_platform::{Os, PermissionKind as PlatformKind};
-use mouser_proto::control::{FixAction, Method, RpcError};
+use mouser_proto::control::{
+    FixAction, LogsChunk, LogsCollectStreamResult, Method, RpcError, Status,
+};
 use mouser_proto::model::PermissionKind;
+use mouser_proto::wire::ComputerMode;
 use serde::Deserialize;
 use serde_json::Value;
 use tauri::{AppHandle, Runtime, State, WebviewWindow};
@@ -156,6 +161,41 @@ pub async fn collect_logs(host: State<'_, Host>) -> Result<Value, RpcError> {
     host.control()
         .call(Method::LogsCollect, Some(serde_json::json!({})))
         .await
+}
+
+/// A bundle as `logs.collect_stream` delivers it: its description, and the
+/// `logs.chunk` notifications that came before it.
+pub struct StreamedBundle {
+    pub result: LogsCollectStreamResult,
+    pub chunks: Vec<LogsChunk>,
+}
+
+/// The engine this app talks to for `collect_logs`: in UI mode, the session
+/// engine behind the service pipe, which can stream chunks to this caller.
+pub trait LogsLink {
+    fn status(&self) -> impl Future<Output = Result<Status, RpcError>> + Send;
+    fn collect(&self) -> impl Future<Output = Result<Value, RpcError>> + Send;
+    fn collect_stream(&self) -> impl Future<Output = Result<StreamedBundle, RpcError>> + Send;
+}
+
+/// Collect the logs the way this computer's mode says (OD-7): the installed
+/// service (`service`) streams the bundle and this app writes it, as the
+/// user, to their Downloads folder; any other engine writes it itself.
+pub async fn collect_logs_via(
+    link: &impl LogsLink,
+    env: &Env,
+    machine_dir: &Path,
+) -> Result<Value, RpcError> {
+    let status = link.status().await?;
+    let me = status.computer.id;
+    let mode = status.computers.iter().find(|c| c.id == me).and_then(|c| c.mode);
+    if mode != Some(ComputerMode::Service) {
+        return link.collect().await;
+    }
+    let streamed = link.collect_stream().await?;
+    let dir = mouser_core::logs::bundle::location(None, ComputerMode::Service, machine_dir, env);
+    let saved = crate::bundle_save::save(streamed.result, &streamed.chunks, &dir)?;
+    Ok(serde_json::to_value(saved).expect("result serializes"))
 }
 
 /// Answer an `awaiting_overwrite_decision` question of a dragged-file transfer.

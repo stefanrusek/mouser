@@ -4,6 +4,7 @@ import { fixLabel, runFix } from './fixes.js';
 import { Window } from 'happy-dom';
 import { click, fakeApi, flush } from './test_helpers.js';
 import { renderFix } from './fixes.js';
+import { renderBanner } from './notify.js';
 
 const ID = 'ab'.repeat(16);
 const problem = (fix, extra = {}) => ({ problem_id: `p:${fix}`, computer: ID, message: 'm', fix, ...extra });
@@ -68,4 +69,35 @@ test('a problem with a fix renders as one action and a failure is shown beside i
   await flush();
   assert.equal(node.querySelector('.error').textContent, 'That did not work.');
   assert.equal(renderFix(doc, api, problem(null), () => {}), null);
+});
+
+test('restart_elevated for this computer or a peer asks for the Windows prompt on that computer', async () => {
+  for (const name of ['Win PC', 'Desk PC']) {
+    const api = fakeApi();
+    const message = await runFix(api, problem(`restart_elevated:${ID}`), () => {}, name);
+    assert.equal(message, `Approve the Windows prompt on ${name}`);
+    assert.deepEqual(api.calls, [['elevation.restart', { computer: ID }]]);
+  }
+});
+
+test('the restart message is shown beside the action and cleared by the next press', async () => {
+  const win = new Window();
+  const api = fakeApi({ 'elevation.restart': new Error('That did not work.') });
+  const node = renderFix(win.document, api, problem(`restart_elevated:${ID}`), () => {}, 'Win PC');
+  click(win, node.querySelector('button'));
+  await flush();
+  assert.equal(node.querySelector('.error').textContent, 'That did not work.');
+  assert.equal(node.querySelector('.note').textContent, '');
+  const ok = renderFix(win.document, fakeApi(), problem(`restart_elevated:${ID}`), () => {}, 'Win PC');
+  click(win, ok.querySelector('button'));
+  await flush();
+  assert.equal(ok.querySelector('.note').textContent, 'Approve the Windows prompt on Win PC');
+});
+
+test('a banner passes its computer name to the fix', async () => {
+  const win = new Window();
+  const banner = renderBanner(win.document, fakeApi(), problem(`restart_elevated:${ID}`), 'Win PC', () => {});
+  click(win, banner.querySelector('button'));
+  await flush();
+  assert.equal(banner.querySelector('.note').textContent, 'Approve the Windows prompt on Win PC');
 });

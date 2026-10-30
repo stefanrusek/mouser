@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod args;
+pub mod bundle_save;
 pub mod commands;
 #[cfg(target_os = "windows")]
 pub mod diagnostics;

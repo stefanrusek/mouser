@@ -326,3 +326,167 @@ async fn collecting_logs_before_the_engine_is_up_fails_loudly() {
     .unwrap_err();
     assert!(err.as_str().unwrap().contains("state not managed"));
 }
+
+// ---- UI mode: logs.collect_stream, written by the user's own app (OD-7) ----
+
+mod streamed_logs {
+    use std::sync::Mutex;
+
+    use base64::Engine as _;
+    use mouser_core::paths::Env;
+    use mouser_proto::control::{
+        BundleComputer, LogsChunk, LogsCollectStreamResult, RpcError, Status,
+    };
+    use mouser_proto::wire::ComputerMode;
+    use serde_json::{Value, json};
+    use sha2::{Digest, Sha256};
+
+    use crate::commands::{LogsLink, StreamedBundle, collect_logs_via};
+    use crate::support_tests::{fixture, status_of};
+
+    const NAME: &str = "mouser-logs-Desk-20261029T101500Z.zip";
+
+    fn hex(bytes: &[u8]) -> String {
+        Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    fn chunks_of(zip: &[u8], size: usize) -> Vec<LogsChunk> {
+        zip.chunks(size)
+            .enumerate()
+            .map(|(seq, part)| LogsChunk {
+                seq: seq as u32,
+                data: base64::engine::general_purpose::STANDARD.encode(part),
+            })
+            .collect()
+    }
+
+    fn streamed(zip: &[u8]) -> StreamedBundle {
+        StreamedBundle {
+            result: LogsCollectStreamResult {
+                name: NAME.into(),
+                size: zip.len() as u64,
+                sha256: hex(zip),
+                computers: Vec::<BundleComputer>::new(),
+            },
+            chunks: chunks_of(zip, 4),
+        }
+    }
+
+    struct Link {
+        status: Status,
+        stream: Mutex<Option<Result<StreamedBundle, RpcError>>>,
+        calls: Mutex<Vec<&'static str>>,
+    }
+
+    impl LogsLink for Link {
+        async fn status(&self) -> Result<Status, RpcError> {
+            Ok(self.status.clone())
+        }
+        async fn collect(&self) -> Result<Value, RpcError> {
+            self.calls.lock().unwrap().push("logs.collect");
+            Ok(json!({"path": "/elsewhere.zip", "computers": []}))
+        }
+        async fn collect_stream(&self) -> Result<StreamedBundle, RpcError> {
+            self.calls.lock().unwrap().push("logs.collect_stream");
+            self.stream.lock().unwrap().take().unwrap()
+        }
+    }
+
+    async fn link(mode: ComputerMode, stream: Result<StreamedBundle, RpcError>) -> Link {
+        let f = fixture().await;
+        let mut status = status_of(&f.host).await;
+        let me = status.computer.id;
+        status
+            .computers
+            .iter_mut()
+            .find(|c| c.id == me)
+            .unwrap()
+            .mode = Some(mode);
+        Link {
+            status,
+            stream: Mutex::new(Some(stream)),
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn env(home: &std::path::Path) -> Env {
+        Env {
+            home: Some(home.to_path_buf()),
+            appdata: None,
+            xdg_config_home: None,
+        }
+    }
+
+    fn files(dir: &std::path::Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn in_service_mode_the_chunks_are_reassembled_and_written_to_downloads_with_the_collision_rule()
+     {
+        let home = tempfile::tempdir().unwrap();
+        let zip = b"PK-the-whole-bundle".to_vec();
+        let link = link(ComputerMode::Service, Ok(streamed(&zip))).await;
+        let result = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap();
+        let path = home.path().join("Downloads").join(NAME);
+        assert_eq!(result["path"], path.to_string_lossy().as_ref());
+        assert_eq!(result["computers"], json!([]));
+        assert_eq!(std::fs::read(&path).unwrap(), zip);
+        assert_eq!(*link.calls.lock().unwrap(), ["logs.collect_stream"]);
+
+        let again = self::link(ComputerMode::Service, Ok(streamed(&zip))).await;
+        let second = collect_logs_via(&again, &env(home.path()), home.path()).await.unwrap();
+        let second_name = NAME.replace(".zip", " (2).zip");
+        assert_eq!(
+            second["path"],
+            home.path().join("Downloads").join(&second_name).to_string_lossy().as_ref()
+        );
+        assert_eq!(files(&home.path().join("Downloads")), [second_name, NAME.to_string()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_size_or_hash_mismatch_is_an_error_and_leaves_no_file() {
+        let home = tempfile::tempdir().unwrap();
+        let zip = b"PK-the-whole-bundle".to_vec();
+        let mut short = streamed(&zip);
+        short.chunks.pop();
+        let mut flipped = streamed(&zip);
+        flipped.result.sha256 = hex(b"something else");
+        for bad in [short, flipped] {
+            let link = link(ComputerMode::Service, Ok(bad)).await;
+            let err = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap_err();
+            assert_eq!(err.code, -32603);
+            assert_eq!(
+                err.message,
+                "The log bundle from the Mouser service arrived damaged, so it was not saved."
+            );
+        }
+        assert!(!home.path().join("Downloads").exists());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_engine_error_is_passed_on() {
+        let home = tempfile::tempdir().unwrap();
+        let refusal = RpcError { code: -32603, message: "no".into(), data: None };
+        let link = link(ComputerMode::Service, Err(refusal.clone())).await;
+        let err = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap_err();
+        assert_eq!(err, refusal);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn outside_service_mode_the_engine_writes_the_file_with_logs_collect() {
+        let home = tempfile::tempdir().unwrap();
+        let link = link(ComputerMode::Installed, Ok(streamed(b"x"))).await;
+        let result = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap();
+        assert_eq!(result["path"], "/elsewhere.zip");
+        assert_eq!(*link.calls.lock().unwrap(), ["logs.collect"]);
+    }
+}

@@ -26,7 +26,7 @@ export function renderBanner(doc, api, problem, computerName, navigate) {
     el(doc, 'small', { class: 'where' }, computerName),
     el(doc, 'p', { class: 'message' }, problem.message),
   );
-  const fix = renderFix(doc, api, problem, navigate);
+  const fix = renderFix(doc, api, problem, navigate, computerName);
   if (fix) banner.append(fix);
   return banner;
 }

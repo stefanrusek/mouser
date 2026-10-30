@@ -17,7 +17,9 @@ const LABELS = {
 export const fixLabel = (fix) => LABELS[fix.split(':')[0]];
 
 // Do what `problem.fix` says. `navigate(route)` moves the window to a section.
-export async function runFix(api, problem, navigate) {
+// `computerName` is the computer the problem concerns; a restart as administrator
+// answers with what to do next (its Windows prompt is approved at that computer).
+export async function runFix(api, problem, navigate, computerName) {
   const [kind, argument] = problem.fix.split(':');
   switch (kind) {
     case 'open_system_settings':
@@ -27,7 +29,9 @@ export async function runFix(api, problem, navigate) {
     case 'update_computer':
       return api.call('update.apply', { computer: argument });
     case 'restart_elevated':
-      return api.call('elevation.restart', { computer: argument });
+      // The engine restarts this computer itself and asks a peer to do the same.
+      await api.call('elevation.restart', { computer: argument });
+      return `Approve the Windows prompt on ${computerName}`;
     case 'approve_join':
       return navigate('#desk');
     default:
@@ -37,21 +41,24 @@ export async function runFix(api, problem, navigate) {
 }
 
 // The action for `problem`'s fix, with the failure shown beside it; null when it has none.
-export function renderFix(doc, api, problem, navigate) {
+export function renderFix(doc, api, problem, navigate, computerName) {
   if (!problem.fix) return null;
   const failure = el(doc, 'p', { class: 'error' });
+  const note = el(doc, 'p', { class: 'note' });
   return el(
     doc,
     'div',
     { class: 'fix' },
     button(doc, fixLabel(problem.fix), async () => {
       failure.textContent = '';
+      note.textContent = '';
       try {
-        await runFix(api, problem, navigate);
+        note.textContent = (await runFix(api, problem, navigate, computerName)) ?? '';
       } catch (error) {
         failure.textContent = errorText(error);
       }
     }),
+    note,
     failure,
   );
 }
