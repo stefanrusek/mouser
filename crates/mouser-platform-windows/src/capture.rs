@@ -36,7 +36,7 @@ use crate::displays::{self, DisplayCache};
 use crate::foreground_hook::ForegroundHook;
 use crate::inject::{MOUSER_TAG, WHEEL_UNITS_PER_PIXEL, key_input, mouse_input, os, send};
 use crate::watchdog::{self, Counts, Cycle, Desk, Hook, Judge, Outcome, Seen, Surroundings};
-use crate::{diag, dpi, keymap};
+use crate::{desktop, diag, dpi, keymap};
 use mouser_platform::{
     CaptureLossReason, Error, InputCapture, LocalDisplay, LocalInput, PlatformProblem, Result,
 };
@@ -73,6 +73,9 @@ const PROBE_SCAN: u16 = 0x76;
 /// the set of hooks (`watchdog::bits`).
 const WM_REINSTALL: u32 = WM_APP + 1;
 const WM_STOP: u32 = WM_APP + 2;
+/// Asks the hook thread to follow the input desktop (`desktop`); posted
+/// each watchdog cycle.
+const WM_FOLLOW: u32 = WM_APP + 4;
 /// Removes hooks without installing them again: what the OS does to a hook
 /// that timed out. Posted by tests.
 const WM_UNHOOK: u32 = WM_APP + 3;
@@ -339,8 +342,13 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>, lose: 
         shared,
         cursor: || cursor_pos().ok(),
     }));
-    let mut hooks = Hooks::install(System);
-    let _foreground = ForegroundHook::install(Box::new(move |app| on_foreground(app, &*lose)));
+    let mut on_thread = OnThread {
+        hooks: Hooks::install(System),
+        foreground: None,
+        lose,
+    };
+    on_thread.install_foreground();
+    let mut follower = desktop::Follower::new(desktop::System, &desktop::THIS_PROCESS);
     // Thread messages can only be posted once the thread has a queue.
     let mut msg = MSG::default();
     let _ = unsafe { PeekMessageW(&mut msg, None, WM_APP, WM_APP, PM_NOREMOVE) };
@@ -351,19 +359,61 @@ fn hook_thread(raw: Sender<Raw>, shared: Arc<Shared>, ready: Sender<u32>, lose: 
         match msg.message {
             WM_REINSTALL => {
                 for hook in watchdog::hooks_in(msg.wParam.0) {
-                    let ok = hooks.reinstall(hook);
+                    let ok = on_thread.hooks.reinstall(hook);
                     diag::note(DiagEvent::CaptureReinstall {
                         hook: hook.diag(),
                         ok,
                     });
                 }
             }
-            WM_UNHOOK => watchdog::hooks_in(msg.wParam.0).for_each(|hook| hooks.remove(hook)),
+            WM_UNHOOK => {
+                watchdog::hooks_in(msg.wParam.0).for_each(|hook| on_thread.hooks.remove(hook));
+            }
+            WM_FOLLOW => {
+                follower.check(&mut on_thread);
+            }
             WM_STOP => break,
             _ => {}
         }
     }
-    Hook::BOTH.into_iter().for_each(|hook| hooks.remove(hook));
+    Hook::BOTH
+        .into_iter()
+        .for_each(|hook| on_thread.hooks.remove(hook));
+}
+
+/// The hooks the hook thread holds: the two low-level hooks and the
+/// foreground hook, which takes the capture away through `lose`.
+pub(crate) struct OnThread<A: HookApi> {
+    pub(crate) hooks: Hooks<A>,
+    pub(crate) foreground: Option<ForegroundHook>,
+    pub(crate) lose: Lose,
+}
+
+impl<A: HookApi> OnThread<A> {
+    pub(crate) fn install_foreground(&mut self) {
+        let lose = self.lose.clone();
+        self.foreground = ForegroundHook::install(Box::new(move |app| on_foreground(app, &*lose)));
+    }
+}
+
+impl<A: HookApi> desktop::ThreadHooks for OnThread<A> {
+    fn remove(&mut self) {
+        Hook::BOTH
+            .into_iter()
+            .for_each(|hook| self.hooks.remove(hook));
+        self.foreground = None;
+    }
+
+    fn install(&mut self) {
+        for hook in Hook::BOTH {
+            let ok = self.hooks.reinstall(hook);
+            diag::note(DiagEvent::CaptureReinstall {
+                hook: hook.diag(),
+                ok,
+            });
+        }
+        self.install_foreground();
+    }
 }
 
 /// The events each hook has seen so far.
@@ -459,6 +509,8 @@ fn watchdog_thread(
 ) {
     let mut judge = Judge::default();
     while let Err(RecvTimeoutError::Timeout) = stop.recv_timeout(interval) {
+        // A hook thread that is gone has no desktop to follow.
+        let _ = unsafe { PostThreadMessageW(hook_thread_id, WM_FOLLOW, WPARAM(0), LPARAM(0)) };
         watchdog::watch_cycle(
             &mut judge,
             Cycle {

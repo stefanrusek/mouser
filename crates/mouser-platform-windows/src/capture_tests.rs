@@ -794,6 +794,41 @@ impl HookApi for &FakeApi {
 }
 
 #[test]
+fn moving_to_another_desktop_takes_every_hook_off_and_puts_it_back() {
+    use crate::desktop::ThreadHooks;
+    let api = FakeApi::default();
+    let mut on_thread = OnThread {
+        hooks: Hooks::install(&api),
+        foreground: None,
+        lose: Arc::new(|_, _| {}),
+    };
+    on_thread.install_foreground();
+    assert!(on_thread.foreground.is_some());
+    api.calls.borrow_mut().clear();
+    on_thread.remove();
+    assert!(on_thread.hooks.mouse.is_none() && on_thread.hooks.keyboard.is_none());
+    assert!(on_thread.foreground.is_none(), "the foreground hook too");
+    let lines = crate::diag::heard_during(|| on_thread.install());
+    assert_eq!(
+        *api.calls.borrow(),
+        [
+            // Hook 1 the system had already taken away.
+            "remove 1",
+            "remove 2",
+            "install mouse 3",
+            "install keyboard 4"
+        ]
+    );
+    assert!(on_thread.hooks.mouse.is_some() && on_thread.hooks.keyboard.is_some());
+    assert!(on_thread.foreground.is_some());
+    let reinstalled = lines
+        .iter()
+        .filter(|(_, event, _)| event == "capture.reinstall")
+        .count();
+    assert!(reinstalled >= 2, "{lines:?}");
+}
+
+#[test]
 fn a_hook_is_installed_afresh_before_the_old_one_goes() {
     let api = FakeApi::default();
     let mut hooks = Hooks::install(&api);

@@ -17,6 +17,7 @@ mod capture_lost;
 mod clipboard;
 mod cursor;
 pub mod cursor_guard;
+mod desktop;
 mod diag;
 mod displays;
 mod dpi;
@@ -41,7 +42,8 @@ mod watchdog;
 
 pub use capture::LOST_HOLD;
 pub use diag::{
-    DiagEvent, DiagHook, DiagLevel, DiagValue, Diagnostics, Probe, ProbeOutcome, set_diagnostics,
+    DiagDesktop, DiagEvent, DiagHook, DiagLevel, DiagValue, Diagnostics, Probe, ProbeOutcome,
+    set_diagnostics,
 };
 
 /// Whether the pointer is hidden on this PC: the system arrow is Mouser's
@@ -342,6 +344,8 @@ mod clipboard_tests;
 mod cursor_guard_tests;
 #[cfg(test)]
 mod cursor_tests;
+#[cfg(test)]
+mod desktop_tests;
 #[cfg(test)]
 mod diag_tests;
 #[cfg(test)]

@@ -9,7 +9,9 @@
 
 use jsonschema::{Registry, Validator};
 use mouser_platform::CaptureLossReason;
-use mouser_platform_windows::{DiagEvent, DiagHook, DiagLevel, DiagValue, Probe, ProbeOutcome};
+use mouser_platform_windows::{
+    DiagDesktop, DiagEvent, DiagHook, DiagLevel, DiagValue, Probe, ProbeOutcome,
+};
 use serde_json::{Map, Value, json};
 
 fn events_validator() -> Validator {
@@ -73,6 +75,13 @@ fn probe(outcome: ProbeOutcome) -> Probe {
 /// so a new one does not compile until it is listed here.
 fn every_line() -> Vec<DiagEvent> {
     let mut all = vec![DiagEvent::PointerShownByGuard];
+    for desktop in [
+        DiagDesktop::Default,
+        DiagDesktop::Winlogon,
+        DiagDesktop::Other,
+    ] {
+        all.push(DiagEvent::CaptureDesktop { desktop });
+    }
     for reason in [
         CaptureLossReason::ElevatedForeground,
         CaptureLossReason::OtherDesktop,
@@ -129,7 +138,8 @@ fn every_line() -> Vec<DiagEvent> {
             | DiagEvent::CaptureStart { .. }
             | DiagEvent::CaptureHookThread { .. }
             | DiagEvent::CaptureReinstall { .. }
-            | DiagEvent::CaptureProbe(_) => {}
+            | DiagEvent::CaptureProbe(_)
+            | DiagEvent::CaptureDesktop { .. } => {}
         }
     }
     all
