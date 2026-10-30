@@ -3412,7 +3412,9 @@ version = "0.2.8"
 dependencies = [
  "cucumber",
  "mouser-core",
+ "mouser-platform-windows",
  "mouser-proto",
+ "tokio",
  "windows 0.62.2",
  "windows-service",
 ]

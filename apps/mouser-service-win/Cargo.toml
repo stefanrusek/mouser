@@ -19,6 +19,7 @@ mouser-core = { path = "../../crates/mouser-core" }
 # Windows-only: on other systems the crate has no Windows dependencies so the
 # workspace builds everywhere.
 [target.'cfg(windows)'.dependencies]
+mouser-platform-windows = { path = "../../crates/mouser-platform-windows" }
 windows-service = "=0.8.1"
 windows = { version = "=0.62.2", features = [
     "Win32_System_Services",
@@ -36,3 +37,8 @@ windows = { version = "=0.62.2", features = [
 
 [dev-dependencies]
 cucumber = "=0.23.0"
+tokio = { version = "=1.54.0", features = ["rt", "macros"] }
+
+[[test]]
+name = "acc_v2_us5_service"
+harness = false

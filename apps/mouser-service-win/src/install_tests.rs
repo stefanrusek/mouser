@@ -41,7 +41,7 @@ fn run(result: Result<(), String>) -> (i32, String) {
 /// A computer Mouser is installed on, with its service running.
 fn installed() -> FakeWin {
     let fake = FakeWin::new();
-    install(&fake, &dir()).unwrap();
+    install_on(&fake).unwrap();
     fake.start_process("mouser-service.exe", 0);
     fake
 }
@@ -49,28 +49,28 @@ fn installed() -> FakeWin {
 #[test]
 fn install_creates_mouser_service_as_local_system_started_automatically() {
     let fake = FakeWin::new();
-    install(&fake, &dir()).unwrap();
+    install_on(&fake).unwrap();
     assert_eq!(fake.calls()[0], Call::CreateService(spec()));
 }
 
 #[test]
 fn install_lets_services_send_ctrl_alt_del() {
     let fake = FakeWin::new();
-    install(&fake, &dir()).unwrap();
+    install_on(&fake).unwrap();
     assert_eq!(fake.dword(POLICY, "SoftwareSASGeneration"), Some(1));
 }
 
 #[test]
 fn install_lets_desk_mates_reach_mouser_app_on_udp_47801() {
     let fake = FakeWin::new();
-    install(&fake, &dir()).unwrap();
+    install_on(&fake).unwrap();
     assert_eq!(fake.rules(), [rule()]);
 }
 
 #[test]
 fn install_starts_the_service_last_and_exits_0() {
     let fake = FakeWin::new();
-    assert_eq!(run(install(&fake, &dir())), (0, String::new()));
+    assert_eq!(run(install_on(&fake)), (0, String::new()));
     assert_eq!(
         fake.calls().last(),
         Some(&Call::StartService("MouserService".into()))
@@ -84,7 +84,7 @@ fn install_over_an_installed_mouser_keeps_what_is_there() {
     // The service exists and runs; the rule is there.
     fake.fail("create_service", 1073);
     fake.fail("start_service", 1056);
-    assert_eq!(run(install(&fake, &dir())), (0, String::new()));
+    assert_eq!(run(install_on(&fake)), (0, String::new()));
     assert_eq!(fake.rules(), [rule()]);
 }
 
@@ -115,7 +115,7 @@ fn a_step_of_install_that_fails_exits_1_with_its_reason() {
         let fake = FakeWin::new();
         fake.fail(method, 5);
         assert_eq!(
-            run(install(&fake, &dir())),
+            run(install_on(&fake)),
             (1, format!("{reason}\n")),
             "{method}"
         );
@@ -139,7 +139,7 @@ fn uninstall_stops_the_service_waits_for_it_and_deletes_it() {
 #[test]
 fn uninstall_waits_for_a_service_that_takes_its_time_to_stop() {
     let fake = FakeWin::new();
-    install(&fake, &dir()).unwrap();
+    install_on(&fake).unwrap();
     // The service process is still ending its engine when the SCM returns.
     let service = fake.start_process("mouser-service.exe", 0);
     fake.slow_to_stop();
@@ -183,7 +183,7 @@ fn uninstall_exits_0_when_the_service_rule_and_value_are_gone_already() {
     );
     // A stopped service, deleted before but not yet gone.
     let fake = FakeWin::default();
-    install(&fake, &dir()).unwrap();
+    install_on(&fake).unwrap();
     crate::winapi::WinApi::stop_service(&fake, "MouserService").unwrap();
     fake.fail("delete_service", 1072);
     assert_eq!(run(uninstall(&fake, ME)), (0, String::new()));
@@ -239,4 +239,77 @@ fn a_step_of_uninstall_that_fails_exits_1_with_its_reason() {
             "{method}"
         );
     }
+}
+
+const MACHINE: &str = r"C:\ProgramData\Mouser";
+
+/// `--install` from `DIR`, its identity copied without a hitch.
+fn install_on(fake: &FakeWin) -> Result<(), String> {
+    install(fake, &dir(), Path::new(MACHINE), &|| Ok(()))
+}
+
+#[test]
+fn install_makes_the_secrets_private_to_system_and_administrators_before_the_identity_arrives() {
+    let fake = FakeWin::new();
+    let copied = std::cell::Cell::new(false);
+    let migrate = || {
+        let calls = fake.calls();
+        assert!(calls.contains(&Call::ProtectDir(
+            Path::new(MACHINE).join("secrets"),
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)".into()
+        )));
+        assert!(!calls.contains(&Call::StartService("MouserService".into())));
+        copied.set(true);
+        Ok(())
+    };
+    install(&fake, &dir(), Path::new(MACHINE), &migrate).unwrap();
+    assert!(copied.get());
+    assert_eq!(
+        fake.calls().last(),
+        Some(&Call::StartService("MouserService".into()))
+    );
+}
+
+#[test]
+fn an_identity_that_cannot_be_copied_leaves_the_computer_to_rejoin_its_desk() {
+    let fake = FakeWin::new();
+    let unreadable = || Err("device_key is not in the user's store".to_string());
+    assert_eq!(
+        run(install(&fake, &dir(), Path::new(MACHINE), &unreadable)),
+        (0, String::new())
+    );
+    assert_eq!(fake.service("MouserService"), Some((spec(), true)));
+}
+
+#[test]
+fn a_secrets_folder_that_cannot_be_made_private_fails_the_install() {
+    let fake = FakeWin::new();
+    fake.fail("protect_dir", 5);
+    assert_eq!(
+        run(install_on(&fake)),
+        (
+            1,
+            format!(
+                r"protecting {MACHINE}\secrets: protect_dir failed (error 5)
+"
+            )
+        )
+    );
+    assert!(
+        !fake
+            .calls()
+            .contains(&Call::StartService("MouserService".into()))
+    );
+}
+
+#[test]
+fn uninstall_leaves_the_machine_folder_and_its_identity_alone() {
+    let fake = installed();
+    let before = fake.calls().len();
+    uninstall(&fake, ME).unwrap();
+    assert!(
+        !fake.calls()[before..]
+            .iter()
+            .any(|c| matches!(c, Call::ProtectDir(..)))
+    );
 }

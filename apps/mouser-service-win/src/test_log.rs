@@ -1,32 +1,27 @@
 //! A service log in a folder of its own, for the unit tests.
 
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 use mouser_core::logging::{Context, Log, SERVICE_FILE};
 use mouser_proto::ids::ComputerId;
 use mouser_proto::wire::ComputerMode;
 
+use crate::test_dir::TestDir;
+
 pub struct TestLog {
-    dir: PathBuf,
+    _dir: TestDir,
     pub log: Arc<Log>,
 }
 
 impl TestLog {
     pub fn new() -> Self {
-        static NEXT: AtomicU32 = AtomicU32::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "mouser-service-test-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
+        let dir = TestDir::new();
         let context = Context {
             mode: ComputerMode::Service,
             ..Context::fallback()
         };
         let log = Log::named(
-            &dir,
+            dir.path(),
             SERVICE_FILE,
             ComputerId([7; 16]),
             "Alpha".into(),
@@ -35,7 +30,7 @@ impl TestLog {
             context,
         );
         Self {
-            dir,
+            _dir: dir,
             log: Arc::new(log),
         }
     }
@@ -68,10 +63,4 @@ impl TestLog {
 fn between<'a>(line: &'a str, from: &str, to: &str) -> &'a str {
     let rest = &line[line.find(from).unwrap() + from.len()..];
     &rest[..rest.find(to).unwrap()]
-}
-
-impl Drop for TestLog {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
 }
