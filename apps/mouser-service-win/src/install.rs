@@ -42,8 +42,8 @@ fn unless(result: ApiResult<()>, done: &[u32]) -> ApiResult<()> {
 }
 
 /// The step named `what` failed: its reason.
-fn step(what: &str) -> impl Fn(ApiError) -> String + '_ {
-    move |e| format!("{what}: {e}")
+fn step(what: &str, e: ApiError) -> String {
+    format!("{what}: {e}")
 }
 
 /// Puts Mouser's machine-wide parts in place from `dir`, the folder both
@@ -65,10 +65,10 @@ pub fn install(
         start: StartType::Automatic,
     };
     unless(api.create_service(&spec), &[ERROR_SERVICE_EXISTS])
-        .map_err(step("creating MouserService"))?;
+        .map_err(|e| step("creating MouserService", e))?;
     api.write_dword(POLICY_KEY, POLICY_VALUE, 1)
-        .map_err(step("setting SoftwareSASGeneration"))?;
-    add_rule(api, dir).map_err(step("adding the firewall rule"))?;
+        .map_err(|e| step("setting SoftwareSASGeneration", e))?;
+    add_rule(api, dir).map_err(|e| step("adding the firewall rule", e))?;
     // Machine-scope DPAPI keeps the keys from other computers only: this
     // folder's DACL keeps them from this computer's other users.
     let secrets = machine.join("secrets");
@@ -79,7 +79,7 @@ pub fn install(
         api.start_service(SERVICE_NAME),
         &[ERROR_SERVICE_ALREADY_RUNNING],
     )
-    .map_err(step("starting MouserService"))
+    .map_err(|e| step("starting MouserService", e))
 }
 
 fn add_rule(api: &dyn WinApi, dir: &Path) -> ApiResult<()> {
@@ -96,7 +96,7 @@ fn add_rule(api: &dyn WinApi, dir: &Path) -> ApiResult<()> {
 /// Takes Mouser's machine-wide parts away; `me` is this process, itself a
 /// `mouser-service.exe`. What is gone already counts as done.
 pub fn uninstall(api: &dyn WinApi, me: u32) -> Result<(), String> {
-    stop_service(api, me).map_err(step("stopping MouserService"))?;
+    stop_service(api, me).map_err(|e| step("stopping MouserService", e))?;
     unless(
         api.delete_service(SERVICE_NAME),
         &[
@@ -104,14 +104,14 @@ pub fn uninstall(api: &dyn WinApi, me: u32) -> Result<(), String> {
             ERROR_SERVICE_MARKED_FOR_DELETE,
         ],
     )
-    .map_err(step("deleting MouserService"))?;
-    end_engines(api).map_err(step("ending mouser-app.exe"))?;
-    remove_rule(api).map_err(step("removing the firewall rule"))?;
+    .map_err(|e| step("deleting MouserService", e))?;
+    end_engines(api).map_err(|e| step("ending mouser-app.exe", e))?;
+    remove_rule(api).map_err(|e| step("removing the firewall rule", e))?;
     unless(
         api.delete_value(POLICY_KEY, POLICY_VALUE),
         &[ERROR_FILE_NOT_FOUND],
     )
-    .map_err(step("removing SoftwareSASGeneration"))
+    .map_err(|e| step("removing SoftwareSASGeneration", e))
 }
 
 /// Stops the service and waits for its process to end: it shuts its
