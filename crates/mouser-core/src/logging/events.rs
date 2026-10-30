@@ -10,6 +10,7 @@ use mouser_proto::control::{BundleReason, Problem, SettingChange, SettingOrigin}
 use mouser_proto::ids::ComputerId;
 use mouser_proto::log::{LogComputer, LogLevel, LogRecord};
 use mouser_proto::model::Os;
+use mouser_proto::service_ipc::SasResult;
 use mouser_proto::wire::ClipboardKind;
 use serde_json::{Map, Value, json};
 
@@ -452,6 +453,47 @@ pub fn elevation_restart(outcome: ElevationOutcome) -> Event {
     )
 }
 
+pub fn service_session(session: u32) -> Event {
+    Event::new(
+        LogLevel::Info,
+        "service.session",
+        None,
+        fields(json!({"session": session})),
+    )
+}
+
+pub fn service_engine_started(pid: u32, session: u32) -> Event {
+    Event::new(
+        LogLevel::Info,
+        "service.engine_started",
+        None,
+        fields(json!({"pid": pid, "session": session})),
+    )
+}
+
+pub fn service_engine_exited(code: u32) -> Event {
+    Event::new(
+        LogLevel::Info,
+        "service.engine_exited",
+        None,
+        fields(json!({"code": code})),
+    )
+}
+
+/// The outcome of a Ctrl-Alt-Del request; a failure's reason is not logged.
+pub fn service_sas(result: &SasResult) -> Event {
+    let result = match result {
+        SasResult::Sent => "sent",
+        SasResult::PolicyBlocked => "policy_blocked",
+        SasResult::Failed(_) => "failed",
+    };
+    Event::new(
+        LogLevel::Info,
+        "service.sas",
+        None,
+        fields(json!({"result": result})),
+    )
+}
 fn problem(name: &str, problem: &Problem) -> Event {
     Event::new(
         LogLevel::Warn,

@@ -550,3 +550,42 @@ fn no_constructor_takes_a_free_form_map_or_value() {
         }
     }
 }
+
+#[test]
+fn the_service_writes_its_session_engine_and_ctrl_alt_del_events() {
+    use mouser_proto::service_ipc::SasResult;
+    expect(
+        service_session(2),
+        "service.session",
+        "info",
+        None,
+        json!({"session": 2}),
+    );
+    expect(
+        service_engine_started(4321, 2),
+        "service.engine_started",
+        "info",
+        None,
+        json!({"pid": 4321, "session": 2}),
+    );
+    expect(
+        service_engine_exited(0xC000_0005),
+        "service.engine_exited",
+        "info",
+        None,
+        json!({"code": 0xC000_0005u32}),
+    );
+    for (result, text) in [
+        (SasResult::Sent, "sent"),
+        (SasResult::PolicyBlocked, "policy_blocked"),
+        (SasResult::Failed("access is denied".into()), "failed"),
+    ] {
+        expect(
+            service_sas(&result),
+            "service.sas",
+            "info",
+            None,
+            json!({"result": text}),
+        );
+    }
+}
