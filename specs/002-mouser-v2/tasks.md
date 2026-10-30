@@ -353,8 +353,8 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T240 [US1-app] Replace the lag panics in `apps/mouser-app/src/app.rs` with a resync from `status`
 - [X] T241 [P] [US1-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--cursor-guard <pid>` is parsed before any Tauri initialisation and selects guard mode (Windows only; on other OSes the flag is rejected with exit code 3)
 - [X] T242 [US1-app] Implement argument dispatch in `apps/mouser-app/src/args.rs` and in `apps/mouser-app/src/main.rs` call `mouser_platform_windows::cursor_guard::run(pid)` (signature frozen in contracts/platform-api-delta.md) for guard mode with no window (depends on Phase 19 T395 being merged)
-- [ ] T243 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T244 [US1-app] Commit: phase boundary "US1-app" (5.3)
+- [X] T243 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T244 [US1-app] Commit: phase boundary "US1-app" (5.3)
 
 #### Phase 10: US2-app — As a troubleshooting agent, I want the diagnostic log to show what Mouser did and why (P1)
 
@@ -532,7 +532,7 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 - [X] T376 [P] [US5-cli] Write tests in `apps/mouser-cli/tests/contract_cli_logs_collect.rs` against an in-process engine started in mode `service`: `mouser logs collect --out DIR` sees mode `service` in `status`, calls `logs.collect_stream`, reassembles the chunks, checks `size` and `sha256`, writes the zip itself into DIR (or the user's Downloads folder without `--out`) with log-bundle.md's naming and collision rule, and prints the path and per-computer lines as for `logs.collect` (OD-7)
 - [X] T377 [US5-cli] Implement the streamed path of `logs collect` in `apps/mouser-cli/src/logs.rs`
 - [X] T378 [US5-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli` (including the Windows runner)
-- [ ] T379 [US5-cli] Commit: phase boundary "US5-cli" (5.3)
+- [X] T379 [US5-cli] Commit: phase boundary "US5-cli" (5.3)
 
 ### Lane: platform-windows
 
