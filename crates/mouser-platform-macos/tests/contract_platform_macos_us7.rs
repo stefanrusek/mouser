@@ -297,8 +297,8 @@ fn scenarios() {
 }
 
 /// Prints where the process is stuck: a sample of every thread (the main
-/// thread is the one running the drag) and what the window server, Finder and
-/// AppKit logged meanwhile.
+/// thread is the one running the drag) and what the window server, Finder, tccd
+/// and AppKit logged meanwhile.
 fn diagnose_hang() {
     let pid = std::process::id();
     let report = std::env::temp_dir().join(format!("mouser_us7_{pid}.sample.txt"));
@@ -314,7 +314,7 @@ fn diagnose_hang() {
         std::fs::read_to_string(&report).unwrap_or_else(|e| format!("no sample report: {e}"))
     );
     let predicate = format!(
-        "processID == {pid} OR process == \"WindowServer\" OR process == \"Finder\" OR subsystem BEGINSWITH \"com.apple.AppKit\""
+        "processID == {pid} OR process == \"WindowServer\" OR process == \"Finder\" OR process == \"tccd\" OR subsystem BEGINSWITH \"com.apple.AppKit\""
     );
     let logged = Command::new("/usr/bin/log")
         .args(["show", "--last", "3m", "--style", "compact", "--predicate"])
