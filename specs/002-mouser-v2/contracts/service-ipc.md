@@ -48,3 +48,10 @@ The service relaunches the engine as soon as it exits. This is not a retry after
 |---|---|
 | service-win | The pipe security descriptor string. Rejection of a client whose PID does not match. Each lifecycle transition, through a `WinApi` seam (fake session ids, fake process handles). `SendSas` mapped to each policy value. |
 | platform-windows | The client handshake. `secure_attention()` mapping each `SasResult`. A dropped pipe (service gone) makes `secure_attention()` return `Err(Os)`, and nothing else. |
+
+## Implementation notes (added 2026-10-30, from Phase 27)
+
+- An engine that ends before it connects: the service ends its own wait in `ConnectNamedPipe` by opening the pipe as its client (`CreateFileW`) once the engine's process has ended. A connection persists, whereas a `CancelIoEx` issued before the wait begins would be lost.
+- A `Shutdown` for an engine that has not connected yet is held and sent as it connects.
+- An engine that cannot be launched (no `winlogon.exe`, or `CreateProcessAsUserW` fails) is relaunched at the next session change; there is no timer (owner confirmation row 4 checks cold boot).
+- Lock, unlock and remote session changes do not restart the engine; console connect and disconnect, logon and logoff do.
