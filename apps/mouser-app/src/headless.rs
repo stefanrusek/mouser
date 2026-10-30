@@ -15,6 +15,7 @@ use mouser_core::engine_headless::FileSecrets;
 use mouser_core::paths::Paths;
 use mouser_core::{Engine, EngineParams};
 use mouser_platform::{Os, Platform};
+use mouser_proto::service_ipc::StopReason;
 use mouser_proto::wire::ComputerMode;
 
 /// Whether the command line asks for headless mode.
@@ -115,4 +116,78 @@ pub async fn run(params: EngineParams, shutdown: impl Future<Output = ()>) {
     mouser_core::faults::install(engine.log());
     shutdown.await;
     engine.shutdown().await;
+}
+
+/// What the session engine (Windows `--headless --machine`) has of
+/// `MouserService` (contracts/service-ipc.md).
+pub trait Service: Send + Sync + 'static {
+    /// What to run when the service says to shut down.
+    fn on_shutdown(&self, f: Box<dyn FnOnce() + Send>);
+    /// Tells the service why the engine is exiting of its own accord.
+    fn stopping(&self, reason: StopReason);
+}
+
+/// Why a headless run ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ended {
+    /// The system asked it to stop (Ctrl-C, close, shutdown).
+    Asked,
+    /// The service said to shut down.
+    Service,
+}
+
+/// Run the engine until the system asks it to stop or `service_shutdown`
+/// completes, then stop it. Which of the two ended it.
+pub async fn run_until(
+    params: EngineParams,
+    stop: impl Future<Output = ()>,
+    service_shutdown: impl Future<Output = ()>,
+) -> Ended {
+    let engine = Engine::start(params).await;
+    mouser_core::faults::install(engine.log());
+    let ended = tokio::select! {
+        () = stop => Ended::Asked,
+        () = service_shutdown => Ended::Service,
+    };
+    engine.shutdown().await;
+    ended
+}
+
+/// Runs `work` and tells `service` how it ended: `Stopping { Quit }` before
+/// a voluntary exit, `Stopping { Fault }` when a fault ended it, which then
+/// ends this process as it would have; nothing when the service asked.
+pub async fn report_to(
+    service: Arc<dyn Service>,
+    work: impl Future<Output = Ended> + Send + 'static,
+) {
+    match tokio::spawn(work).await {
+        Ok(Ended::Asked) => service.stopping(StopReason::Quit),
+        Ok(Ended::Service) => {}
+        Err(fault) => {
+            service.stopping(StopReason::Fault);
+            std::panic::resume_unwind(fault.into_panic());
+        }
+    }
+}
+
+/// The session engine: the engine on `params` until the system asks it to
+/// stop (`stop`) or the service says to shut down, telling the service how
+/// it ended.
+pub async fn serve(
+    params: EngineParams,
+    service: Arc<dyn Service>,
+    stop: impl Future<Output = ()> + Send + 'static,
+) {
+    let (said, shutdown) = tokio::sync::oneshot::channel::<()>();
+    service.on_shutdown(Box::new(move || {
+        // The engine may already be ending of its own accord.
+        let _ = said.send(());
+    }));
+    let service_shutdown = async {
+        // A service that went without a word leaves the engine running.
+        if shutdown.await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    report_to(service, run_until(params, stop, service_shutdown)).await;
 }

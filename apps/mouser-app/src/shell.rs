@@ -127,6 +127,11 @@ pub fn run_headless() {
         &mouser_core::paths::Env::from_process(),
     );
     let mode = crate::mode::select(&args, false, false);
+    #[cfg(target_os = "windows")]
+    if mode == mouser_proto::wire::ComputerMode::Service {
+        run_session_engine(os, &paths);
+        return;
+    }
     tauri::async_runtime::block_on(async {
         crate::headless::run(
             crate::headless::params(
@@ -144,6 +149,62 @@ pub fn run_headless() {
         )
         .await;
     });
+}
+
+/// The session engine (Windows `--headless --machine`, research V9): it
+/// connects to `MouserService` first, sends Ctrl-Alt-Del through it, and
+/// runs until the system or the service says to stop.
+#[cfg(target_os = "windows")]
+fn run_session_engine(os: mouser_platform::Os, paths: &mouser_core::paths::Paths) {
+    use mouser_platform_windows::service_client::ServiceClient;
+    let version = env!("CARGO_PKG_VERSION");
+    let mode = mouser_proto::wire::ComputerMode::Service;
+    let client = ServiceClient::connect(version).expect("MouserService made the engine's pipe");
+    let platform = Arc::new(mouser_platform_windows::WinPlatform::with_service_client(
+        mouser_platform_windows::Settings::system(),
+        client,
+    ));
+    let params = crate::headless::params(
+        platform.clone(),
+        os,
+        crate::headless::data_dir(os, mode, paths),
+        mouser_core::control::default_path(),
+        gethostname::gethostname()
+            .into_string()
+            .expect("computer name is valid UTF-8"),
+        version.to_string(),
+        mode,
+    );
+    tauri::async_runtime::block_on(crate::headless::serve(
+        params,
+        Arc::new(OnService(platform)),
+        crate::headless::stop_signal(),
+    ));
+}
+
+/// `MouserService` through the client the backend was built with.
+#[cfg(target_os = "windows")]
+struct OnService(Arc<mouser_platform_windows::WinPlatform>);
+
+#[cfg(target_os = "windows")]
+impl OnService {
+    fn client(&self) -> &mouser_platform_windows::service_client::ServiceClient {
+        self.0
+            .service_client()
+            .expect("built with the service client")
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl crate::headless::Service for OnService {
+    fn on_shutdown(&self, f: Box<dyn FnOnce() + Send>) {
+        self.client().on_shutdown(f);
+    }
+
+    fn stopping(&self, reason: mouser_proto::service_ipc::StopReason) {
+        // A service that has gone has nothing to hear.
+        let _ = self.client().stopping(reason);
+    }
 }
 
 /// Run Mouser until the owner quits it.

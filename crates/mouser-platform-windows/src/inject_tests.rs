@@ -187,6 +187,10 @@ fn a_platform_with_the_service_asks_it_for_ctrl_alt_del_and_maps_its_answer() {
     });
     let client = crate::service_client::connect_to(&name, "0.3.0").unwrap();
     let platform = crate::WinPlatform::with_service_client(crate::Settings::system(), client);
+    assert!(
+        platform.service_client().is_some(),
+        "the session engine can reach it"
+    );
     let mut inject = platform.inject().unwrap();
     let results: Vec<_> = answers.iter().map(|_| inject.secure_attention()).collect();
     let asked = service.join().unwrap();
@@ -201,6 +205,8 @@ fn a_platform_with_the_service_asks_it_for_ctrl_alt_del_and_maps_its_answer() {
 #[test]
 fn a_platform_without_the_service_keeps_ctrl_alt_del_unsupported() {
     use mouser_platform::Platform;
-    let mut inject = crate::WinPlatform::new().inject().unwrap();
+    let platform = crate::WinPlatform::new();
+    assert!(platform.service_client().is_none());
+    let mut inject = platform.inject().unwrap();
     assert_eq!(inject.secure_attention(), Err(Error::Unsupported));
 }
