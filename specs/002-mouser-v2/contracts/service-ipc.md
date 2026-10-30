@@ -10,7 +10,7 @@ The types live in the contract crate, in `crates/mouser-proto/src/service_ipc.rs
 ## Transport
 
 - Named pipe: `\\.\pipe\mouser-svc-<console session id>`. The service creates it before it launches the engine.
-- Flags: `PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE` and `PIPE_TYPE_BYTE | PIPE_REJECT_REMOTE_CLIENTS`.
+- Flags: `PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED` and `PIPE_TYPE_BYTE | PIPE_REJECT_REMOTE_CLIENTS`. (Overlapped added 2026-10-30, orchestrator: the service writes `Shutdown` while its reader waits in `ReadFile`, which synchronous pipe I/O would serialize; it also lets a pending connect be cancelled.)
 - Security descriptor: `D:P(A;;GA;;;SY)`, so only SYSTEM can connect.
 - Client check: after `ConnectNamedPipe`, the service calls `GetNamedPipeClientProcessId` and requires the result to equal the PID it launched. Any other client is disconnected.
 - Framing: 4-byte big-endian length, then a postcard body. This is the same framing as `mouser_proto::wire`.

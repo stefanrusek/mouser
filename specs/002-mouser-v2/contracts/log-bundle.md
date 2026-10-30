@@ -18,6 +18,7 @@ bundle.json                         # log-bundle.schema.json
 <name>-<id[0..8]>/mouser.log        # when included
 <name>-<id[0..8]>/mouser.log.1      # when it exists
 <name>-<id[0..8]>/service.log       # Windows installed: the service log, when included
+<name>-<id[0..8]>/service.log.1     # its rotated predecessor, when present (added 2026-10-30, orchestrator: service.log rotates like mouser.log)
 ```
 
 ## Rules
