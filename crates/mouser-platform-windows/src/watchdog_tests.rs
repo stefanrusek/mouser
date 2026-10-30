@@ -275,6 +275,37 @@ fn probes_another_program_swallows_are_no_miss_while_real_input_arrives() {
 }
 
 #[test]
+fn swallowed_probes_raise_nothing_until_real_input_goes_unseen_too() {
+    // Story 3 sc. 16 (probe P1 `swallow`): another program's hook, installed
+    // after Mouser's, eats every probe, while the person's input reaches
+    // Mouser's hooks, during the probe's wait and between cycles.
+    let mut c = Cycles::new();
+    c.reaches = (false, false);
+    c.typing = (true, true);
+    for _ in 0..6 {
+        assert!(c.run());
+        c.someone_used_the_pc();
+        c.real_input(true, true);
+    }
+    assert!(
+        c.heard().is_empty(),
+        "no lost hold while real input arrives"
+    );
+    assert!(c.reinstalls.is_empty());
+    assert!(c.lost.borrow().is_empty());
+    // Now the person's input stops reaching Mouser's hooks as well.
+    c.typing = (false, false);
+    assert!(c.run()); // unseen
+    c.someone_used_the_pc();
+    assert!(!c.run()); // miss 1: reinstalled, not yet raised
+    assert!(c.heard().is_empty());
+    assert!(c.run()); // unseen again
+    c.someone_used_the_pc();
+    assert!(!c.run()); // miss 2
+    assert_eq!(c.heard(), [raised()]);
+}
+
+#[test]
 fn a_hook_that_sees_real_input_while_its_probe_is_swallowed_is_live_at_once() {
     let mut c = Cycles::new();
     c.reaches = (false, true);

@@ -7,7 +7,9 @@
 //! starts a real guard, this binary again with `--cursor-guard <pid>`.
 
 #[cfg(windows)]
-mod steps;
+mod steps {
+    pub mod v2_us1_guard;
+}
 
 #[cfg(windows)]
 fn main() -> std::process::ExitCode {
