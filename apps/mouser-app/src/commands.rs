@@ -188,7 +188,11 @@ pub async fn collect_logs_via(
 ) -> Result<Value, RpcError> {
     let status = link.status().await?;
     let me = status.computer.id;
-    let mode = status.computers.iter().find(|c| c.id == me).and_then(|c| c.mode);
+    let mode = status
+        .computers
+        .iter()
+        .find(|c| c.id == me)
+        .and_then(|c| c.mode);
     if mode != Some(ComputerMode::Service) {
         return link.collect().await;
     }

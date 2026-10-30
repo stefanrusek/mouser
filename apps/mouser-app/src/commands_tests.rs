@@ -435,7 +435,9 @@ mod streamed_logs {
         let home = tempfile::tempdir().unwrap();
         let zip = b"PK-the-whole-bundle".to_vec();
         let link = link(ComputerMode::Service, Ok(streamed(&zip))).await;
-        let result = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap();
+        let result = collect_logs_via(&link, &env(home.path()), home.path())
+            .await
+            .unwrap();
         let path = home.path().join("Downloads").join(NAME);
         assert_eq!(result["path"], path.to_string_lossy().as_ref());
         assert_eq!(result["computers"], json!([]));
@@ -443,13 +445,22 @@ mod streamed_logs {
         assert_eq!(*link.calls.lock().unwrap(), ["logs.collect_stream"]);
 
         let again = self::link(ComputerMode::Service, Ok(streamed(&zip))).await;
-        let second = collect_logs_via(&again, &env(home.path()), home.path()).await.unwrap();
+        let second = collect_logs_via(&again, &env(home.path()), home.path())
+            .await
+            .unwrap();
         let second_name = NAME.replace(".zip", " (2).zip");
         assert_eq!(
             second["path"],
-            home.path().join("Downloads").join(&second_name).to_string_lossy().as_ref()
+            home.path()
+                .join("Downloads")
+                .join(&second_name)
+                .to_string_lossy()
+                .as_ref()
         );
-        assert_eq!(files(&home.path().join("Downloads")), [second_name, NAME.to_string()]);
+        assert_eq!(
+            files(&home.path().join("Downloads")),
+            [second_name, NAME.to_string()]
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -462,7 +473,9 @@ mod streamed_logs {
         flipped.result.sha256 = hex(b"something else");
         for bad in [short, flipped] {
             let link = link(ComputerMode::Service, Ok(bad)).await;
-            let err = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap_err();
+            let err = collect_logs_via(&link, &env(home.path()), home.path())
+                .await
+                .unwrap_err();
             assert_eq!(err.code, -32603);
             assert_eq!(
                 err.message,
@@ -475,9 +488,15 @@ mod streamed_logs {
     #[tokio::test(flavor = "multi_thread")]
     async fn an_engine_error_is_passed_on() {
         let home = tempfile::tempdir().unwrap();
-        let refusal = RpcError { code: -32603, message: "no".into(), data: None };
+        let refusal = RpcError {
+            code: -32603,
+            message: "no".into(),
+            data: None,
+        };
         let link = link(ComputerMode::Service, Err(refusal.clone())).await;
-        let err = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap_err();
+        let err = collect_logs_via(&link, &env(home.path()), home.path())
+            .await
+            .unwrap_err();
         assert_eq!(err, refusal);
     }
 
@@ -485,7 +504,9 @@ mod streamed_logs {
     async fn outside_service_mode_the_engine_writes_the_file_with_logs_collect() {
         let home = tempfile::tempdir().unwrap();
         let link = link(ComputerMode::Installed, Ok(streamed(b"x"))).await;
-        let result = collect_logs_via(&link, &env(home.path()), home.path()).await.unwrap();
+        let result = collect_logs_via(&link, &env(home.path()), home.path())
+            .await
+            .unwrap();
         assert_eq!(result["path"], "/elsewhere.zip");
         assert_eq!(*link.calls.lock().unwrap(), ["logs.collect"]);
     }
