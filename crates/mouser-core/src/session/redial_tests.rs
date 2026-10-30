@@ -327,3 +327,64 @@ async fn a_dial_attempt_cut_short_leaves_the_computer_to_be_dialled_again() {
     let _ = attempt.await;
     assert!(!a.engine.ctx.core.lock().unwrap().dialing.contains(&peer));
 }
+
+/// Regression (T537): a re-dial that has succeeded is done. Left pending
+/// until the next tick, it outlived the connection it made: when the peer's
+/// own address changed next and its re-dial replaced that connection, this
+/// side, now holding an accepted connection again, dialled once more and
+/// replaced the peer's, handing back a crossing just made over it.
+#[tokio::test]
+async fn a_re_dial_that_succeeded_leaves_nothing_to_dial() {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (dialler, acceptor) = roles(&nodes);
+    let (d, a) = (&nodes[dialler], &nodes[acceptor]);
+    let peer = d.engine.computer_id();
+    let found = a
+        .engine
+        .ctx
+        .discovery
+        .found()
+        .into_iter()
+        .find(|f| f.computer == peer)
+        .unwrap();
+    {
+        let mut core = a.engine.ctx.core.lock().unwrap();
+        core.redial.insert(peer);
+        core.dialing.insert(peer);
+    }
+    a.engine.ctx.clone().dial_found(found).await;
+    assert!(link_of(a, d).unwrap().1, "the acceptor dialled");
+    assert!(!a.engine.ctx.core.lock().unwrap().redial.contains(&peer));
+}
+
+/// Both computers' addresses change, one right after the other: each
+/// re-dials once, and the connection the second one dialled is kept.
+#[tokio::test]
+async fn addresses_changing_one_after_the_other_settle_on_the_last_re_dial() {
+    let lab = Lab::simulated();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (dialler, acceptor) = roles(&nodes);
+    let (d, a) = (&nodes[dialler], &nodes[acceptor]);
+    change_address_of(a);
+    eventually("the acceptor's re-dial", || async {
+        link_of(a, d).is_some_and(|(_, dialled, _)| dialled)
+    })
+    .await;
+    // At once, the other computer's address changes: it now holds the
+    // accepted connection and dials again.
+    d.sim.as_ref().unwrap().add_interface(interface(
+        "en7",
+        InterfaceKind::PhysicalLan,
+        [192, 168, 7, 7],
+    ));
+    eventually("the other computer's re-dial", || async {
+        link_of(d, a).is_some_and(|(_, dialled, phase)| dialled && phase == Phase::Authed)
+    })
+    .await;
+    let kept = link_of(d, a).unwrap().0;
+    // Several ticks later it is still the connection in use.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(link_of(d, a).unwrap().0, kept);
+    assert!(link_of(d, a).unwrap().1);
+}

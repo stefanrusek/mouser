@@ -330,6 +330,12 @@ impl Ctx {
                 paused: false,
                 last_seen: crate::problems::now(),
             };
+            // A connection we dialled is what a re-dial waits for: it is done
+            // now, not at the next tick, by when the peer may have replaced
+            // this connection with one it dialled (T537).
+            if dialed {
+                core.redial.remove(&peer);
+            }
             if let Some(old) = core.peers.insert(peer, entry) {
                 old.conn.close(0u32.into(), CloseReason::Replaced.bytes());
                 self.log.write(events::peer_disconnected(
