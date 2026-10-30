@@ -5,8 +5,11 @@ use mouser_platform::Os;
 use mouser_proto::wire::ComputerMode;
 use mouser_testkit::VirtualPlatform;
 
-use crate::headless::{data_dir, is_headless, machine_dir, params, run, secrets_dir};
+use crate::headless::{
+    Ended, Service, data_dir, is_headless, machine_dir, params, report_to, run, secrets_dir, serve,
+};
 use crate::support_tests::{control_path_in, free_port};
+use mouser_proto::service_ipc::StopReason;
 
 fn args(list: &[&str]) -> Vec<String> {
     list.iter().map(|a| a.to_string()).collect()
@@ -391,4 +394,163 @@ async fn the_machine_service_keeps_its_secrets_in_the_machine_directory() {
     crate::support_tests::eventually(|| served.exists() && secrets_dir(dir.path()).is_dir()).await;
     stop.send(()).unwrap();
     task.await.unwrap();
+}
+
+/// A service as the session engine sees it: what it was told, and a way to
+/// say `Shutdown`.
+#[derive(Default)]
+struct FakeService {
+    /// Lets go of what it was given to run, as a service that went away.
+    forget: bool,
+    told: std::sync::Mutex<Vec<StopReason>>,
+    shutdown: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
+
+impl Service for FakeService {
+    fn on_shutdown(&self, f: Box<dyn FnOnce() + Send>) {
+        if !self.forget {
+            *self.shutdown.lock().unwrap() = Some(f);
+        }
+    }
+
+    fn stopping(&self, reason: StopReason) {
+        self.told.lock().unwrap().push(reason);
+    }
+}
+
+impl FakeService {
+    fn say_shutdown(&self) {
+        let f = self.shutdown.lock().unwrap().take().expect("registered");
+        f();
+    }
+
+    fn told(&self) -> Vec<StopReason> {
+        self.told.lock().unwrap().clone()
+    }
+}
+
+#[tokio::test]
+async fn a_voluntary_exit_tells_the_service_why_first() {
+    let service = Arc::new(FakeService::default());
+    report_to(service.clone(), async { Ended::Asked }).await;
+    assert_eq!(service.told(), [StopReason::Quit]);
+}
+
+#[tokio::test]
+async fn a_shutdown_the_service_asked_for_is_not_told_back() {
+    let service = Arc::new(FakeService::default());
+    report_to(service.clone(), async { Ended::Service }).await;
+    assert!(service.told().is_empty());
+}
+
+#[tokio::test]
+async fn a_fault_that_ends_the_engine_is_told_and_still_ends_it() {
+    let service = Arc::new(FakeService::default());
+    let reporting = tokio::spawn(report_to(service.clone(), async {
+        panic!("the engine went wrong")
+    }));
+    let ended = reporting.await.expect_err("the fault still ends it");
+    assert!(ended.is_panic());
+    assert_eq!(service.told(), [StopReason::Fault]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_services_shutdown_stops_the_engine_and_tells_nothing_back() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let control = control_path_in(&dir);
+    let service = Arc::new(FakeService::default());
+    let task = tokio::spawn(serve(
+        params(
+            Arc::new(VirtualPlatform::new()),
+            Os::Windows,
+            dir.path().to_path_buf(),
+            control.clone(),
+            "Session engine".into(),
+            "1.2.3".into(),
+            ComputerMode::Service,
+        ),
+        service.clone(),
+        std::future::pending(),
+    ));
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists()).await;
+    assert!(!task.is_finished());
+    service.say_shutdown();
+    task.await.unwrap();
+    assert!(!served.exists(), "the engine shut down");
+    assert!(service.told().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_session_engine_asked_to_stop_by_the_system_tells_the_service_it_quit() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let control = control_path_in(&dir);
+    let service = Arc::new(FakeService::default());
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(serve(
+        params(
+            Arc::new(VirtualPlatform::new()),
+            Os::Windows,
+            dir.path().to_path_buf(),
+            control.clone(),
+            "Session engine".into(),
+            "1.2.3".into(),
+            ComputerMode::Service,
+        ),
+        service.clone(),
+        async {
+            stopped.await.unwrap();
+        },
+    ));
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists()).await;
+    stop.send(()).unwrap();
+    task.await.unwrap();
+    assert!(!served.exists());
+    assert_eq!(service.told(), [StopReason::Quit]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_service_that_went_without_a_word_leaves_the_engine_running() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let control = control_path_in(&dir);
+    let service = Arc::new(FakeService {
+        forget: true,
+        ..FakeService::default()
+    });
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let task = tokio::spawn(serve(
+        params(
+            Arc::new(VirtualPlatform::new()),
+            Os::Windows,
+            dir.path().to_path_buf(),
+            control.clone(),
+            "Session engine".into(),
+            "1.2.3".into(),
+            ComputerMode::Service,
+        ),
+        service.clone(),
+        async {
+            stopped.await.unwrap();
+        },
+    ));
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists()).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert!(!task.is_finished(), "still running");
+    stop.send(()).unwrap();
+    task.await.unwrap();
+    assert_eq!(service.told(), [StopReason::Quit]);
 }

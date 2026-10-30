@@ -219,6 +219,12 @@ impl WinPlatform {
         platform.service = Some(Arc::new(client));
         platform
     }
+
+    /// The service client this backend was built with, for the session
+    /// engine's own requests (`on_shutdown`, `stopping`).
+    pub fn service_client(&self) -> Option<&service_client::ServiceClient> {
+        self.service.as_deref()
+    }
 }
 
 impl Default for WinPlatform {
