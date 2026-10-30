@@ -316,3 +316,32 @@ async fn a_left_click_up_toggles_pause_and_nothing_else_does() {
     handle_tray_event(&control, &click(MouseButton::Left, MouseButtonState::Up));
     eventually_paused(&control, false).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn while_the_engine_is_away_the_tray_says_mouser_isnt_ready_and_comes_back_after() {
+    let f = fixture().await;
+    let status = status_of(&f.host).await;
+    let port = FakeTray::default();
+    let controller = TrayController::new(Box::new(port.clone()), Os::Linux, Appearance::Light);
+    let not_ready = |appearance| crate::tray_not_ready::view(Os::Linux, appearance);
+    // UI mode before the engine is up; a theme change then is no bug.
+    controller.update_ready(false);
+    controller.update_appearance(Appearance::Dark);
+    // Ready again with no status yet: the next status draws the tray.
+    controller.update_ready(true);
+    controller.update_status(status.clone());
+    // The engine goes and comes back: the last status again.
+    controller.update_ready(false);
+    controller.update_ready(true);
+    let views = port.views.lock().unwrap();
+    assert_eq!(
+        *views,
+        [
+            not_ready(Appearance::Light),
+            not_ready(Appearance::Dark),
+            view(&status, Os::Linux, Appearance::Dark, None),
+            not_ready(Appearance::Dark),
+            view(&status, Os::Linux, Appearance::Dark, None),
+        ]
+    );
+}

@@ -248,6 +248,8 @@ struct Last {
     status: Option<Status>,
     appearance: Appearance,
     update: Option<UpdateResult>,
+    /// Whether the engine is there; in UI mode it can be away (T533, T534).
+    ready: bool,
 }
 
 /// Keeps the tray current: the last status and the system appearance.
@@ -266,6 +268,7 @@ impl TrayController {
                 status: None,
                 appearance,
                 update: None,
+                ready: true,
             }),
         }
     }
@@ -297,7 +300,23 @@ impl TrayController {
         }
     }
 
+    /// In UI mode, whether the session engine is there: while it is not, the
+    /// tray says Mouser isn't ready; once it is, the last status is shown
+    /// again (the next one, when none came yet).
+    pub fn update_ready(&self, ready: bool) {
+        let mut last = self.last.lock().unwrap();
+        last.ready = ready;
+        if !ready || last.status.is_some() {
+            self.redraw(&last);
+        }
+    }
+
     fn redraw(&self, last: &Last) {
+        if !last.ready {
+            self.port
+                .apply(&crate::tray_not_ready::view(self.os, last.appearance));
+            return;
+        }
         let status = last
             .status
             .as_ref()
