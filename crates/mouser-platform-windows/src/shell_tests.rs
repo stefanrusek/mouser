@@ -91,3 +91,13 @@ fn a_running_service_is_running_and_one_that_is_not_there_is_not() {
     assert!(service_running("EventLog"));
     assert!(!service_running("NoSuchMouserServiceForTests"));
 }
+
+#[test]
+fn a_process_run_by_a_user_is_not_local_system() {
+    assert_eq!(LOCAL_SYSTEM, "S-1-5-18");
+    assert_eq!(
+        this_process_is_local_system(),
+        crate::secrets::current_user_sid() == LOCAL_SYSTEM
+    );
+    assert!(!this_process_is_local_system());
+}

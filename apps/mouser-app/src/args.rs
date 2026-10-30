@@ -8,7 +8,7 @@ pub type Guard = fn(u32) -> ExitCode;
 
 /// The cursor guard of this system (research V5): only Windows has one.
 #[cfg(windows)]
-pub const GUARD: Option<Guard> = Some(mouser_platform_windows::cursor_guard::run);
+pub const GUARD: Option<Guard> = Some(crate::guard_log::run);
 /// The cursor guard of this system (research V5): only Windows has one.
 #[cfg(not(windows))]
 pub const GUARD: Option<Guard> = None;
