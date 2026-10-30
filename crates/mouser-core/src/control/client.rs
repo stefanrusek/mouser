@@ -47,56 +47,58 @@ pub(crate) async fn open(path: &Path) -> std::io::Result<Box<dyn Duplex>> {
     }
 }
 
+/// What a call says when the engine went away before it answered.
+pub const GONE: &str = "the engine closed the connection";
+
 impl ControlClient {
     /// Connect to the control socket (Unix) or pipe (Windows) at `path`.
     pub async fn connect(path: &Path) -> std::io::Result<Self> {
-        let (read, write) = tokio::io::split(open(path).await?);
-        Ok(Self {
+        Ok(Self::over(open(path).await?))
+    }
+
+    /// A client on an open `connection` to an engine.
+    pub(crate) fn over(connection: Box<dyn Duplex>) -> Self {
+        let (read, write) = tokio::io::split(connection);
+        Self {
             read: Box::new(read),
             write: Box::new(write),
             buf: Vec::new(),
             next_id: 0,
             notifications: VecDeque::new(),
             chunks: Vec::new(),
-        })
+        }
     }
 
-    /// The next line from the server; cancellation safe. `None` once closed.
+    /// The next line from the server; cancellation safe. `None` once closed,
+    /// or once the connection fails, which is the same to the caller.
     async fn next_line(&mut self) -> Option<String> {
         loop {
             if let Some(end) = self.buf.iter().position(|b| *b == b'\n') {
                 let line: Vec<u8> = self.buf.drain(..=end).collect();
                 return Some(String::from_utf8(line).expect("server sends UTF-8"));
             }
-            if self
-                .read
-                .read_buf(&mut self.buf)
-                .await
-                .expect("control connection readable")
-                == 0
-            {
+            if self.read.read_buf(&mut self.buf).await.unwrap_or(0) == 0 {
                 return None;
             }
         }
     }
 
     /// Call `method`; notifications that arrive meanwhile are kept for
-    /// [`next_notification`](Self::next_notification).
+    /// [`next_notification`](Self::next_notification). An engine that went
+    /// away before it answered is an internal error, [`GONE`].
     pub async fn call(&mut self, method: Method, params: Option<Value>) -> Result<Value, RpcError> {
         self.next_id += 1;
         let id = self.next_id;
         let mut line =
             serde_json::to_string(&Request::new(id, method, params)).expect("request serializes");
         line.push('\n');
-        self.write
-            .write_all(line.as_bytes())
-            .await
-            .expect("control connection writable");
+        if self.write.write_all(line.as_bytes()).await.is_err() {
+            return Err(super::internal(GONE));
+        }
         loop {
-            let line = self
-                .next_line()
-                .await
-                .expect("server answers before closing");
+            let Some(line) = self.next_line().await else {
+                return Err(super::internal(GONE));
+            };
             let value: Value = serde_json::from_str(&line).expect("server sends JSON");
             if value.get("id").is_none() {
                 self.keep(value);

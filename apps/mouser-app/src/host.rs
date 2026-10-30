@@ -159,14 +159,10 @@ impl Host {
     /// control API is at `path` (the session engine, behind the service
     /// pipe), on this computer's `platform`. Its own log, in `log_dir`, is
     /// off: the session engine logs.
-    pub async fn connect(
-        path: &Path,
-        platform: Arc<dyn Platform>,
-        log_dir: &Path,
-    ) -> std::io::Result<Self> {
-        let remote = Remote::connect(path).await?;
+    pub fn connect(path: &Path, platform: Arc<dyn Platform>, log_dir: &Path) -> Self {
+        let remote = Remote::connect(path);
         let nobody = "00".repeat(16).parse().expect("an all-zero id");
-        Ok(Self {
+        Self {
             control: Control::Remote(remote),
             log: Arc::new(Log::new(log_dir, nobody, String::new(), false, 1)),
             engine: Mutex::new(None),
@@ -175,7 +171,7 @@ impl Host {
             arranger_edge: Mutex::new(None),
             toasts: Mutex::new(Toasts::default()),
             names: Mutex::new(Names::new()),
-        })
+        }
     }
 
     /// The control API: in-process, or the session engine's in UI mode.
@@ -223,6 +219,15 @@ impl Control {
         }
     }
 
+    /// Whether the engine is there to talk to: always for an app's own
+    /// engine; in UI mode, as the session engine comes and goes.
+    pub fn ready(&self) -> tokio::sync::watch::Receiver<bool> {
+        match self {
+            Control::Local(_) => tokio::sync::watch::channel(true).1,
+            Control::Remote(remote) => remote.ready(),
+        }
+    }
+
     pub fn events(&self) -> tokio::sync::broadcast::Receiver<EngineEvent> {
         match self {
             Control::Local(local) => local.events(),
@@ -251,57 +256,85 @@ impl Control {
 /// What the session engine cannot do for the UI over the control API yet.
 pub const NOT_YET: &str = "not available while Mouser runs as a service yet";
 
+/// What a call says while the session engine is not there.
+pub const NOT_READY: &str = "the session engine is not ready";
+
+/// How long the UI waits before looking for the session engine again: the
+/// service starts it again after a user switch or a service restart.
+const RETRY: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Every topic, which the UI hears all of.
+const TOPICS: [Topic; 5] = [
+    Topic::Config,
+    Topic::Problem,
+    Topic::JoinRequest,
+    Topic::Transfer,
+    Topic::Status,
+];
+
 /// A control-API client of the session engine: one connection for calls,
-/// one that hears every notification. When the engine goes away its
-/// notifications end (`Closed`), as an in-process engine's do.
+/// one that hears every notification. It survives the engine going away and
+/// coming back (a user switch, a service restart): while the engine is not
+/// there it is not ready and calls say so, and it connects again, and hears
+/// every topic again, once the engine is back (T533, T534).
 #[derive(Clone)]
 pub struct Remote {
-    calls: Arc<tokio::sync::Mutex<ControlClient>>,
-    notes: tokio::sync::broadcast::WeakSender<Notification>,
+    shared: Arc<Shared>,
+}
+
+struct Shared {
+    path: PathBuf,
+    calls: tokio::sync::Mutex<Option<ControlClient>>,
+    notes: tokio::sync::broadcast::Sender<Notification>,
     events: tokio::sync::broadcast::Sender<EngineEvent>,
+    ready: tokio::sync::watch::Sender<bool>,
 }
 
 impl Remote {
-    /// Connects to the control API at `path`.
-    pub async fn connect(path: &Path) -> std::io::Result<Remote> {
-        let calls = ControlClient::connect(path).await?;
-        let mut listening = ControlClient::connect(path).await?;
-        let topics = vec![
-            Topic::Config,
-            Topic::Problem,
-            Topic::JoinRequest,
-            Topic::Transfer,
-            Topic::Status,
-        ];
-        listening
-            .subscribe(topics)
-            .await
-            .expect("the engine takes a subscription to its own topics");
-        let (heard, _) = tokio::sync::broadcast::channel(256);
-        let notes = heard.downgrade();
-        tauri::async_runtime::spawn(async move {
-            while let Some(note) = listening.next_notification().await {
-                // Nobody listening just now is fine.
-                let _ = heard.send(note);
-            }
-        });
-        Ok(Remote {
-            calls: Arc::new(tokio::sync::Mutex::new(calls)),
-            notes,
+    /// The client of the control API at `path`, connecting when the engine
+    /// is there; never an error.
+    pub fn connect(path: &Path) -> Remote {
+        let shared = Arc::new(Shared {
+            path: path.to_path_buf(),
+            calls: tokio::sync::Mutex::new(None),
+            notes: tokio::sync::broadcast::channel(256).0,
             events: tokio::sync::broadcast::channel(1).0,
-        })
+            ready: tokio::sync::watch::channel(false).0,
+        });
+        tauri::async_runtime::spawn(listen(Arc::downgrade(&shared)));
+        Remote { shared }
+    }
+
+    /// Whether the session engine is there; it changes as it comes and goes.
+    pub fn ready(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.shared.ready.subscribe()
     }
 
     async fn call(&self, method: Method, params: Option<Value>) -> Result<Value, RpcError> {
-        self.calls.lock().await.call(method, params).await
+        let mut calls = self.shared.calls.lock().await;
+        if calls.is_none() {
+            *calls = ControlClient::connect(&self.shared.path).await.ok();
+        }
+        let Some(client) = calls.as_mut() else {
+            return Err(RpcError {
+                code: -32603,
+                message: NOT_READY.into(),
+                data: None,
+            });
+        };
+        let result = client.call(method, params).await;
+        if result
+            .as_ref()
+            .is_err_and(|e| e.message == mouser_core::control::client::GONE)
+        {
+            // Connected again on the next call.
+            *calls = None;
+        }
+        result
     }
 
     fn notifications(&self) -> tokio::sync::broadcast::Receiver<Notification> {
-        match self.notes.upgrade() {
-            Some(notes) => notes.subscribe(),
-            // The engine has gone: nothing more will come.
-            None => tokio::sync::broadcast::channel(1).1,
-        }
+        self.shared.notes.subscribe()
     }
 
     // v2: replaced by T532 (problem.fix over the control API).
@@ -317,10 +350,36 @@ impl Remote {
     // v2: replaced by T532 (the engine_event topic): no engine event reaches
     // this app yet.
     fn events(&self) -> tokio::sync::broadcast::Receiver<EngineEvent> {
-        self.events.subscribe()
+        self.shared.events.subscribe()
     }
 }
 
+/// Hears the session engine's notifications for as long as the client is
+/// kept: connects and subscribes to every topic, hands each notification on,
+/// and when the engine goes, waits for it to come back.
+async fn listen(shared: std::sync::Weak<Shared>) {
+    while let Some(path) = shared.upgrade().map(|s| s.path.clone()) {
+        if let Ok(mut client) = ControlClient::connect(&path).await
+            && client.subscribe(TOPICS.to_vec()).await.is_ok()
+        {
+            set_ready(&shared, true);
+            while let Some(note) = client.next_notification().await {
+                if let Some(shared) = shared.upgrade() {
+                    // Nobody listening just now is fine.
+                    let _ = shared.notes.send(note);
+                }
+            }
+            set_ready(&shared, false);
+        }
+        tokio::time::sleep(RETRY).await;
+    }
+}
+
+fn set_ready(shared: &std::sync::Weak<Shared>, ready: bool) {
+    if let Some(shared) = shared.upgrade() {
+        shared.ready.send_replace(ready);
+    }
+}
 impl crate::commands::LogsLink for Remote {
     async fn status(&self) -> Result<Status, RpcError> {
         let status = self.call(Method::Status, None).await?;
@@ -333,13 +392,21 @@ impl crate::commands::LogsLink for Remote {
     }
 
     async fn collect_stream(&self) -> Result<crate::commands::StreamedBundle, RpcError> {
-        let mut client = self.calls.lock().await;
-        let result = client
+        // Through call, so a missing engine is reported as for any call.
+        let result = self
             .call(Method::LogsCollectStream, Some(serde_json::json!({})))
             .await?;
+        let chunks = self
+            .shared
+            .calls
+            .lock()
+            .await
+            .as_mut()
+            .map(ControlClient::take_chunks)
+            .unwrap_or_default();
         Ok(crate::commands::StreamedBundle {
             result: serde_json::from_value(result).expect("result matches its schema"),
-            chunks: client.take_chunks(),
+            chunks,
         })
     }
 }

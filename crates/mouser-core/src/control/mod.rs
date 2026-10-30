@@ -13,6 +13,8 @@ pub mod tray_connection;
 pub mod update;
 
 #[cfg(test)]
+mod client_tests;
+#[cfg(test)]
 mod config_api_tests;
 #[cfg(test)]
 mod elevation_tests;
