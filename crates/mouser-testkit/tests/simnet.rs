@@ -214,3 +214,38 @@ async fn waking_a_node_without_a_platform_is_fine() {
     a.node.wake();
     assert!(!a.node.is_asleep());
 }
+
+/// On Windows a socket that sent to a closed loopback port gets a connection
+/// reset from its next receive. That must not end the relay direction.
+#[tokio::test]
+async fn relay_survives_a_send_to_a_closed_port() {
+    let net = SimNet::new();
+    let (a, b) = (app(&net, "a").await, app(&net, "b").await);
+    let to_b = a.node.route_to(&b.node);
+
+    a.socket.send_to(b"first", to_b).await.unwrap();
+    let (_, relay_src) = recv(&b.socket, WAIT).await.unwrap();
+
+    // b goes away; the relay's send to its closed port provokes the reset.
+    let b_addr = b.node.addr();
+    drop(b.socket);
+    a.socket.send_to(b"into the void", to_b).await.unwrap();
+    // Wait for a datagram that only arrives after the relay's tasks have run:
+    // it goes through another relay link, so this task really parks, the I/O
+    // driver wakes the relay task holding "into the void" first (its socket
+    // became readable first), and that task sends while b is gone.
+    let d = app(&net, "d").await;
+    let to_d = a.node.route_to(&d.node);
+    a.socket.send_to(b"sync", to_d).await.unwrap();
+    recv(&d.socket, WAIT).await.unwrap();
+
+    // b comes back on the same address; both directions still work.
+    let b_socket = UdpSocket::bind(b_addr).await.unwrap();
+    a.socket.send_to(b"again", to_b).await.unwrap();
+    let (data, _) = recv(&b_socket, WAIT).await.unwrap();
+    assert_eq!(data, b"again");
+    b_socket.send_to(b"reply", relay_src).await.unwrap();
+    let (data, from) = recv(&a.socket, WAIT).await.unwrap();
+    assert_eq!(data, b"reply");
+    assert_eq!(from, to_b);
+}
