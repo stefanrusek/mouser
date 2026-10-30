@@ -21,6 +21,7 @@ pub mod platform_select;
 pub mod portable;
 pub mod quickjump_windows;
 pub mod tray;
+pub mod tray_not_ready;
 pub mod tray_sas;
 #[cfg(target_os = "windows")]
 pub mod ui_mode;
@@ -70,6 +71,8 @@ mod quickjump_windows_tests;
 mod support_tests;
 #[cfg(test)]
 mod tray_icons_tests;
+#[cfg(test)]
+mod tray_not_ready_tests;
 #[cfg(test)]
 mod tray_sas_tests;
 #[cfg(test)]

@@ -233,14 +233,30 @@ pub(crate) mod remote {
     /// A UI-mode host talking to the engine of `f` (standing in for the
     /// session engine behind the service pipe).
     pub(crate) async fn ui_host(f: &crate::support_tests::Fixture) -> Host {
+        ui_host_at(&control_path_in(&f._dir)).await
+    }
+
+    /// A UI-mode host on the control API at `path`, once it is ready when
+    /// an engine is there.
+    pub(crate) async fn ui_host_at(path: &std::path::Path) -> Host {
         let log_dir = tempfile::tempdir().unwrap();
-        Host::connect(
-            &control_path_in(&f._dir),
-            Arc::new(VirtualPlatform::new()),
-            log_dir.path(),
-        )
+        let ui = Host::connect(path, Arc::new(VirtualPlatform::new()), log_dir.path());
+        if path.exists() {
+            until_ready(&ui, true).await;
+        }
+        ui
+    }
+
+    /// Waits until `ui` is `ready` (or not).
+    pub(crate) async fn until_ready(ui: &Host, ready: bool) {
+        let mut seen = ui.control().ready();
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while *seen.borrow_and_update() != ready {
+                seen.changed().await.unwrap();
+            }
+        })
         .await
-        .expect("the engine's control API is reachable")
+        .unwrap_or_else(|_| panic!("never ready = {ready}"));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -333,24 +349,99 @@ async fn a_local_host_hands_out_its_engines_events() {
     ));
 }
 
+/// An engine at `path` with a config of its own in `dir`.
+async fn engine_at(path: &std::path::Path, dir: &std::path::Path) -> crate::host::Host {
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(crate::support_tests::free_port());
+    mouser_core::config::save(dir, &config);
+    crate::host::Host::start(
+        std::sync::Arc::new(mouser_testkit::VirtualPlatform::new()),
+        dir.to_path_buf(),
+        path.to_path_buf(),
+        "Session engine".into(),
+        "1.2.3".into(),
+        mouser_proto::wire::ComputerMode::Installed,
+        crate::host::Updates::default(),
+    )
+    .await
+}
+
+/// The first `status` notification `notes` hears after `trigger` runs.
+async fn a_status_after(
+    notes: &mut tokio::sync::broadcast::Receiver<mouser_proto::control::Notification>,
+    trigger: impl std::future::Future<Output = ()>,
+) {
+    trigger.await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while notes.recv().await.unwrap().method != mouser_proto::control::Topic::Status {}
+    })
+    .await
+    .expect("a status notification arrives");
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn when_the_engine_behind_the_pipe_goes_the_ui_hears_no_more() {
+async fn the_ui_survives_the_engine_behind_the_pipe_restarting() {
+    use mouser_proto::control::Method;
+    use serde_json::json;
     let f = crate::support_tests::fixture().await;
+    let path = crate::support_tests::control_path_in(&f._dir);
     let ui = remote::ui_host(&f).await;
     let mut notes = ui.control().notifications();
+    // The UI was talking to it when...
+    assert!(ui.control().call(Method::Status, None).await.is_ok());
+    // ...a user switch: the service stops the engine...
     f.host.shutdown().await;
-    let ended = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        loop {
-            if let Err(tokio::sync::broadcast::error::RecvError::Closed) = notes.recv().await {
-                return;
-            }
-        }
+    remote::until_ready(&ui, false).await;
+    let gone = ui.control().call(Method::Status, None).await.unwrap_err();
+    assert_eq!(gone.message, mouser_core::control::client::GONE);
+    let away = ui.control().call(Method::Status, None).await.unwrap_err();
+    assert_eq!(away.message, crate::host::NOT_READY);
+    // ...and starts it again on the same pipe.
+    let dir = tempfile::tempdir().unwrap();
+    let again = engine_at(&path, dir.path()).await;
+    remote::until_ready(&ui, true).await;
+    let status = ui.control().call(Method::Status, None).await.unwrap();
+    let own = again.control().call(Method::Status, None).await.unwrap();
+    assert_eq!(
+        status["computer"]["id"], own["computer"]["id"],
+        "the new engine"
+    );
+    // It hears every topic again.
+    a_status_after(&mut notes, async {
+        again
+            .control()
+            .call(Method::LoggingSet, Some(json!({"enabled": true})))
+            .await
+            .unwrap();
     })
     .await;
-    assert!(ended.is_ok(), "its notifications ended");
-    // Asked afterwards, there is nothing to hear either.
-    assert!(matches!(
-        ui.control().notifications().recv().await,
-        Err(tokio::sync::broadcast::error::RecvError::Closed)
-    ));
+    again.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ui_started_before_the_engine_connects_once_it_is_there() {
+    use mouser_proto::control::Method;
+    let dir = tempfile::tempdir().unwrap();
+    let path = crate::support_tests::control_path_in(&dir);
+    // The service runs, its engine's pipe is not up yet: no crash.
+    let ui = remote::ui_host_at(&path).await;
+    assert!(!*ui.control().ready().borrow());
+    let early = ui.control().call(Method::Status, None).await.unwrap_err();
+    assert_eq!(early.message, crate::host::NOT_READY);
+    let engine_dir = tempfile::tempdir().unwrap();
+    let engine = engine_at(&path, engine_dir.path()).await;
+    remote::until_ready(&ui, true).await;
+    assert!(ui.control().call(Method::Status, None).await.is_ok());
+    engine.shutdown().await;
+}
+
+#[test]
+fn an_apps_own_engine_is_always_ready() {
+    let (handle, ready) = tauri::async_runtime::block_on(async {
+        let f = crate::support_tests::fixture().await;
+        let ready = *f.host.control().ready().borrow();
+        (f, ready)
+    });
+    drop(handle);
+    assert!(ready);
 }

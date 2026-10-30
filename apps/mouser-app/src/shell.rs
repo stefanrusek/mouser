@@ -262,12 +262,13 @@ pub fn run() {
             let ui_mode = false;
             let config_dir = paths.dir.clone();
             let host = if ui_mode {
-                tauri::async_runtime::block_on(Host::connect(
+                // Connects when the session engine is there, and again after it
+                // restarts; until then the tray says Mouser isn't ready.
+                Host::connect(
                     std::path::Path::new(mouser_core::control::SERVICE_PIPE),
                     platform_select::create(),
                     &paths.dir,
-                ))
-                .expect("the session engine's control API is reachable")
+                )
             } else {
                 let mut params = portable::engine_params(
                     portable::create_platform(&paths),
