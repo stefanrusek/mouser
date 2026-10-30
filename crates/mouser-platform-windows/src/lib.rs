@@ -29,6 +29,7 @@ mod foreground_hook;
 mod fullscreen;
 mod inject;
 mod keymap;
+mod limitations;
 mod net;
 mod netwatch;
 mod permissions;
@@ -219,16 +220,8 @@ pub(crate) fn limitation(capability: Capability, text: &str) -> Limitation {
 
 impl Platform for WinPlatform {
     fn info(&self) -> PlatformInfo {
-        let mut limitations = vec![
-            limitation(
-                Capability::Inject,
-                "Some games and remote-desktop apps ignore Mouser's input on this PC.",
-            ),
-            limitation(
-                Capability::SecureAttention,
-                "Ctrl-Alt-Del can't be sent to this PC yet.",
-            ),
-        ];
+        let mode = limitations::Mode::of_this_pc(self.portable.is_some(), false);
+        let mut limitations = limitations::limitations(mode);
         limitations.extend(
             self.portable
                 .iter()
@@ -371,6 +364,8 @@ mod inject_tests;
 mod keymap_tests;
 #[cfg(test)]
 mod lib_tests;
+#[cfg(test)]
+mod limitations_tests;
 #[cfg(test)]
 mod net_tests;
 #[cfg(test)]
