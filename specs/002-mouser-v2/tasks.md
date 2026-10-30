@@ -576,11 +576,11 @@ Package `crates/mouser-platform-windows` (`windows` crate 0.62.2). Gate per phas
 
 #### Phase 21: US3-platform-windows — As a desk owner, I want one Mouser window where I can find everything (P2)
 
-- [ ] T408 [US3-platform-windows] Write the acceptance runner `crates/mouser-platform-windows/tests/acc_v2_us3_watchdog.rs` (cucumber 0.23, `[[test]] name = "acc_v2_us3_watchdog", harness = false` in `crates/mouser-platform-windows/Cargo.toml`, `fail_on_skipped()`) and steps `crates/mouser-platform-windows/tests/steps/v2_us3_watchdog.rs` for `tests/features/v2_us3_watchdog.feature`: a real `WinPlatform` capture runs, the step installs a low-level hook after Mouser's that swallows probe-tagged events, real input keeps arriving (`SendInput` from the step), and over several watchdog cycles `watch_problems` reports nothing
-- [ ] T409 [P] [US3-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/watchdog_tests.rs`: with probes swallowed by another LL hook installed after Mouser's (the P1 `swallow` mode modelled through `HookApi`) while real input keeps arriving, no "lost its hold" (`LOST_HOLD`) problem is reported through `watch_problems`; it is reported only after real-input misses (Story 3 sc. 16)
-- [ ] T410 [US3-platform-windows] Report `LOST_HOLD` only after real-input misses in `crates/mouser-platform-windows/src/watchdog.rs`
-- [ ] T411 [US3-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
-- [ ] T412 [US3-platform-windows] Commit: phase boundary "US3-platform-windows" (5.3)
+- [X] T408 [US3-platform-windows] Write the acceptance runner `crates/mouser-platform-windows/tests/acc_v2_us3_watchdog.rs` (cucumber 0.23, `[[test]] name = "acc_v2_us3_watchdog", harness = false` in `crates/mouser-platform-windows/Cargo.toml`, `fail_on_skipped()`) and steps `crates/mouser-platform-windows/tests/steps/v2_us3_watchdog.rs` for `tests/features/v2_us3_watchdog.feature`: a real `WinPlatform` capture runs, the step installs a low-level hook after Mouser's that swallows probe-tagged events, real input keeps arriving (`SendInput` from the step), and over several watchdog cycles `watch_problems` reports nothing
+- [X] T409 [P] [US3-platform-windows] Write unit tests in `crates/mouser-platform-windows/src/watchdog_tests.rs`: with probes swallowed by another LL hook installed after Mouser's (the P1 `swallow` mode modelled through `HookApi`) while real input keeps arriving, no "lost its hold" (`LOST_HOLD`) problem is reported through `watch_problems`; it is reported only after real-input misses (Story 3 sc. 16)
+- [X] T410 [US3-platform-windows] Report `LOST_HOLD` only after real-input misses in `crates/mouser-platform-windows/src/watchdog.rs`
+- [X] T411 [US3-platform-windows] Gate: `cargo xtask gate --packages mouser-platform-windows --lane platform-windows` on the Windows runner
+- [X] T412 [US3-platform-windows] Commit: phase boundary "US3-platform-windows" (5.3)
 
 #### Phase 22: US5-platform-windows — As a desk user, I want to control a Windows computer at its login screen, elevation prompts and administrator applications (P2)
 
