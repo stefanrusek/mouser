@@ -131,18 +131,23 @@ fn a_portable_run_writes_nothing_to_the_registry_and_cannot_autostart() {
 }
 
 #[test]
-fn a_portable_run_leaves_the_portable_login_screen_limitation_to_core() {
+fn a_portable_run_says_what_portable_mouser_cannot_control() {
     let root = tempfile::tempdir().unwrap();
     let portable =
         WinPlatform::portable_with_settings(settings("limits", root.path()), root.path());
-    // Core adds "Portable mode cannot control the login screen..." for every
-    // portable run; the platform declares only what every Windows run has.
     let said = text_of(&portable, Capability::SecureAttention);
-    assert_eq!(said, ["Ctrl-Alt-Del can't be sent to this PC yet."]);
+    assert_eq!(said.len(), 1);
+    assert!(
+        said[0].starts_with("Portable Mouser can't control the login screen"),
+        "{said:?}"
+    );
     assert_eq!(text_of(&portable, Capability::Inject).len(), 1);
 
     let installed = WinPlatform::with_settings(settings("limits", root.path()));
-    assert_eq!(text_of(&installed, Capability::SecureAttention), said);
+    assert_eq!(
+        text_of(&installed, Capability::SecureAttention),
+        ["Ctrl-Alt-Del can't be sent to this PC yet."]
+    );
 }
 
 /// foundational-notes.md: on a volume with file permissions only the current
