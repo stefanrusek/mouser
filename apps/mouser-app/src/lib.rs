@@ -6,6 +6,8 @@ pub mod bundle_save;
 pub mod commands;
 #[cfg(target_os = "windows")]
 pub mod diagnostics;
+#[cfg(target_os = "windows")]
+pub mod elevation;
 pub mod exit;
 pub mod headless;
 pub mod host;
@@ -38,6 +40,8 @@ pub(crate) mod commands_tests;
 mod contract_navigation_tests;
 #[cfg(all(test, target_os = "windows"))]
 mod diagnostics_tests;
+#[cfg(all(test, target_os = "windows"))]
+mod elevation_tests;
 #[cfg(test)]
 mod exit_tests;
 #[cfg(test)]

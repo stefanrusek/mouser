@@ -12,10 +12,34 @@ fn guard_first(args: &[String]) -> Option<std::process::ExitCode> {
     mouser_app::args::first(args, os, mouser_app::args::GUARD)
 }
 
+/// On Windows, before Tauri: waits for the instance a `--wait-for <pid>`
+/// launch replaces, and ends a second launch that is not elevated while an
+/// elevated portable instance runs (FR-005; probe P3). Whether to end here.
+#[cfg(target_os = "windows")]
+fn ends_before_tauri(args: &[String]) -> bool {
+    let paths = mouser_core::paths::Paths::resolve(
+        &std::env::current_exe().expect("the executable has a path"),
+        mouser_app::platform_select::current_os(),
+        &mouser_core::paths::Env::from_process(),
+    );
+    let elevated = mouser_platform_windows::shell::this_process_elevated();
+    mouser_app::elevation::before_tauri(args, &paths, elevated, &mouser_app::elevation::System)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ends_before_tauri(_args: &[String]) -> bool {
+    false
+}
+
+/// What a launch does before anything else; the exit code when it ends there.
+fn first_steps(args: &[String]) -> Option<std::process::ExitCode> {
+    guard_first(args).or_else(|| ends_before_tauri(args).then_some(std::process::ExitCode::SUCCESS))
+}
+
 #[cfg(feature = "gui")]
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    if let Some(code) = guard_first(&args) {
+    if let Some(code) = first_steps(&args) {
         return code;
     }
     #[cfg(target_os = "macos")]
@@ -40,7 +64,7 @@ fn main() -> std::process::ExitCode {
 #[cfg(not(feature = "gui"))]
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    if let Some(code) = guard_first(&args) {
+    if let Some(code) = first_steps(&args) {
         return code;
     }
     eprintln!(

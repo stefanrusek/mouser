@@ -37,6 +37,7 @@ mod permissions;
 mod portable;
 mod secrets;
 pub mod service_client;
+pub mod shell;
 mod uipi;
 mod vfiles;
 mod watchdog;
@@ -399,6 +400,8 @@ mod portable_tests;
 mod secrets_tests;
 #[cfg(test)]
 mod service_client_tests;
+#[cfg(test)]
+mod shell_tests;
 
 #[cfg(test)]
 mod uipi_tests;

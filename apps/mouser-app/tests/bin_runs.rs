@@ -19,6 +19,29 @@ fn the_cursor_guard_flag_is_handled_before_anything_else() {
     );
 }
 
+/// `--wait-for <pid>` waits for that process to end before anything else
+/// starts, so the instance it replaces has let go of the single-instance
+/// check (FR-005; probe P3 scenario A).
+#[cfg(all(target_os = "windows", not(feature = "gui")))]
+#[test]
+fn wait_for_holds_the_launch_until_that_process_has_ended() {
+    use std::process::{Command, Stdio};
+    let mut replaced = Command::new("ping")
+        .args(["-n", "3", "127.0.0.1"])
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_mouser-app"))
+        .args(["--wait-for", &replaced.id().to_string()])
+        .output()
+        .unwrap();
+    // Ended before the launch went on to its no-window message.
+    let ended_first = replaced.try_wait().unwrap().is_some();
+    replaced.wait().unwrap();
+    assert!(ended_first, "the launch waited for the process it replaces");
+    assert_eq!(out.status.code(), Some(2));
+}
+
 #[cfg(not(feature = "gui"))]
 #[test]
 fn binary_without_the_gui_feature_says_so_and_fails() {
