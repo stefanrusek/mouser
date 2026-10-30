@@ -1,19 +1,19 @@
 # Mouser — Technical Decisions
 
-Decided 2026-10-21; updated for the as-built v1 (below the table). See [product-requirements.md](product-requirements.md) for what is being built and what v1 delivers.
+Decided 2026-10-21; updated for the as-built v1 and, further down, the as-built v2 work (feature 002, still in progress; the version is 0.2.x until the 0.3.0 release). See [product-requirements.md](product-requirements.md) for what is being built and what v1 delivers.
 
 | Area | Decision | Notes |
 |---|---|---|
 | Core language | Rust | One engine for discovery, desks, transport, layout, clipboard, file transfer. |
 | UI | Tauri | Tray/menu bar app, display arranger, health panel; one UI codebase for macOS, Windows, Linux. |
 | Transport | QUIC | Connection migration survives Wi-Fi/Ethernet/IP changes; targets the "drops while typing" failure. |
-| Input layers | Per-OS crates behind one trait | macOS: HID-level CGEvent tap with cursor disassociation, CGEventPost injection. Windows: low-level hooks + SendInput, SYSTEM service for login/UAC/Ctrl-Alt-Del (the service is deferred to a future feature (owner decision 2026-10-22)). Linux: XInput2 + XTest on X11; InputCapture + RemoteDesktop portals with libei on GNOME/KDE Wayland. |
+| Input layers | Per-OS crates behind one trait | macOS: HID-level CGEvent tap with cursor disassociation, CGEventPost injection. Windows: low-level hooks + SendInput, SYSTEM service for login/UAC/Ctrl-Alt-Del (built in v2 as `MouserService` plus a session engine; the installer that deploys it is not built yet, see "As built in v2"). Linux: XInput2 + XTest on X11; InputCapture + RemoteDesktop portals with libei on GNOME/KDE Wayland. |
 | Linux targets | X11, GNOME Wayland, KDE Wayland | User's machines are mixed. |
 | macOS signing | Developer ID, signed and notarized | Keeps Accessibility permission across updates; required for LAN auto-update. |
 | Process | Spec-kit (SDD) pipeline | specify → plan → tasks → implement, in phases. |
 | CI | GitHub repository + GitHub Actions macOS, Windows, Ubuntu runners | Nothing links cross-OS from a Mac; owner's Windows/Linux machines run hardware probes. |
 | Test doubles | `VirtualPlatform` (OS stand-in) and `SimNet` (network impairment relay) | Real backends pass the same contract tests on their own OS runners. |
-| Signing | Apple Developer ID + notarization now; Windows Authenticode later; minisign update key | Windows builds show SmartScreen warnings until signed. |
+| Signing | Apple Developer ID + notarization now; Windows Authenticode later; minisign update key | Windows builds show SmartScreen warnings until signed; v2 ships Windows unsigned (no certificate). |
 | Updates | GitHub Releases `latest.json` (Tauri updater format), one desk computer downloads and shares over LAN | Only internet access Mouser makes. |
 | Platform limitations | Shown in the app (see product requirements) | macOS/Windows apps ignoring simulated input; Wayland portal versions; no file drag on Linux; Windows portable limits; GNOME tray. |
 
@@ -21,7 +21,7 @@ Decided 2026-10-21; updated for the as-built v1 (below the table). See [product-
 
 ### Workspace and toolchain
 
-- Rust 1.99.0 (pinned in `rust-toolchain.toml`, with rustfmt, clippy and llvm-tools-preview), edition 2024, resolver 3. Workspace version 0.1.1, MIT, `publish = false`. Rust warnings and clippy `all` are denied workspace-wide.
+- Rust 1.99.0 (pinned in `rust-toolchain.toml`, with rustfmt, clippy and llvm-tools-preview), edition 2024, resolver 3. Workspace version 0.2.8 (0.3.0 is set at the end of v2), MIT, `publish = false`. Rust warnings and clippy `all` are denied workspace-wide.
 - Node.js 22 for the UI tests and the Tauri CLI (`@tauri-apps/cli@2.12.4`).
 - Members: 3 apps, 7 crates and `xtask`. `specs/` is excluded.
 
@@ -30,13 +30,13 @@ Decided 2026-10-21; updated for the as-built v1 (below the table). See [product-
 | `crates/mouser-proto` | Wire protocol, control API types, config schema and validation, log record type. serde 1, serde_json 1, postcard 1.1.3, sha2 0.11, toml 1, ipnet 2.12. |
 | `crates/mouser-platform` | The `Platform` trait every OS backend implements, plus the conformance checks (feature `conformance`). |
 | `crates/mouser-testkit` | `VirtualPlatform` and `SimNet` test doubles (tokio 1.54). |
-| `crates/mouser-core` | The engine. quinn =0.11.12, rcgen =0.14.10, mdns-sd =0.21.6, if-addrs =0.15.0, ed25519-dalek 3, hmac 0.13, sha2 0.11, blake2 0.11, rustls-platform-verifier 0.7, tokio-rustls 0.26 (ring), tokio 1.54, postcard 1.1.3, toml 1, chrono 0.4, ipnet 2.12, libc =0.2.191 (Unix). |
+| `crates/mouser-core` | The engine. Adds `zip` =9.1.2 (deflate only) for log bundles in v2. quinn =0.11.12, rcgen =0.14.10, mdns-sd =0.21.6, if-addrs =0.15.0, ed25519-dalek 3, hmac 0.13, sha2 0.11, blake2 0.11, rustls-platform-verifier 0.7, tokio-rustls 0.26 (ring), tokio 1.54, postcard 1.1.3, toml 1, chrono 0.4, ipnet 2.12, libc =0.2.191 (Unix). |
 | `crates/mouser-platform-macos` | core-graphics =0.25.0, core-foundation =0.10.1, objc2 =0.6.5, objc2-app-kit =0.3.2, objc2-foundation =0.3.2, block2 =0.6.2, dispatch2 =0.3.1, clipboard-rs =0.3.5, security-framework =3.7.0 (Keychain), smappservice-rs =0.1.3 (login item), system-configuration =0.7.0, if-addrs =0.15.0. |
 | `crates/mouser-platform-linux` | Compiled only on Linux. ashpd =0.13.13 (portals), reis =0.7.1 (libei), zbus =5.19.0, x11rb =0.14.0 (randr, xfixes, xinput, xtest), wl-clipboard-rs =0.9.4, rustix =1.1.5, tokio =1.54.0, if-addrs =0.15.0. |
-| `crates/mouser-platform-windows` | **Empty.** No Windows backend exists. |
+| `crates/mouser-platform-windows` | The Windows backend: low-level hooks and `SendInput`, clipboard, file drag, displays, autostart, firewall watch, portable mode, DPAPI machine secret store, and in v2 the cursor guard, foreground-app readout, desktop following and the service client. `windows` and `windows-core` =0.62.2, `png` =0.18.1. |
 | `apps/mouser-app` | Tauri 2.12.5 (tray-icon, image-png, macos-private-api), plugins: updater 2.14.0, single-instance 2.5.4, notification 2.7.0, global-shortcut 2.4.1; tauri-build 2.7.4. Plain HTML/JS UI in `ui/`, tested with `node --test`. Builds without a window or tray unless the `gui` feature is on. |
 | `apps/mouser-cli` | The `mouser` command: clap 4 (derive), tokio 1.54. |
-| `apps/mouser-service-win` | A 13-line stub; the service is deferred to a future feature (owner decision 2026-10-22). |
+| `apps/mouser-service-win` | `mouser-service.exe` (v2): `MouserService` supervisor, install/uninstall, Ctrl-Alt-Del, service log. `windows-service` =0.8.1, `windows` =0.62.2. Its `winapi_sys.rs` pass-through is the one owner-approved coverage exclusion (OD-5). |
 | `xtask` | `bootstrap` and `gate`. |
 
 The pins in `Cargo.lock` are exact; versions written `=` above are also exact in `Cargo.toml`. Tests: cucumber 0.23.0 for the behaviour suites, jsonschema 0.59.0 for contract tests.
@@ -74,7 +74,7 @@ The release procedure and secrets are in [releasing.md](releasing.md).
 ### Signing state
 
 - **macOS: signed and notarized.** Developer ID Application certificate, hardened runtime, notarized and stapled in CI. This keeps Accessibility and Input Monitoring grants across updates.
-- **Windows: unsigned.** Authenticode is deferred (decision D4), so SmartScreen warns on the installer. No Windows backend exists in any case.
+- **Windows: unsigned.** Authenticode is deferred (decision D4) and v2 ships without a signature (FR-004), so SmartScreen warns; this is an accepted limitation and docs/releasing.md has the click-through. Nothing in v2 may depend on a signature, which rules out `uiAccess` manifests. Free OSS signing (SignPath Foundation) is future work.
 - **Linux: unsigned** AppImage and `.deb`. Not verified on a real machine.
 - **Update bundles:** minisign-signed on all platforms. The public key is `plugins.updater.pubkey` in `apps/mouser-app/tauri.conf.json` and is also compiled into `crates/mouser-core/src/release/pubkey.rs`. If the private key is lost, installed apps can never accept another update.
 
@@ -113,5 +113,31 @@ Plan-phase probes (in `specs/001-mouser-v1/spikes/`) and the Linux hardware prob
 - Crate defects worked around: ashpd fails to decode InputCapture `SupportedCapabilities` on GNOME 46/50 (the raw u32 is read instead); `CreateSessionOptions` is private in ashpd 0.13.13; after `ConnectToEIS` the portal rejects direct `Notify*` calls so injection goes through EIS; reis 0.7.1's event stream is not `Send` and runs on its own thread.
 - Not run: GNOME 51, Plasma 6.8, Plasma lock screen, KDE X11, real greeters, real GPUs.
 
-**Windows**: researched only (specs/001-mouser-v1/spikes/FINDINGS-windows-linux.md); no probe has run on Windows hardware and no backend exists.
+**Windows (001)**: probes 1 and 3 (hooks, injection, Explorer drag) ran in a Parallels Windows 11 ARM64 VM (`crates/mouser-platform-windows/probes/FINDINGS.md`); probe 2 (service, login screen, UAC, SendSAS) was not run. v2 probe outcomes are below.
 
+
+## As built in v2 (feature 002)
+
+Decisions V1 to V20 are in `specs/002-mouser-v2/research.md`; the code is authoritative. What was built, and what was not:
+
+**Reliability**
+- V1: every inject, warp and grab result is handled in core; a refusal skips that input and is logged (`input.refused`), never a panic. V2: core's locks never poison (`LockExt::guard`). V3: a process panic hook logs `fault`; units of work (reconcile tick, each inbound message, each input event, each control request) run under `catch_unwind`, and a caught fault forces the crossing state to Local, shows the pointer, releases everything held and logs `fault.recovered`. Unknown wire messages are skipped (`wire.unknown`).
+- V4: Quit, `RunEvent::Exit` and session end run `Engine::shutdown` (stop input, return local, show the pointer, release held input, close links with reason `quit`). V5: the cursor guard, a second `mouser-app.exe --cursor-guard <pid>` process, restores the Windows system cursors if Mouser ends without cleaning up; macOS and Linux rely on the window server and the compositor.
+- V6: `Platform::foreground_app()` returns the program name, whether it is administrator and whether it outranks Mouser (UIPI). A receiver whose foreground outranks it hands control back (reusing `Panic`, no wire change) and raises `elevated_app`; V7: the Windows backend gives up capture (`capture.lost`) when the foreground outranks Mouser, another desktop takes input, or one real miss occurs, and the watchdog counts a miss only when real input was used and the hook saw nothing, so a third-party hook swallowing Mouser's probes (ASUS AsHotplugCtrl) raises nothing. V8: `SetCursorPos` motion and VMware's own capture are left as accepted limitation 1.
+
+**Windows installed mode (built, not packaged)**
+- V9 to V11: `MouserService` (LocalSystem, automatic) is a supervisor that tracks the console session with `SERVICE_CONTROL_SESSIONCHANGE` (no polling, no timers) and starts the session engine, `mouser-app.exe --headless --machine`, with a `winlogon.exe` token on `winsta0\default`; the engine follows the input desktop on the watchdog cycle. The service and engine talk over `\\.\pipe\mouser-svc-<session>` (SYSTEM-only DACL, client PID check, postcard frames: `Hello`, `SendSas`, `SasResult`, `Shutdown`, `Stopping`). Ctrl-Alt-Del is `SendSAS(FALSE)` from the service with `SoftwareSASGeneration=1`. The user's tray app is meant to run in UI mode against the engine over `\\.\pipe\mouser-service`.
+- Not done: the per-machine NSIS installer, its hooks and the `mouser-service` sidecar packaging (T490 to T493); the control methods that let UI mode run fixes, answer file-replace prompts, show the landing flash, QuickJump and the review prompt (T530 to T532); the version bump to 0.3.0 (T494).
+- V12: the installer design is `installMode: perMachine`, hooks running `mouser-service.exe --install` and `--uninstall`, unsigned. Decided 2026-10-30: uninstalling keeps `C:\ProgramData\Mouser` so upgrades keep the desk membership. V12a: `--install` copies the installing user's desk membership to the machine scope when it can; otherwise the computer rejoins with one approval (OD-2).
+- V13: `--headless` runs on all three OSes; `--headless --machine` uses the machine folder.
+
+**Diagnostics, window, settings**
+- V14, V15: typed log events with closed field lists (`log-events.schema.json`), a `log.header` record at the start of every file, two files of `max_log_mb/2`, and `logs.collect` (zip written with `zip` 9.1.2, `LogsRequest`/`LogsPart` over the existing release-stream pattern, peers 0.3.0 or newer only). OD-7: on Windows installed the SYSTEM engine never writes a user-chosen path; it streams the zip (`logs.collect_stream`, `logs.chunk`) to the user's own Mouser or CLI.
+- V16 to V18: one `main` window with a sidebar, search and hash routes; limitations are listed under their own computer and never raised as problems; problems are keyed by (id, computer); numbers are rounded (`ui/format.js`); the tray left-click pauses and the icon shows connection state with a shape change as well as colour. V19: portable "Restart Mouser as administrator" (`ShellExecuteExW runas`, `--wait-for`, `MouserData/elevated.pid`). V17, V20: friendly names ride `DeskState`; `landing_highlight` and `command_as_control` ride the new `DeskSettings` message, gated to peers 0.3.0 or newer (`V2_SINCE`), with `PROTOCOL_VERSION` still 1.
+- New dependencies: `zip` =9.1.2 (core), `windows-service` =0.8.1 (service-win). Tauri and tray-icon are unchanged.
+
+**Probe outcomes (specs/002-mouser-v2/spikes/FINDINGS.md; Parallels Windows 11 ARM64 VM, Windows probes run there by decision OD-3)**
+- P1 `spike_uipi`: hooks keep seeing real input over an elevated foreground window (confirmed in both Parallels mouse modes); `SendInput` and `SetCursorPos` into an elevated foreground are blocked by UIPI, and `SendInput` still returns success with no error, so its return value is not a delivery signal and the elevated case must be detected from the foreground readout; the foreground program, elevation and integrity are readable for elevated user apps (system and service processes cannot be opened from medium integrity, so an unreadable process is treated as outranking Mouser); the out-of-context foreground WinEvent fires for elevated windows; the cursor guard restored the cursors in about 50 ms after its parent was terminated; real input still arrives past a hook that swallows only probe events; raw-input capture works in the VM, but Parallels defeats `ClipCursor` (the pointer must be hidden another way) and `Ctrl+Alt` is Parallels' own release chord (capture release must avoid it). A job object with kill-on-close could kill the guard with its parent; not exercised.
+- P3 `spike_elevate`: a `runas` relaunch with `--wait-for` hands over the single-instance mutex cleanly; injection from a medium process into an elevated app is silently dropped; injection from an elevated process into an elevated app is delivered; a medium second launch does see an elevated first instance's mutex (no duplicate instance), but its `WM_COPYDATA` hand-off is blocked by UIPI, hence the `elevated.pid` check in V19. Declining the UAC prompt (`ERROR_CANCELLED`) was not run because the VM auto-elevates.
+- P2 `spike_service` (cold boot, login screen, UAC, user switching, `SendSAS` policy values, clipboard and drag as SYSTEM, NSIS per-machine): not run. The service was built to the research and these items are unverified on real hardware (owner confirmations rows 4 to 8).
+- P4 `spike_tray_click` (left versus right tray click): not run. The tray code was written from the tray-icon 0.25.1 documentation; owner confirmation rows 1, 2 and 14 check it. Linux's appindicator emits no click events, so Linux states a limitation.
