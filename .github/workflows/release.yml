@@ -23,7 +23,7 @@ jobs:
           # One universal (arm64 + x86_64) app and dmg: a single download and a
           # single updater bundle serve every Mac, and a lipo'd CLI sidecar keeps
           # the app signature valid on both. Costs a second compile of the app.
-          - os: macos-14
+          - os: macos-15
             sidecar: universal-apple-darwin
             config: tauri.release.conf.json
             tauri_args: --target universal-apple-darwin --bundles app,dmg

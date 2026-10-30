@@ -58,7 +58,7 @@ These are as-built decisions; the code is authoritative. The longer list of per-
 
 | Lane | Runner | Packages gated |
 |---|---|---|
-| macos | macos-14 | proto, platform, testkit, core, platform-macos, app, cli, xtask |
+| macos | macos-15 | proto, platform, testkit, core, platform-macos, app, cli, xtask |
 | windows | windows-2025 | proto, platform, testkit, core, platform-windows, app, cli, service-win, xtask |
 | linux | ubuntu-24.04 | proto, platform, testkit, core, platform-linux, app, cli, xtask |
 
@@ -66,7 +66,7 @@ Each lane installs the toolchain from `rust-toolchain.toml`, Node 22, runs `carg
 
 `.github/workflows/release.yml` runs when a tag `v*` is pushed (and on manual dispatch as a dry run that publishes nothing):
 
-1. `bundle` job on macos-14 (universal arm64 + x86_64 `.app` and `.dmg`), windows-2025 (NSIS installer) and ubuntu-24.04 (AppImage and `.deb`). It checks the tag equals `v` + the `tauri.conf.json` version, builds the CLI sidecar, stages the UI, and runs `tauri build --features gui` with `tauri.release.conf.json`. On macOS it imports the Developer ID certificate into a temporary keychain, signs, notarizes and staples, then verifies with `codesign`, `stapler` and `spctl`.
+1. `bundle` job on macos-15 (universal arm64 + x86_64 `.app` and `.dmg`), windows-2025 (NSIS installer) and ubuntu-24.04 (AppImage and `.deb`). It checks the tag equals `v` + the `tauri.conf.json` version, builds the CLI sidecar, stages the UI, and runs `tauri build --features gui` with `tauri.release.conf.json`. On macOS it imports the Developer ID certificate into a temporary keychain, signs, notarizes and staples, then verifies with `codesign`, `stapler` and `spctl`.
 2. `publish` job on ubuntu-24.04: generates `latest.json` (`apps/mouser-app/scripts/make-latest-json.mjs`), validates it against `release-manifest.schema.json` with ajv-cli 5.0.0, and on a tag push creates a GitHub **pre-release** with every asset (`gh release create --prerelease`).
 
 The release procedure and secrets are in [releasing.md](releasing.md).

@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             lane: macos
             packages: mouser-proto,mouser-platform,mouser-testkit,mouser-core,mouser-platform-macos,mouser-app,mouser-cli,xtask
           - os: windows-2025
