@@ -169,6 +169,13 @@ impl WinPlatform {
         Self::with_settings(Settings::system())
     }
 
+    /// The installed Mouser's store of secrets in `dir`: machine-scope DPAPI
+    /// blobs, as [`Platform::secrets`] keeps them (for `mouser-service.exe
+    /// --install`, which has no platform running).
+    pub fn secret_store(dir: PathBuf) -> Box<dyn SecretStore> {
+        Box::new(secrets::DpapiStore::new(dir))
+    }
+
     fn problem_sink(&self) -> capture::Problems {
         let sink = self.problems.clone();
         Arc::new(move |problem| {

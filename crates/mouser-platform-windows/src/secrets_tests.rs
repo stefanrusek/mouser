@@ -206,3 +206,29 @@ fn files_hold_dpapi_blobs_not_the_secret() {
     let flags = u32::from_le_bytes(blob[40..44].try_into().unwrap());
     assert_ne!(flags & 0x4, 0, "not machine scope: flags {flags:#x}");
 }
+
+/// A blob DPAPI cannot open (corrupt, or not one) is an error the caller can
+/// report: the installer copying the identity says so (research V12a).
+#[test]
+fn a_secret_that_is_not_a_dpapi_blob_is_an_error_not_a_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("device_key"), b"not a blob").unwrap();
+    let store = DpapiStore::new(dir.path().to_path_buf());
+    assert!(matches!(
+        store.get("device_key"),
+        Err(mouser_platform::Error::Os(_))
+    ));
+}
+
+#[test]
+fn the_machine_store_of_a_folder_is_open_to_other_crates() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = crate::WinPlatform::secret_store(dir.path().join("secrets"));
+    store.set("device_key", b"key").unwrap();
+    assert_eq!(
+        DpapiStore::new(dir.path().join("secrets"))
+            .get("device_key")
+            .unwrap(),
+        Some(b"key".to_vec())
+    );
+}
