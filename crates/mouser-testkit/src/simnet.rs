@@ -11,6 +11,7 @@
 use crate::report;
 use crate::virtual_platform::VirtualPlatform;
 use mouser_platform::NetInterface;
+use std::io;
 use std::net::{SocketAddr, UdpSocket as StdUdpSocket};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -62,6 +63,30 @@ fn bind_loopback() -> Arc<UdpSocket> {
     let std_socket = StdUdpSocket::bind("127.0.0.1:0").unwrap();
     std_socket.set_nonblocking(true).unwrap();
     Arc::new(UdpSocket::from_std(std_socket).unwrap())
+}
+
+/// Where relay datagrams come from; the real socket, or a script in tests.
+trait Receive {
+    async fn receive(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)>;
+}
+
+impl Receive for UdpSocket {
+    async fn receive(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+        self.recv_from(buf).await
+    }
+}
+
+/// Receive the next datagram, or `None` when the source is broken. Windows
+/// reports a send to a closed loopback port as `ConnectionReset` on the next
+/// receive; like quinn, ignore it: it says nothing about the relay itself.
+async fn recv_relayed(source: &impl Receive, buf: &mut [u8]) -> Option<(usize, SocketAddr)> {
+    loop {
+        match source.receive(buf).await {
+            Ok(received) => return Some(received),
+            Err(e) if e.kind() == io::ErrorKind::ConnectionReset => continue,
+            Err(_) => return None,
+        }
+    }
 }
 
 impl SimNet {
@@ -141,7 +166,7 @@ impl SimNet {
         let (net, link) = (self.clone(), link.clone());
         tokio::spawn(async move {
             let mut buf = vec![0u8; 65536];
-            while let Ok((n, _)) = back.recv_from(&mut buf).await {
+            while let Some((n, _)) = recv_relayed(&*back, &mut buf).await {
                 let peer = *link.peer.lock().unwrap();
                 if let Some(peer) = peer {
                     net.forward(
@@ -203,7 +228,7 @@ impl SimNode {
         let (net, task_link) = (self.net.clone(), link.clone());
         tokio::spawn(async move {
             let mut buf = vec![0u8; 65536];
-            while let Ok((n, source)) = task_link.front.recv_from(&mut buf).await {
+            while let Some((n, source)) = recv_relayed(&*task_link.front, &mut buf).await {
                 *task_link.peer.lock().unwrap() = Some(source);
                 let dest = net.lock().nodes[task_link.to].real;
                 let back = task_link.back.lock().unwrap().clone();
@@ -311,5 +336,41 @@ impl SimNode {
         if let Some(platform) = platform {
             platform.set_interfaces(interfaces);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    struct Script(Mutex<VecDeque<io::Result<(usize, SocketAddr)>>>);
+
+    impl Receive for Script {
+        async fn receive(&self, _buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+            self.0.lock().unwrap().pop_front().unwrap()
+        }
+    }
+
+    fn script(items: Vec<io::Result<(usize, SocketAddr)>>) -> Script {
+        Script(Mutex::new(items.into()))
+    }
+
+    #[tokio::test]
+    async fn connection_reset_is_skipped() {
+        let from: SocketAddr = "127.0.0.1:9".parse().unwrap();
+        let source = script(vec![
+            Err(io::ErrorKind::ConnectionReset.into()),
+            Err(io::ErrorKind::ConnectionReset.into()),
+            Ok((3, from)),
+        ]);
+        let got = recv_relayed(&source, &mut [0u8; 8]).await;
+        assert_eq!(got, Some((3, from)));
+    }
+
+    #[tokio::test]
+    async fn any_other_error_ends_the_relay() {
+        let source = script(vec![Err(io::ErrorKind::BrokenPipe.into())]);
+        assert_eq!(recv_relayed(&source, &mut [0u8; 8]).await, None);
     }
 }
