@@ -3382,6 +3382,7 @@ dependencies = [
  "cucumber",
  "jsonschema",
  "mouser-platform",
+ "mouser-proto",
  "png",
  "serde_json",
  "tempfile",

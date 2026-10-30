@@ -163,3 +163,44 @@ fn secure_attention_goes_to_the_service_when_there_is_one() {
     let mut with = WinInject::new(Some(Box::new(|| Ok(()))));
     assert_eq!(with.secure_attention(), Ok(()));
 }
+
+#[test]
+fn a_platform_with_the_service_asks_it_for_ctrl_alt_del_and_maps_its_answer() {
+    use crate::service_client_tests::{serve, unique_name};
+    use mouser_platform::Platform;
+    use mouser_proto::service_ipc::{EngineMessage, SasResult, ServiceMessage};
+    let name = unique_name();
+    let answers = [
+        SasResult::Sent,
+        SasResult::PolicyBlocked,
+        SasResult::Failed("refused".into()),
+    ];
+    let replies = answers.clone();
+    let service = serve(&name, move |end| {
+        end.read();
+        let mut asked = Vec::new();
+        for answer in replies {
+            asked.push(end.read());
+            end.send(&ServiceMessage::SasResult(answer));
+        }
+        asked
+    });
+    let client = crate::service_client::connect_to(&name, "0.3.0").unwrap();
+    let platform = crate::WinPlatform::with_service_client(crate::Settings::system(), client);
+    let mut inject = platform.inject().unwrap();
+    let results: Vec<_> = answers.iter().map(|_| inject.secure_attention()).collect();
+    let asked = service.join().unwrap();
+    drop(inject);
+    drop(platform);
+    assert_eq!(asked, vec![Some(EngineMessage::SendSas); 3]);
+    assert_eq!(results[0], Ok(()));
+    assert!(matches!(results[1], Err(Error::Os(_))), "{:?}", results[1]);
+    assert!(matches!(results[2], Err(Error::Os(_))), "{:?}", results[2]);
+}
+
+#[test]
+fn a_platform_without_the_service_keeps_ctrl_alt_del_unsupported() {
+    use mouser_platform::Platform;
+    let mut inject = crate::WinPlatform::new().inject().unwrap();
+    assert_eq!(inject.secure_attention(), Err(Error::Unsupported));
+}
