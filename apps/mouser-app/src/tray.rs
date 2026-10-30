@@ -3,7 +3,7 @@
 
 use std::sync::Mutex;
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 use mouser_platform::Os;
 use mouser_proto::control::{
     ConnectionState, EngineState, Method, Status, TrayConnection, UpdateResult,
@@ -356,7 +356,7 @@ pub fn action(id: &str) -> Option<Action> {
 /// quitting need the live shell, so they are handed to `rest`.
 pub fn handle_menu<R: Runtime>(
     app: &AppHandle<R>,
-    control: &ControlHandle,
+    control: &Control,
     id: &str,
     rest: &mut dyn FnMut(Action),
 ) {
@@ -374,13 +374,13 @@ pub fn handle_menu<R: Runtime>(
 }
 
 /// Open the window the owner wants now, without blocking the menu.
-pub fn open<R: Runtime>(app: &AppHandle<R>, control: &ControlHandle) {
+pub fn open<R: Runtime>(app: &AppHandle<R>, control: &Control) {
     let (app, control) = (app.clone(), control.clone());
     tauri::async_runtime::spawn(async move { windows::open_home(&app, &control).await });
 }
 
 /// The `status` right now.
-pub async fn current_status(control: &ControlHandle) -> Status {
+pub async fn current_status(control: &Control) -> Status {
     let value = control
         .call(Method::Status, None)
         .await
@@ -389,7 +389,7 @@ pub async fn current_status(control: &ControlHandle) -> Status {
 }
 
 /// Pause or resume crossing, as the tray line says.
-pub async fn run_pause(control: &ControlHandle, action: Action) {
+pub async fn run_pause(control: &Control, action: Action) {
     let method = match action {
         Action::Pause => Method::ActivePause,
         Action::Resume => Method::ActiveResume,
@@ -402,7 +402,7 @@ pub async fn run_pause(control: &ControlHandle, action: Action) {
 }
 
 /// Pause if Mouser is active and resume if it is paused.
-pub async fn toggle_pause(control: &ControlHandle) {
+pub async fn toggle_pause(control: &Control) {
     let action = match current_status(control).await.state {
         EngineState::Active => Action::Pause,
         EngineState::Paused => Action::Resume,
@@ -412,7 +412,7 @@ pub async fn toggle_pause(control: &ControlHandle) {
 
 /// A click on the icon: the left button released toggles pause once per
 /// click (the menu opens on the right button, not the left).
-pub fn handle_tray_event(control: &ControlHandle, event: &TrayIconEvent) {
+pub fn handle_tray_event(control: &Control, event: &TrayIconEvent) {
     if let TrayIconEvent::Click {
         button: MouseButton::Left,
         button_state: MouseButtonState::Up,

@@ -459,7 +459,10 @@ async fn a_restart_request_whose_prompt_is_declined_leaves_mouser_running() {
         .await
         .unwrap();
     let shell = Arc::new(shell_that(false));
-    app.manage(crate::app::ElevationShell(shell.clone()));
+    app.manage(crate::app::ElevationShell {
+        shell: shell.clone(),
+        exit: Arc::new(|| panic!("a declined restart does not exit")),
+    });
     let notifier = FakeNotifier::default();
     handle_event(
         app.handle(),
@@ -486,6 +489,29 @@ async fn a_restart_request_whose_prompt_is_declined_leaves_mouser_running() {
 }
 
 #[cfg(target_os = "windows")]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_request_whose_prompt_is_accepted_shuts_the_engine_down_then_exits() {
+    use std::sync::Arc;
+    let f = fixture().await;
+    let path = crate::support_tests::control_path_in(&f._dir);
+    let app = app_with(f.host);
+    let exited_after_shutdown = Arc::new(Mutex::new(None));
+    let seen = exited_after_shutdown.clone();
+    let gone = path.clone();
+    app.manage(crate::app::ElevationShell {
+        shell: Arc::new(shell_that(true)),
+        exit: Arc::new(move || *seen.lock().unwrap() = Some(!gone.exists())),
+    });
+    handle_event(
+        app.handle(),
+        &FakeNotifier::default(),
+        mouser_core::EngineEvent::RestartElevated,
+    );
+    crate::support_tests::eventually(|| exited_after_shutdown.lock().unwrap().is_some()).await;
+    assert_eq!(*exited_after_shutdown.lock().unwrap(), Some(true));
+}
+
+#[cfg(target_os = "windows")]
 #[test]
 fn an_accepted_restart_shuts_the_engine_down_then_exits() {
     let (app, path, _dir) = tauri::async_runtime::block_on(async {
@@ -499,4 +525,20 @@ fn an_accepted_restart_shuts_the_engine_down_then_exits() {
     });
     assert_eq!(state, crate::elevation::State::HandingOver);
     assert_eq!(exited_after_shutdown.get(), Some(true));
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_request_off_windows_changes_nothing() {
+    // Only a portable Windows computer is asked to restart elevated.
+    let f = fixture().await;
+    let app = app_with(f.host);
+    let notifier = FakeNotifier::default();
+    handle_event(
+        app.handle(),
+        &notifier,
+        mouser_core::EngineEvent::RestartElevated,
+    );
+    assert!(notifier.shown.lock().unwrap().is_empty());
+    assert!(app.handle().webview_windows().is_empty());
 }

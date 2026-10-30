@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 use mouser_proto::config::Config;
 use mouser_proto::control::EngineState;
 
@@ -44,7 +44,7 @@ pub struct Setup {
     pub forwarded: Arc<Mutex<Vec<Hotkey>>>,
 }
 
-pub fn hotkeys_for(control: ControlHandle) -> Setup {
+pub fn hotkeys_for(control: Control) -> Setup {
     let shortcuts = FakeShortcuts::default();
     let config = Arc::new(Mutex::new(Config::default()));
     let forwarded = Arc::new(Mutex::new(Vec::new()));

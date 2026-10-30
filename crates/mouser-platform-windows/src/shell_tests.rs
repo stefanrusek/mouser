@@ -84,3 +84,10 @@ fn a_message_box_waits_until_it_is_closed() {
     message_box("A test of the message box.");
     assert!(closer.join().unwrap(), "the box was shown and closed");
 }
+
+#[test]
+fn a_running_service_is_running_and_one_that_is_not_there_is_not() {
+    // The Windows Event Log runs on every Windows.
+    assert!(service_running("EventLog"));
+    assert!(!service_running("NoSuchMouserServiceForTests"));
+}

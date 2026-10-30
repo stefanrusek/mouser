@@ -240,26 +240,57 @@ pub fn run() {
                 platform_select::current_os(),
                 &mouser_core::paths::Env::from_process(),
             );
-            let mut params = portable::engine_params(
-                portable::create_platform(&paths),
-                &paths,
-                mouser_core::control::default_path(),
-                gethostname::gethostname()
-                    .into_string()
-                    .expect("computer name is valid UTF-8"),
-                env!("CARGO_PKG_VERSION").to_string(),
-            );
-            // Windows token elevation has no detector yet (needs a mouser-platform-windows export).
-            params.mode =
-                crate::mode::select(&std::env::args().collect::<Vec<_>>(), paths.portable, false);
-            params.installer = Some(updater::installer(Arc::new(LiveApplier(
-                app.handle().clone(),
-            ))));
-            params.check_schedule = Some(mouser_core::release::CheckSchedule::DEFAULT);
+            #[cfg(target_os = "windows")]
+            let elevated = mouser_platform_windows::shell::this_process_elevated();
+            #[cfg(not(target_os = "windows"))]
+            let elevated = false;
+            #[cfg(target_os = "windows")]
+            {
+                // An elevated portable instance marks itself until it exits (FR-005).
+                let marker = crate::elevation::Marker::write(&paths, elevated, std::process::id());
+                app.manage(crate::exit::Elevated(std::sync::Mutex::new(marker)));
+                let handle = app.handle().clone();
+                app.manage(crate::app::ElevationShell {
+                    shell: Arc::new(crate::elevation::System),
+                    exit: Arc::new(move || handle.exit(0)),
+                });
+            }
+            // UI mode: MouserService runs the session engine; talk to it.
+            #[cfg(target_os = "windows")]
+            let ui_mode = crate::ui_mode::ui_mode(&crate::ui_mode::Scm);
+            #[cfg(not(target_os = "windows"))]
+            let ui_mode = false;
             let config_dir = paths.dir.clone();
+            let host = if ui_mode {
+                tauri::async_runtime::block_on(Host::connect(
+                    std::path::Path::new(mouser_core::control::SERVICE_PIPE),
+                    platform_select::create(),
+                    &paths.dir,
+                ))
+                .expect("the session engine's control API is reachable")
+            } else {
+                let mut params = portable::engine_params(
+                    portable::create_platform(&paths),
+                    &paths,
+                    mouser_core::control::default_path(),
+                    gethostname::gethostname()
+                        .into_string()
+                        .expect("computer name is valid UTF-8"),
+                    env!("CARGO_PKG_VERSION").to_string(),
+                );
+                params.mode = crate::mode::select(
+                    &std::env::args().collect::<Vec<_>>(),
+                    paths.portable,
+                    elevated,
+                );
+                params.installer = Some(updater::installer(Arc::new(LiveApplier(
+                    app.handle().clone(),
+                ))));
+                params.check_schedule = Some(mouser_core::release::CheckSchedule::DEFAULT);
+                tauri::async_runtime::block_on(Host::start_with(params))
+            };
             // Managed first: every window built from here on reads it.
             app.manage(paths);
-            let host = tauri::async_runtime::block_on(Host::start_with(params));
             let control = host.control();
             app.manage(host);
             #[cfg(target_os = "macos")]

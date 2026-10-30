@@ -7,7 +7,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Runtime};
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 
 use crate::shell::LiveNotifier;
 use crate::tray::{self, TrayPort, TrayView};
@@ -54,10 +54,7 @@ impl<R: Runtime> TrayPort for LiveTray<R> {
 
 /// Build the tray icon: the menu opens on the right button, and the left
 /// button pauses or resumes.
-pub fn build<R: Runtime>(
-    app: &tauri::App<R>,
-    control: ControlHandle,
-) -> tauri::Result<TrayIcon<R>> {
+pub fn build<R: Runtime>(app: &tauri::App<R>, control: Control) -> tauri::Result<TrayIcon<R>> {
     let click_control = control.clone();
     TrayIconBuilder::with_id("mouser")
         .show_menu_on_left_click(false)

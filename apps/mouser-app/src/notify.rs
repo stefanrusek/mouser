@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-use mouser_core::ControlHandle;
+use crate::host::Control;
 use mouser_proto::control::{Method, Notification, Problem, ProblemKind, Topic};
 use mouser_proto::ids::ComputerId;
 use serde_json::json;
@@ -120,7 +120,7 @@ impl Notifier for Silent {
 /// `notifier`, or a silent one when `general.notifications` is false right
 /// now (read each time, so `config.set` and file edits apply live).
 /// Problems and join requests still show in their own windows.
-pub async fn gated<'a>(control: &ControlHandle, notifier: &'a dyn Notifier) -> &'a dyn Notifier {
+pub async fn gated<'a>(control: &Control, notifier: &'a dyn Notifier) -> &'a dyn Notifier {
     let on = control
         .call(
             Method::ConfigGet,
