@@ -1,8 +1,8 @@
 use clap::Args as ClapArgs;
 use serde_json::json;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::process::Command;
+use std::io::{Read, Write};
+use std::process::{Child, Command, Stdio};
 
 use crate::feature_dir;
 
@@ -40,13 +40,44 @@ fn workspace_packages() -> Vec<String> {
         .collect()
 }
 
+/// Copies `from` to `to` as it arrives and returns everything copied.
+fn forward(mut from: impl Read, to: &mut impl Write) -> String {
+    let (mut all, mut buf) = (Vec::new(), [0u8; 8192]);
+    loop {
+        let n = from.read(&mut buf).expect("read child output");
+        if n == 0 {
+            return String::from_utf8_lossy(&all).into_owned();
+        }
+        to.write_all(&buf[..n]).expect("forward child output");
+        to.flush().expect("forward child output");
+        all.extend_from_slice(&buf[..n]);
+    }
+}
+
+/// Forwards the child's stdout and stderr live (so a hung check shows how far
+/// it got) and returns its exit code with both streams for the evidence.
+fn tee(
+    mut child: Child,
+    out: &mut (impl Write + Send),
+    err: &mut (impl Write + Send),
+) -> (i32, String, String) {
+    let (stdout, stderr) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
+    let (stdout, stderr) = std::thread::scope(|s| {
+        let stderr = s.spawn(|| forward(stderr, err));
+        (forward(stdout, out), stderr.join().unwrap())
+    });
+    let code = child.wait().expect("wait for check").code().unwrap_or(-1);
+    (code, stdout, stderr)
+}
+
 fn record(lane: &str, cmd: &mut Command, label: &str) -> bool {
-    let out = cmd.output().expect("failed to spawn check");
-    let code = out.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    print!("{stdout}");
-    eprint!("{stderr}");
+    let child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn check");
+    let (code, stdout, stderr) = tee(child, &mut std::io::stdout(), &mut std::io::stderr());
     let rec = json!({
         "check": label,
         "command": format!("{cmd:?}"),
