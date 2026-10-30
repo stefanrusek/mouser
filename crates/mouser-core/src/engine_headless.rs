@@ -76,19 +76,52 @@ impl Engine {
     pub fn export_machine_scope(&self, dir: &Path, machine: &mut dyn SecretStore) {
         let core = self.ctx.core.guard();
         let secrets = self.ctx.secrets.guard();
-        let mut names = vec![DEVICE_KEY.to_string()];
-        names.extend(core.state.desk.as_ref().map(|d| desk_key_name(&d.desk_id)));
-        for name in names {
-            let value = secrets
-                .get(&name)
-                .expect("secret store readable")
-                .expect("secret stored");
-            machine
-                .set(&name, &value)
-                .expect("machine-scope store writable");
-        }
-        core.state
-            .save(&dir.join(state::FILE))
-            .expect("machine-scope state writable");
+        copy_identity(&core.state, secrets.as_ref(), dir, machine)
+            .expect("the identity is copied to machine scope");
     }
+}
+
+/// [`Engine::export_machine_scope`] with no engine running: the identity in
+/// `user_dir` (its `state.json`, none for a computer that never joined) and
+/// in `user_secrets` is copied to `machine_dir` and `machine`. The Windows
+/// installer runs it as the installing user (research V12a); an identity it
+/// cannot read is not copied, and the reason is given.
+pub fn export_identity(
+    user_dir: &Path,
+    user_secrets: &dyn SecretStore,
+    machine_dir: &Path,
+    machine: &mut dyn SecretStore,
+) -> Result<(), String> {
+    let why = |e: &dyn std::fmt::Display| format!("{}: {e}", state::FILE);
+    let state = match std::fs::read(user_dir.join(state::FILE)) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| why(&e))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => state::LocalState::default(),
+        Err(e) => return Err(why(&e)),
+    };
+    copy_identity(&state, user_secrets, machine_dir, machine)
+}
+
+/// The device key, the desk key of `state`'s desk and `state` itself.
+fn copy_identity(
+    state: &state::LocalState,
+    from: &dyn SecretStore,
+    dir: &Path,
+    to: &mut dyn SecretStore,
+) -> Result<(), String> {
+    let mut names = vec![DEVICE_KEY.to_string()];
+    names.extend(state.desk.as_ref().map(|d| desk_key_name(&d.desk_id)));
+    let values = names
+        .iter()
+        .map(|name| match from.get(name) {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) => Err(format!("{name} is not in the user's store")),
+            Err(e) => Err(format!("{name}: {e}")),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for (name, value) in names.iter().zip(values) {
+        to.set(name, &value).map_err(|e| format!("{name}: {e}"))?;
+    }
+    state
+        .save(&dir.join(state::FILE))
+        .map_err(|e| format!("{}: {e}", state::FILE))
 }
