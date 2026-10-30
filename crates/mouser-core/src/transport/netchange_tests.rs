@@ -173,13 +173,18 @@ async fn crossing_works_within_five_seconds_of_an_address_change() {
             nodes[mover].discovery.announcements().len() > announced
         })
         .await;
-        // Whichever side holds the connection after the change, the pointer
-        // crosses in both directions.
+        // A mover that had accepted the connection dials again, and the new
+        // connection replaces the old one (`Ctx::adopt`), handing back a
+        // crossing made on the old one, which is still connected until then.
+        // So the crossings start once the mover holds a connection it
+        // dialled and both sides have each other placed on it.
+        eventually("the mover to hold a connection it dialled", || async {
+            link_of(&nodes[mover], &nodes[other]).is_some_and(|(_, dialled, _)| dialled)
+        })
+        .await;
+        ready(&nodes).await;
+        // The pointer crosses in both directions.
         for from in [mover, other] {
-            eventually("both sides connected", || async {
-                connected(&nodes[0]).await == 1 && connected(&nodes[1]).await == 1
-            })
-            .await;
             nodes[1 - from].platform.take_injected();
             push_until_it_arrives(&nodes, from).await;
             // Hand the pointer back for the next round.
