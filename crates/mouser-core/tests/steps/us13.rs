@@ -4,7 +4,7 @@
 use std::fmt;
 
 use cucumber::{World, given, then, when};
-use mouser_platform::{Os, Platform, PlatformInfo, SessionType};
+use mouser_platform::{Capability, Limitation, Os, Platform, PlatformInfo, SessionType};
 use mouser_proto::control::{ConnectionState, Status};
 use mouser_proto::ids::ComputerId;
 use mouser_testkit::VirtualPlatform;
@@ -28,13 +28,25 @@ impl fmt::Debug for PortableWorld {
     }
 }
 
+/// What the Windows backend itself states for a portable run; core adds none.
+fn platform_limitations(os: Os) -> Vec<Limitation> {
+    if os == Os::Windows {
+        vec![Limitation {
+            capability: Capability::SecureAttention,
+            text: WINDOWS_LIMITATION.into(),
+        }]
+    } else {
+        Vec::new()
+    }
+}
+
 fn portable(os: Os) -> Setup {
     let platform = VirtualPlatform::new();
     platform.set_info(PlatformInfo {
         os,
         version: "virtual".into(),
         session: SessionType::Native,
-        limitations: Vec::new(),
+        limitations: platform_limitations(os),
     });
     Setup {
         platform,
@@ -173,10 +185,5 @@ async fn looks_at_the_app(w: &mut PortableWorld) {
 async fn states_the_limitation(w: &mut PortableWorld) {
     let status = w.status.take().expect("status read");
     assert_eq!(status.problems, [], "limitations are not problems");
-    assert!(
-        status.computers[0]
-            .limitations
-            .iter()
-            .any(|l| l == WINDOWS_LIMITATION)
-    );
+    assert_eq!(status.computers[0].limitations, [WINDOWS_LIMITATION]);
 }

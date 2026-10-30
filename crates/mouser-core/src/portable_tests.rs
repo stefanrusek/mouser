@@ -6,7 +6,6 @@ use mouser_testkit::VirtualPlatform;
 use serde_json::json;
 
 use crate::paths::{Env, Paths};
-use crate::portable::WINDOWS_LIMITATION;
 use crate::testing::*;
 
 fn info(os: Os) -> PlatformInfo {
@@ -149,17 +148,14 @@ async fn limitation_texts(os: Os, portable_mode: bool) -> (Vec<String>, Vec<Stri
 }
 
 #[tokio::test]
-async fn portable_windows_states_what_it_cannot_control() {
-    let (problems, mut listed) = limitation_texts(Os::Windows, true).await;
-    let mut want = vec!["inject text".to_string(), WINDOWS_LIMITATION.to_string()];
-    want.sort();
-    listed.sort();
+async fn portable_windows_passes_the_platforms_limitations_through_unchanged() {
+    let (problems, listed) = limitation_texts(Os::Windows, true).await;
     assert_eq!(problems, Vec::<String>::new());
-    assert_eq!(listed, want);
+    assert_eq!(listed, vec!["inject text".to_string()]);
 }
 
 #[tokio::test]
-async fn only_portable_windows_adds_a_limitation() {
+async fn core_adds_no_limitation_of_its_own() {
     let only = vec!["inject text".to_string()];
     assert_eq!(
         limitation_texts(Os::Windows, false).await,
