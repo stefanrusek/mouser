@@ -1,14 +1,11 @@
 //! Portable behaviour (Story 13): a portable Mouser installs nothing on the
 //! computer, so it never registers for start at login, and it says what it
-//! cannot do on Windows (D3 item 4).
+//! cannot do on Windows (D3 item 4); the platform states that itself.
 
-use mouser_platform::{Capability, Limitation, Os};
+use mouser_platform::Limitation;
 
 use crate::engine::{Ctx, EngineParams};
 use crate::paths::Paths;
-
-/// What portable mode cannot do on Windows.
-pub const WINDOWS_LIMITATION: &str = "Portable mode cannot control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator.";
 
 impl EngineParams {
     /// Keep everything in `paths`: its directory is the config directory and
@@ -33,16 +30,8 @@ impl Ctx {
         }
     }
 
-    /// The platform's limitations and the ones portable mode adds.
+    /// The platform's limitations, exactly as the platform states them.
     pub(crate) fn limitations(&self) -> Vec<Limitation> {
-        let info = self.platform.info();
-        let mut all = info.limitations;
-        if self.portable && info.os == Os::Windows {
-            all.push(Limitation {
-                capability: Capability::SecureAttention,
-                text: WINDOWS_LIMITATION.into(),
-            });
-        }
-        all
+        self.platform.info().limitations
     }
 }
