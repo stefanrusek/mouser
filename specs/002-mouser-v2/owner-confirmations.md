@@ -17,3 +17,4 @@ The owner's rule (2026-10-29): implementation never waits on the owner. Checks t
 | 11 | Mac and Windows | Run the J1 two-computer journey on 0.3.0 | Every J1 step passes | T496+ (OD-4) |
 | 12 | Windows VM, 0.3.0 | With the Macs offline, look at the log and Task Manager | No flood of peer.disconnected messages several times a second, and no steady CPU use (0.2.7 showed both) | win-mouser-safe 2026-10-29 |
 | 13 | Windows VM, 0.3.0 | Tray → Quit | The app exits (0.2.7 didn't; T235/T236 fix this) | win-mouser-safe 2026-10-29 |
+| 14 | Lima Ubuntu VM (GNOME), Mac, Windows VM | Left-click and right-click the tray icon | A left click toggles pause and a right click opens the menu. On Linux the appindicator backend may not deliver clicks at all; if so, record it. The red and green connection dots are legible at tray size | T259–T262 built from the tray-icon 0.25.1 docs; P4 not run |
