@@ -346,6 +346,12 @@ pub fn run() {
                 appearance,
             ));
             tauri::async_runtime::spawn(updater::poll(control.clone(), controller.clone()));
+            // In UI mode the tray follows the session engine coming and going.
+            let ready_controller = controller.clone();
+            tauri::async_runtime::spawn(crate::tray_not_ready::follow(
+                control.ready(),
+                move |ready| ready_controller.update_ready(ready),
+            ));
             let theme_controller = controller.clone();
             app.get_webview_window("main")
                 .expect("main window exists")
