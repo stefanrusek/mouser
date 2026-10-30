@@ -461,28 +461,28 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: app tests pass for the elevated restart sequence behind a seam, `--wait-for`, UI mode when `MouserService` runs, and `--headless --machine` on Windows.
 
-- [ ] T329 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs` (behind a `Shell` seam, never elevating in tests): the restart runs `ShellExecuteExW(verb="runas", exe, "--wait-for <pid>")`; `ERROR_CANCELLED` changes nothing, the problem stays, and `elevation.restart {outcome: declined}` is logged; acceptance logs `prompted` then `handed_over`, runs `Host::shutdown()` and exits; the data folder stays `MouserData/` (FR-005; states `idle → prompting → handing_over → elevated_running`, declined → `idle`)
-- [ ] T330 [US5-app] Implement the restart sequence in `apps/mouser-app/src/elevation.rs` and run it on `EngineEvent::RestartElevated` from `apps/mouser-app/src/host.rs`
-- [ ] T331 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--wait-for <pid>` waits for that process to exit before any Tauri initialisation, so the single-instance plugin's mutex is free (Windows only)
-- [ ] T332 [US5-app] Implement `--wait-for` in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
-- [ ] T333 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs`: an instance started elevated in portable mode writes its pid to `MouserData/elevated.pid` at start and deletes the file on exit (data-model "Elevated marker")
-- [ ] T334 [US5-app] Write and delete the elevated marker in `apps/mouser-app/src/elevation.rs`
-- [ ] T335 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: a launch that is not elevated and finds a live pid in `MouserData/elevated.pid` shows "Mouser is already running as administrator on this computer. Open it from the tray icon." through the `Shell` seam's message box and exits 0 before any Tauri initialisation; a stale pid or an elevated launch continues to the single-instance plugin as in 001 (spec edge case; probe P3)
-- [ ] T336 [US5-app] Implement the second-launch check in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
+- [X] T329 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs` (behind a `Shell` seam, never elevating in tests): the restart runs `ShellExecuteExW(verb="runas", exe, "--wait-for <pid>")`; `ERROR_CANCELLED` changes nothing, the problem stays, and `elevation.restart {outcome: declined}` is logged; acceptance logs `prompted` then `handed_over`, runs `Host::shutdown()` and exits; the data folder stays `MouserData/` (FR-005; states `idle → prompting → handing_over → elevated_running`, declined → `idle`)
+- [X] T330 [US5-app] Implement the restart sequence in `apps/mouser-app/src/elevation.rs` and run it on `EngineEvent::RestartElevated` from `apps/mouser-app/src/host.rs`
+- [X] T331 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--wait-for <pid>` waits for that process to exit before any Tauri initialisation, so the single-instance plugin's mutex is free (Windows only)
+- [X] T332 [US5-app] Implement `--wait-for` in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
+- [X] T333 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs`: an instance started elevated in portable mode writes its pid to `MouserData/elevated.pid` at start and deletes the file on exit (data-model "Elevated marker")
+- [X] T334 [US5-app] Write and delete the elevated marker in `apps/mouser-app/src/elevation.rs`
+- [X] T335 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: a launch that is not elevated and finds a live pid in `MouserData/elevated.pid` shows "Mouser is already running as administrator on this computer. Open it from the tray icon." through the `Shell` seam's message box and exits 0 before any Tauri initialisation; a stale pid or an elevated launch continues to the single-instance plugin as in 001 (spec edge case; probe P3)
+- [X] T336 [US5-app] Implement the second-launch check in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
 - [X] T337 [P] [US5-app] Write UI tests in `apps/mouser-app/ui/fixes.test.js`: the `restart_elevated:<id>` fix runs the restart locally when `<id>` is this computer and calls `elevation.restart {computer: id}` otherwise; the message says "Approve the Windows prompt on <computer>" (OD-1)
 - [X] T338 [US5-app] Add `restart_elevated` to `apps/mouser-app/ui/fixes.js`
-- [ ] T339 [P] [US5-app] Write unit tests in `apps/mouser-app/src/ui_mode_tests.rs`: when `MouserService` is installed and running, the tray app starts in UI mode with no engine of its own and talks to the session engine over `\\.\pipe\mouser-service` (through a service-query seam)
-- [ ] T340 [US5-app] Implement UI-mode detection in `apps/mouser-app/src/ui_mode.rs` and the remote control client in `apps/mouser-app/src/host.rs`
+- [X] T339 [P] [US5-app] Write unit tests in `apps/mouser-app/src/ui_mode_tests.rs`: when `MouserService` is installed and running, the tray app starts in UI mode with no engine of its own and talks to the session engine over `\\.\pipe\mouser-service` (through a service-query seam)
+- [X] T340 [US5-app] Implement UI-mode detection in `apps/mouser-app/src/ui_mode.rs` and the remote control client in `apps/mouser-app/src/host.rs`
 - [X] T341 [P] [US5-app] Write unit tests in `apps/mouser-app/src/commands_tests.rs`: in UI mode (this computer's `status` mode is `service`) `collect_logs()` calls `logs.collect_stream {}`, reassembles the `logs.chunk` notifications, checks `size` and `sha256`, and writes the zip as the signed-in user to their Downloads folder with log-bundle.md's naming and collision rule, returning that path; a size or hash mismatch returns an error and leaves no file (OD-7; Story 3 sc. 12)
-- [ ] T342 [US5-app] Implement the UI-mode path of `collect_logs` in `apps/mouser-app/src/commands.rs` and `apps/mouser-app/src/bundle_save.rs`
-- [ ] T343 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: `--headless --machine` on Windows runs the engine with the machine folder `C:\ProgramData\Mouser`, machine-scope secrets and mode `service`
-- [ ] T344 [US5-app] Implement Windows `--headless --machine` folder, secrets and mode selection in `apps/mouser-app/src/headless.rs`
-- [ ] T345 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: Windows `--headless --machine` connects with `ServiceClient::connect(version)` and builds the backend with `WinPlatform::with_service_client` (signatures frozen in contracts/platform-api-delta.md); on the service's `Shutdown` (the `on_shutdown` callback) it runs `Engine::shutdown` and exits
-- [ ] T346 [US5-app] Implement the service client wiring and `Shutdown` handling in `apps/mouser-app/src/headless.rs` using `mouser_platform_windows::service_client`
-- [ ] T347 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: before a voluntary exit the engine calls `stopping(StopReason::Quit)`, and after a caught fault that ends it `stopping(StopReason::Fault)`
-- [ ] T348 [US5-app] Send `Stopping` before a voluntary exit in `apps/mouser-app/src/headless.rs`
-- [ ] T349 [US5-app] Gate: `cargo xtask gate --packages mouser-app --lane app` (including the Windows runner)
-- [ ] T350 [US5-app] Commit: phase boundary "US5-app" (5.3)
+- [X] T342 [US5-app] Implement the UI-mode path of `collect_logs` in `apps/mouser-app/src/commands.rs` and `apps/mouser-app/src/bundle_save.rs`
+- [X] T343 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: `--headless --machine` on Windows runs the engine with the machine folder `C:\ProgramData\Mouser`, machine-scope secrets and mode `service`
+- [X] T344 [US5-app] Implement Windows `--headless --machine` folder, secrets and mode selection in `apps/mouser-app/src/headless.rs`
+- [X] T345 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: Windows `--headless --machine` connects with `ServiceClient::connect(version)` and builds the backend with `WinPlatform::with_service_client` (signatures frozen in contracts/platform-api-delta.md); on the service's `Shutdown` (the `on_shutdown` callback) it runs `Engine::shutdown` and exits
+- [X] T346 [US5-app] Implement the service client wiring and `Shutdown` handling in `apps/mouser-app/src/headless.rs` using `mouser_platform_windows::service_client`
+- [X] T347 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: before a voluntary exit the engine calls `stopping(StopReason::Quit)`, and after a caught fault that ends it `stopping(StopReason::Fault)`
+- [X] T348 [US5-app] Send `Stopping` before a voluntary exit in `apps/mouser-app/src/headless.rs`
+- [X] T349 [US5-app] Gate: `cargo xtask gate --packages mouser-app --lane app` (including the Windows runner)
+- [X] T350 [US5-app] Commit: phase boundary "US5-app" (5.3)
 
 #### Phase 14: US6-app — As a desk owner, I want Mouser to run without its window or tray on Windows and Linux (P3)
 
