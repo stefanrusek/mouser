@@ -36,6 +36,7 @@ mod netwatch;
 mod permissions;
 mod portable;
 mod secrets;
+pub mod service_client;
 mod uipi;
 mod vfiles;
 mod watchdog;
@@ -151,6 +152,8 @@ pub struct WinPlatform {
     /// Whether `watch_problems` also watches the firewall.
     firewall: bool,
     portable: Option<portable::Portable>,
+    /// The service, for the session engine (research V9, V10).
+    service: Option<Arc<service_client::ServiceClient>>,
 }
 
 /// Who hears the problems; `id` tells a listener from the one that replaced
@@ -203,7 +206,17 @@ impl WinPlatform {
             listeners: AtomicU64::new(0),
             firewall: true,
             portable: None,
+            service: None,
         }
+    }
+}
+
+impl WinPlatform {
+    /// A backend whose `secure_attention()` goes through the service (Story 5 sc. 3).
+    pub fn with_service_client(settings: Settings, client: service_client::ServiceClient) -> Self {
+        let mut platform = Self::with_settings(settings);
+        platform.service = Some(Arc::new(client));
+        platform
     }
 }
 
@@ -222,7 +235,7 @@ pub(crate) fn limitation(capability: Capability, text: &str) -> Limitation {
 
 impl Platform for WinPlatform {
     fn info(&self) -> PlatformInfo {
-        let mode = limitations::Mode::of_this_pc(self.portable.is_some(), false);
+        let mode = limitations::Mode::of_this_pc(self.portable.is_some(), self.service.is_some());
         let mut limitations = limitations::limitations(mode);
         limitations.extend(
             self.portable
@@ -258,7 +271,11 @@ impl Platform for WinPlatform {
     }
 
     fn inject(&self) -> Result<Box<dyn InputInject>> {
-        Ok(Box::new(inject::WinInject::new(None)))
+        let service = self
+            .service
+            .clone()
+            .map(|client| -> inject::SecureAttention { Box::new(move || client.send_sas()) });
+        Ok(Box::new(inject::WinInject::new(service)))
     }
 
     fn clipboard(&self) -> Result<Box<dyn Clipboard>> {
@@ -380,6 +397,8 @@ mod permissions_tests;
 mod portable_tests;
 #[cfg(test)]
 mod secrets_tests;
+#[cfg(test)]
+mod service_client_tests;
 
 #[cfg(test)]
 mod uipi_tests;
