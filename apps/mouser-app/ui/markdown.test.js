@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { Window } from 'happy-dom';
 import { renderMarkdown } from './markdown.js';
@@ -38,4 +39,9 @@ test('HTML in the text is shown as text, never run', () => {
 
 test('an empty document renders nothing', () => {
   assert.equal(html(''), '');
+});
+
+test('the troubleshooting guide shipped in Help has no table syntax, which the renderer cannot show', () => {
+  const guide = readFileSync(new URL('../../../docs/troubleshooting.md', import.meta.url), 'utf8');
+  assert.deepEqual(guide.split('\n').filter((line) => line.trimStart().startsWith('|')), []);
 });

@@ -37,14 +37,12 @@ Every notice in the app, and every entry under Problems in `mouser status`, has 
 
 Mouser cannot do its job without an OS permission. Mouser does not start capturing or injecting input until nothing is Missing, and re-checks every 250 ms, so granting it works without a restart. Fix: `open_system_settings:<permission>`; in the app, click the fix and the right settings pane opens.
 
-| Permission | Message | Where |
-|---|---|---|
-| accessibility | Mouser needs Accessibility access to move the pointer and type on this computer. | macOS: System Settings > Privacy & Security > Accessibility |
-| input_monitoring | Mouser needs Input Monitoring access to see the mouse and keyboard on this computer. | macOS: Input Monitoring |
-| screen_recording | Mouser needs Screen Recording access to see where full-screen windows are. | macOS: Screen Recording |
-| full_disk_access | Mouser needs Full Disk Access to copy files to and from this computer. | macOS: Full Disk Access |
-| input_capture_portal | Mouser needs permission to capture input through the desktop's input portal. | Linux Wayland |
-| remote_desktop_portal | Mouser needs permission to control this computer through the desktop's remote-control portal. | Linux Wayland |
+- accessibility: Mouser needs Accessibility access to move the pointer and type on this computer. Where: macOS: System Settings > Privacy & Security > Accessibility
+- input_monitoring: Mouser needs Input Monitoring access to see the mouse and keyboard on this computer. Where: macOS: Input Monitoring
+- screen_recording: Mouser needs Screen Recording access to see where full-screen windows are. Where: macOS: Screen Recording
+- full_disk_access: Mouser needs Full Disk Access to copy files to and from this computer. Where: macOS: Full Disk Access
+- input_capture_portal: Mouser needs permission to capture input through the desktop's input portal. Where: Linux Wayland
+- remote_desktop_portal: Mouser needs permission to control this computer through the desktop's remote-control portal. Where: Linux Wayland
 
 If you rebuilt or reinstalled an unsigned Mouser on macOS, the grants are reset; the released, notarized app keeps them across updates. Allow local network access when macOS asks, or computers cannot find each other.
 
@@ -58,13 +56,11 @@ Cause: the two computers speak different protocol versions. The computer shows a
 
 Raised on the computer that asked to join, or on the desk computer that turned someone away. Messages:
 
-| Message | Cause and fix |
-|---|---|
-| This computer was not admitted to `<desk>`. | Someone clicked Decline (or `mouser decline`). Ask again and approve on a computer already on the desk. |
-| `<name>` (`<ip>`) was refused because its address is not on the allowlist. | The desk has `advanced.allowlist` set. Add the joiner's network to it on a desk computer (`mouser config set advanced.allowlist 192.168.1.0/24`) or empty it. |
-| The request to join the desk was not answered. | The desk computer went away while waiting. Check it is on and try again. |
-| The request to join the desk was interrupted when Mouser stopped. | Mouser on this computer was quit during the request. Join again. |
-| (the incompatible_version text) | The desk computer runs an incompatible version. |
+- This computer was not admitted to `<desk>`.: Someone clicked Decline (or `mouser decline`). Ask again and approve on a computer already on the desk.
+- `<name>` (`<ip>`) was refused because its address is not on the allowlist.: The desk has `advanced.allowlist` set. Add the joiner's network to it on a desk computer (`mouser config set advanced.allowlist 192.168.1.0/24`) or empty it.
+- The request to join the desk was not answered.: The desk computer went away while waiting. Check it is on and try again.
+- The request to join the desk was interrupted when Mouser stopped.: Mouser on this computer was quit during the request. Join again.
+- (the incompatible_version text): The desk computer runs an incompatible version.
 
 A join needs a person to approve: on a desk computer, click Allow, or `mouser requests` then `mouser approve <number>`.
 
@@ -108,39 +104,33 @@ These are the five limitations the owner accepted for v1, the two added for v2 (
 
 ### macOS
 
-| Capability | Text |
-|---|---|
-| inject | Some games and remote-desktop apps ignore Mouser's input on this Mac. |
-| secure attention | Ctrl-Alt-Del can only be sent to Windows computers. |
-| capture (portable mode only) | macOS permissions must be granted again on each computer you run Mouser from this drive on. |
+- inject: Some games and remote-desktop apps ignore Mouser's input on this Mac.
+- secure attention: Ctrl-Alt-Del can only be sent to Windows computers.
+- capture (portable mode only): macOS permissions must be granted again on each computer you run Mouser from this drive on.
 
 Why: macOS only lets an unentitled app post events with `CGEventPost`; apps that read hardware-level input (some games, remote-desktop clients) never see them.
 
 ### Linux (all sessions)
 
-| Capability | Text |
-|---|---|
-| file drag | Dragging files between computers isn't available on Linux; use copy and paste |
-| secure attention | Ctrl-Alt-Del can only be sent to Windows computers. |
-| tray (no tray host on the desktop) | This desktop shows no tray icon for Mouser. Install the AppIndicator extension to get one; the tray menu actions are also in the Mouser window. |
-| tray (a tray host is present) | Clicking the tray icon doesn't pause Mouser here; use Pause in its menu. |
-| login screen | Mouser can't control this computer's login screen. |
+- file drag: Dragging files between computers isn't available on Linux; use copy and paste
+- secure attention: Ctrl-Alt-Del can only be sent to Windows computers.
+- tray (no tray host on the desktop): This desktop shows no tray icon for Mouser. Install the AppIndicator extension to get one; the tray menu actions are also in the Mouser window.
+- tray (a tray host is present): Clicking the tray icon doesn't pause Mouser here; use Pause in its menu.
+- login screen: Mouser can't control this computer's login screen.
 
 Linux headless mode (`mouser-app --headless`) runs only inside a signed-in session, so the login-screen text always applies on Linux.
 
 ### Linux, Wayland (GNOME and KDE)
 
-| Text | Meaning |
-|---|---|
-| This desktop cannot share its mouse and keyboard with other computers. Mouser needs GNOME 46 or later or KDE Plasma 6.1 or later on Wayland. | The input-capture portal is missing. Sway, Hyprland, COSMIC and older desktops are unsupported. |
-| This desktop cannot share its keyboard with other computers. / This desktop cannot share its mouse with other computers. | The portal offers only one of the two. |
-| This desktop asks you to approve Mouser each time you sign in before it can share this computer's mouse and keyboard. | Expected on GNOME 46/50 and Plasma 6.7.5: the permission cannot be remembered. The approval dialog appears when capture starts and can take several seconds (6 to 40 seconds were seen). |
-| This desktop does not let Mouser move the mouse or type here, so other computers cannot control this one. | The remote-desktop portal is missing. |
-| Mouser cannot tell when an app is full-screen on Wayland, so the pointer may still cross to another computer during a game or video. | Full-screen blocking is unavailable. |
-| QuickJump and hotkey crossings can't start from this computer on Wayland; push the pointer off the screen edge instead. | On Wayland only an edge push starts a crossing. |
-| Mouser can't tell which application is in front here, so its diagnostic log doesn't name it. | On Wayland the log's `app` fields (control changes, refused input) are left out. X11 names the application. |
-| Mouser cannot share the clipboard from this computer while it shares its mouse. This needs GNOME 51 or later. | GNOME before 51 (or an unknown version). |
-| This desktop keeps Mouser's permission after you remove the drive; remove it in the desktop's settings if you do not want it to stay. | Portable mode on Wayland. |
+- This desktop cannot share its mouse and keyboard with other computers. Mouser needs GNOME 46 or later or KDE Plasma 6.1 or later on Wayland. (The input-capture portal is missing. Sway, Hyprland, COSMIC and older desktops are unsupported.)
+- This desktop cannot share its keyboard with other computers. / This desktop cannot share its mouse with other computers. (The portal offers only one of the two.)
+- This desktop asks you to approve Mouser each time you sign in before it can share this computer's mouse and keyboard. (Expected on GNOME 46/50 and Plasma 6.7.5: the permission cannot be remembered. The approval dialog appears when capture starts and can take several seconds (6 to 40 seconds were seen).)
+- This desktop does not let Mouser move the mouse or type here, so other computers cannot control this one. (The remote-desktop portal is missing.)
+- Mouser cannot tell when an app is full-screen on Wayland, so the pointer may still cross to another computer during a game or video. (Full-screen blocking is unavailable.)
+- QuickJump and hotkey crossings can't start from this computer on Wayland; push the pointer off the screen edge instead. (On Wayland only an edge push starts a crossing.)
+- Mouser can't tell which application is in front here, so its diagnostic log doesn't name it. (On Wayland the log's `app` fields (control changes, refused input) are left out. X11 names the application.)
+- Mouser cannot share the clipboard from this computer while it shares its mouse. This needs GNOME 51 or later. (GNOME before 51 (or an unknown version).)
+- This desktop keeps Mouser's permission after you remove the drive; remove it in the desktop's settings if you do not want it to stay. (Portable mode on Wayland.)
 
 Also on Wayland: pressing into the edge while dragging a file cancels the drag on GNOME 46. Wayland displays have scale 1.0 and no physical size.
 
@@ -150,14 +140,12 @@ No extra limitations are listed. Behaviour to know: Mouser cannot take the point
 
 ### Windows
 
-| Where | Text |
-|---|---|
-| every Windows computer | Some games and remote-desktop apps ignore Mouser's input on this PC. |
-| every Windows computer | Windows warns that Mouser comes from an unknown publisher when it is installed or first run. |
-| portable, not elevated | Portable Mouser can't control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator. |
-| portable, restarted as administrator | Portable Mouser can't control the login screen, permission prompts or Ctrl-Alt-Del. |
-| installed, with the service running, and policy blocks software Ctrl-Alt-Del | Ctrl-Alt-Del is blocked by this PC's policy. |
-| installed, without the service | Ctrl-Alt-Del can't be sent to this PC yet. |
+- every Windows computer: Some games and remote-desktop apps ignore Mouser's input on this PC.
+- every Windows computer: Windows warns that Mouser comes from an unknown publisher when it is installed or first run.
+- portable, not elevated: Portable Mouser can't control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator.
+- portable, restarted as administrator: Portable Mouser can't control the login screen, permission prompts or Ctrl-Alt-Del.
+- installed, with the service running, and policy blocks software Ctrl-Alt-Del: Ctrl-Alt-Del is blocked by this PC's policy.
+- installed, without the service: Ctrl-Alt-Del can't be sent to this PC yet.
 
 The installer and the exe are unsigned (a code-signing certificate is future work), so Windows shows its unknown-publisher warning ("Windows protected your PC"); see [releasing.md](releasing.md) for the click-through. Other Windows messages: "Other computers can't reach this PC because Windows Firewall blocks Mouser. Allow Mouser in Windows Security > Firewall & network protection > Allow an app through firewall." and "Mouser lost its hold on the keyboard and mouse and took it back; input may have briefly leaked to this PC." (raised only after real input was missed; software such as ASUS AsHotplugCtrl that swallows Mouser's own checks while your input keeps arriving no longer triggers it).
 
@@ -173,13 +161,11 @@ Logging is off by default. Turn it on with `mouser logs enable`, the logging swi
 
 Location (`mouser logs path` prints it):
 
-| OS | File |
-|---|---|
-| macOS | `~/Library/Application Support/Mouser/logs/mouser.log` |
-| Linux | `$XDG_CONFIG_HOME/mouser/logs/mouser.log` (or `~/.config/mouser/logs/mouser.log`) |
-| Windows | `%APPDATA%\Mouser\logs\mouser.log` |
-| Portable | `MouserData/logs/mouser.log` |
-| Windows with the service (installed) | `C:\ProgramData\Mouser\logs\mouser.log`, plus the service's own `service.log` beside it (not confirmed on real hardware) |
+- macOS: `~/Library/Application Support/Mouser/logs/mouser.log`
+- Linux: `$XDG_CONFIG_HOME/mouser/logs/mouser.log` (or `~/.config/mouser/logs/mouser.log`)
+- Windows: `%APPDATA%\Mouser\logs\mouser.log`
+- Portable: `MouserData/logs/mouser.log`
+- Windows with the service (installed): `C:\ProgramData\Mouser\logs\mouser.log`, plus the service's own `service.log` beside it (not confirmed on real hardware)
 
 Rotation: there are two files, `mouser.log` and `mouser.log.1`, each at most half of `diagnostics.max_log_mb` (default 50, so 25 MB each), so together they stay within the limit. When `mouser.log` would pass its half, it is renamed `mouser.log.1`, replacing the previous one (the oldest records go first), and a new `mouser.log` starts. `service.log` rotates the same way.
 
@@ -191,14 +177,12 @@ Each line is one JSON object, following `specs/001-mouser-v1/contracts/log-recor
 {"ts":"2026-10-22T03:51:59.657Z","level":"warn","computer":{"id":"9e4ac5618a56f17190c2af3dac2a571c","name":"Mac-mini"},"event":"problem.raised","peer":"9e4ac5618a56f17190c2af3dac2a571c","fields":{"kind":"platform_limitation","problem_id":"platform_limitation:inject","message":"Some games and remote-desktop apps ignore Mouser's input on this Mac."}}
 ```
 
-| Field | Meaning |
-|---|---|
-| `ts` | RFC 3339 UTC time, to the millisecond. |
-| `level` | `error`, `warn`, `info`, `debug` or `trace`. |
-| `computer` | `id` (32 lowercase hex characters) and `name` of the computer that wrote the line. |
-| `event` | Dotted lowercase name. |
-| `peer` | Optional. The other computer's id, or for a problem the computer it is about. |
-| `fields` | Optional. Event details. |
+- `ts`: RFC 3339 UTC time, to the millisecond.
+- `level`: `error`, `warn`, `info`, `debug` or `trace`.
+- `computer`: `id` (32 lowercase hex characters) and `name` of the computer that wrote the line.
+- `event`: Dotted lowercase name.
+- `peer`: Optional. The other computer's id, or for a problem the computer it is about.
+- `fields`: Optional. Event details.
 
 No other keys appear. The log never contains typed characters or which keys were pressed, clipboard contents, file contents or names, or window titles; applications are named by program name only (the executable's name, no path).
 
@@ -235,28 +219,26 @@ On a Windows computer with Mouser installed, the engine that runs before anyone 
 
 ## Other things you might hit
 
-| Symptom | Cause and what to do |
-|---|---|
-| Settings are back at their defaults after a start, or `mouser config get` with Mouser stopped says "Mouser's settings file has a mistake: ..." and exits 3 | The config.toml is invalid (not valid TOML, or a value out of range or an unparseable hotkey). Mouser leaves the file as it is, runs with the defaults and, if logging is on, writes `config.rejected` with the reason. A missing key is not an error: it takes its default. Fix the line the reason names and save; a running Mouser picks up the corrected file. See [configuration.md](configuration.md). |
-| Editing config.toml seems to do nothing | The edit was refused whole. Turn logging on and look for `config.rejected`. |
-| Desks are not listed on a computer, but others see them | Discovery uses mDNS (multicast). Some networks and VM networks block it (it did not work between two Lima VMs). Join by address: `mouser desk join <host>:<port>`. Also check the macOS Local Network permission. |
-| `mouser` says `Mouser is not running` | The app is not running for this user, or the control socket is elsewhere. On Linux it needs `XDG_RUNTIME_DIR`. |
-| `mouser pause` paused only one computer | By design in v1: pause is per computer. Run it on each computer. |
-| First paste of a big clipboard item is old | Items over 1 MiB, and files, are fetched when you paste, so the first paste can be stale. Paste again, or use the targeted-paste hotkey (default Ctrl+Alt+Shift+V). |
-| File dragged onto another computer does not arrive, or "There is not enough free space on that computer for these files, so nothing was copied." | The destination lacks space; free some and retry. On Linux file drag is not available; copy and paste files instead. |
-| "`<file>` already exists there. Replace it?" | A name clash during a drag; choose Replace or Skip in the transfer window. Skipping leaves that file alone. |
-| "The copy stopped because `<name>` went offline. N of M files were copied." | The other computer disappeared mid-drag. Partial files are not cleaned up; delete them by hand. |
-| A computer's new name does not show on the others | Names are desk-wide: rename from any computer (Settings, or `mouser desk rename <computer> <name>`) and every computer shows it. A computer that was offline shows the new name when it reconnects. A computer on 0.2.x also adopts it. |
-| Pointer comes back to the other computer the moment I click an application | If it runs as administrator on a Windows computer, see `elevated_app` above. |
-| Pointer or keys stuck after Mouser was killed | Mouser puts the pointer back on every exit it can run (Quit, logoff, shutdown, a fault, a lost link, a lost hold). On Windows a small helper (`mouser-app.exe --cursor-guard <pid>`) restores the system cursors if Mouser is killed. If it ever happens, turn logging on, reproduce, collect the logs and look for `pointer.hidden` without a later `pointer.shown`. |
-| Changed `advanced.port` but nothing happened | Restart Mouser. |
-| Cannot remove another computer's display from the layout | Only the owning computer can remove its own displays; do it on that computer. |
-| The arranger opens by itself | A new computer was placed automatically and offered for review. |
-| A hotkey change does nothing | Keep to the `Ctrl+Alt+Shift+M` format. All four hotkeys are checked when you set them, including `hotkeys.enable_disable`. A combination the operating system refuses to register is reported in Settings next to that hotkey. |
-| After a Wayland login nothing crosses | Approve the "Approve Mouser on `<computer>`" dialog. It appears after every login and can take several seconds. |
-| X11: capture does not start | Another program holds the pointer or keyboard grab (an open menu is the usual one). Close it. |
-| "Allow control at the login screen" does nothing useful, or stops working after a desk change | The login-screen copy is a snapshot; run the option again after joining, leaving or rotating a desk. It has not been run on a real login screen. |
-| Updates do not arrive | Releases are pre-releases; the default `updates.release_url` lists them. `updates.automatic` must be on, or run `mouser update`. Only one desk computer downloads; the rest fetch from it. |
+- Settings are back at their defaults after a start, or `mouser config get` with Mouser stopped says "Mouser's settings file has a mistake: ..." and exits 3: The config.toml is invalid (not valid TOML, or a value out of range or an unparseable hotkey). Mouser leaves the file as it is, runs with the defaults and, if logging is on, writes `config.rejected` with the reason. A missing key is not an error: it takes its default. Fix the line the reason names and save; a running Mouser picks up the corrected file. See [configuration.md](configuration.md).
+- Editing config.toml seems to do nothing: The edit was refused whole. Turn logging on and look for `config.rejected`.
+- Desks are not listed on a computer, but others see them: Discovery uses mDNS (multicast). Some networks and VM networks block it (it did not work between two Lima VMs). Join by address: `mouser desk join <host>:<port>`. Also check the macOS Local Network permission.
+- `mouser` says `Mouser is not running`: The app is not running for this user, or the control socket is elsewhere. On Linux it needs `XDG_RUNTIME_DIR`.
+- `mouser pause` paused only one computer: By design in v1: pause is per computer. Run it on each computer.
+- First paste of a big clipboard item is old: Items over 1 MiB, and files, are fetched when you paste, so the first paste can be stale. Paste again, or use the targeted-paste hotkey (default Ctrl+Alt+Shift+V).
+- File dragged onto another computer does not arrive, or "There is not enough free space on that computer for these files, so nothing was copied.": The destination lacks space; free some and retry. On Linux file drag is not available; copy and paste files instead.
+- "`<file>` already exists there. Replace it?": A name clash during a drag; choose Replace or Skip in the transfer window. Skipping leaves that file alone.
+- "The copy stopped because `<name>` went offline. N of M files were copied.": The other computer disappeared mid-drag. Partial files are not cleaned up; delete them by hand.
+- A computer's new name does not show on the others: Names are desk-wide: rename from any computer (Settings, or `mouser desk rename <computer> <name>`) and every computer shows it. A computer that was offline shows the new name when it reconnects. A computer on 0.2.x also adopts it.
+- Pointer comes back to the other computer the moment I click an application: If it runs as administrator on a Windows computer, see `elevated_app` above.
+- Pointer or keys stuck after Mouser was killed: Mouser puts the pointer back on every exit it can run (Quit, logoff, shutdown, a fault, a lost link, a lost hold). On Windows a small helper (`mouser-app.exe --cursor-guard <pid>`) restores the system cursors if Mouser is killed. If it ever happens, turn logging on, reproduce, collect the logs and look for `pointer.hidden` without a later `pointer.shown`.
+- Changed `advanced.port` but nothing happened: Restart Mouser.
+- Cannot remove another computer's display from the layout: Only the owning computer can remove its own displays; do it on that computer.
+- The arranger opens by itself: A new computer was placed automatically and offered for review.
+- A hotkey change does nothing: Keep to the `Ctrl+Alt+Shift+M` format. All four hotkeys are checked when you set them, including `hotkeys.enable_disable`. A combination the operating system refuses to register is reported in Settings next to that hotkey.
+- After a Wayland login nothing crosses: Approve the "Approve Mouser on `<computer>`" dialog. It appears after every login and can take several seconds.
+- X11: capture does not start: Another program holds the pointer or keyboard grab (an open menu is the usual one). Close it.
+- "Allow control at the login screen" does nothing useful, or stops working after a desk change: The login-screen copy is a snapshot; run the option again after joining, leaving or rotating a desk. It has not been run on a real login screen.
+- Updates do not arrive: Releases are pre-releases; the default `updates.release_url` lists them. `updates.automatic` must be on, or run `mouser update`. Only one desk computer downloads; the rest fetch from it.
 
 ## When you report a problem
 
