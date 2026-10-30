@@ -296,6 +296,33 @@ fn scenarios() {
     }
 }
 
+/// Prints where the process is stuck: a sample of every thread (the main
+/// thread is the one running the drag) and what the window server, Finder and
+/// AppKit logged meanwhile.
+fn diagnose_hang() {
+    let pid = std::process::id();
+    let report = std::env::temp_dir().join(format!("mouser_us7_{pid}.sample.txt"));
+    let sampled = Command::new("/usr/bin/sample")
+        .arg(pid.to_string())
+        .arg("3")
+        .arg("-file")
+        .arg(&report)
+        .status();
+    eprintln!("sample: {sampled:?}");
+    eprintln!(
+        "{}",
+        std::fs::read_to_string(&report).unwrap_or_else(|e| format!("no sample report: {e}"))
+    );
+    let predicate = format!(
+        "processID == {pid} OR process == \"WindowServer\" OR process == \"Finder\" OR subsystem BEGINSWITH \"com.apple.AppKit\""
+    );
+    let logged = Command::new("/usr/bin/log")
+        .args(["show", "--last", "3m", "--style", "compact", "--predicate"])
+        .arg(predicate)
+        .status();
+    eprintln!("log show: {logged:?}");
+}
+
 fn main() {
     outgoing_is_none_when_no_drag_is_in_progress();
     println!("ok outgoing_is_none_when_no_drag_is_in_progress");
@@ -307,6 +334,7 @@ fn main() {
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(150));
         eprintln!("FAILED: the drag scenarios did not finish within 150 s");
+        diagnose_hang();
         let open: Vec<_> = SHOWN.lock().unwrap().drain(..).collect();
         for (name, dir) in open {
             close_shown(&name, &dir);
