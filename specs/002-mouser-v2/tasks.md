@@ -379,10 +379,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T256 [US3-app] Split `apps/mouser-app/src/shell.rs` into `apps/mouser-app/src/shell.rs` (builder and plugins) and `apps/mouser-app/src/tray_runtime.rs` (the tray menu closure and tray event handling), behaviour unchanged; verified by the existing app tests passing (debt Tier 2)
 - [X] T257 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs`: menu items are the summary, the version/update line, Open Mouser (`#desk`, or `#welcome` while setup is needed), Pause/Resume, Arrange displays (`#displays`), Mouser health (`#health`), Send Ctrl-Alt-Del (when available), Quit; each navigating item calls `windows::navigate`; an unknown menu id is ignored instead of panicking (`tray.rs:266`)
 - [X] T258 [US3-app] Implement the menu and its navigation in `apps/mouser-app/src/tray.rs`
-- [ ] T259 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs probe P4, T015): the icon is chosen from `tray_summary.state` × `tray_summary.connection` × theme (light, dark, macOS template); the tooltip names both states, e.g. "Mouser is paused · not connected to Beta" (Story 3 sc. 14–15)
-- [ ] T260 [US3-app] Implement icon and tooltip selection in `apps/mouser-app/src/tray.rs`
-- [ ] T261 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs P4): the tray is built with `show_menu_on_left_click(false)`; `TrayIconEvent::Click { button: Left, button_state: Up }` toggles `active.pause` / `active.resume`; right click opens the menu (Story 3 sc. 13)
-- [ ] T262 [US3-app] Implement click handling in `apps/mouser-app/src/tray_runtime.rs`
+- [X] T259 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs probe P4, T015): the icon is chosen from `tray_summary.state` × `tray_summary.connection` × theme (light, dark, macOS template); the tooltip names both states, e.g. "Mouser is paused · not connected to Beta" (Story 3 sc. 14–15)
+- [X] T260 [US3-app] Implement icon and tooltip selection in `apps/mouser-app/src/tray.rs`
+- [X] T261 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs P4): the tray is built with `show_menu_on_left_click(false)`; `TrayIconEvent::Click { button: Left, button_state: Up }` toggles `active.pause` / `active.resume`; right click opens the menu (Story 3 sc. 13)
+- [X] T262 [US3-app] Implement click handling in `apps/mouser-app/src/tray_runtime.rs`
 - [X] T263 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_icons_tests.rs`: an icon file exists under `apps/mouser-app/icons/` for every {active, paused} × {connected, disconnected, alone} × {light, dark, template} variant; converted to greyscale, the connected, disconnected and alone variants of each state differ pixel-wise (SC-008)
 - [X] T264 [US3-app] Generate the tray PNGs with `apps/mouser-app/scripts/make-tray-icons.mjs` into `apps/mouser-app/icons/tray-<theme>-<state>-<connection>.png`: disconnected adds a hollow ring with a slash (red in colour builds), connected adds a small filled dot (green in colour builds), alone has no badge; template variants are monochrome
 - [X] T265 [P] [US3-app] Write unit tests in `apps/mouser-app/src/notify_tests.rs`: `Toasts` are keyed by `(problem_id, computer)`; a toast names its computer; the startup-limitation exclusions (`notify.rs:42-48`) are gone because limitations never arrive as problems; the `elevated_app` toast navigates to `#health/<computer id>`
@@ -428,7 +428,7 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T305 [US3-app] Re-key and attribute banners in `apps/mouser-app/ui/notify.js` (lines 19–50)
 - [X] T306 [US3-app] Delete the removed pages and their tests now that their content lives in sections (uniform mechanical change): `apps/mouser-app/ui/first_run.html`, `first_run.js`, `first_run.test.js`, `desk_settings.html`, `desk_settings.js`, `desk_settings.test.js`, `health.html`, `health.js`, `health.test.js`, `arranger.html`, `join_prompt.html`, `join_prompt.js`, `join_prompt.test.js`, `transfer.html`, `transfer.js`, `transfer.test.js` (all under `apps/mouser-app/ui/`); the per-page 2–3 s `status` polling goes with them (one subscription in `nav.js` replaces it). `input_settings.*` are deleted in T318; `nav.test.js` is not created (its content is `contract_navigation.test.js`)
 - [X] T307 [US3-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T308 [US3-app] Commit: phase boundary "US3-app" (5.3)
+- [X] T308 [US3-app] Commit: phase boundary "US3-app" (5.3)
 
 #### Phase 12: US4-app — As a desk owner, I want to tailor hotkeys, names and pointer behavior from the Mouser window (P2)
 
