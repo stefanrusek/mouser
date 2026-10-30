@@ -353,8 +353,8 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T240 [US1-app] Replace the lag panics in `apps/mouser-app/src/app.rs` with a resync from `status`
 - [X] T241 [P] [US1-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--cursor-guard <pid>` is parsed before any Tauri initialisation and selects guard mode (Windows only; on other OSes the flag is rejected with exit code 3)
 - [X] T242 [US1-app] Implement argument dispatch in `apps/mouser-app/src/args.rs` and in `apps/mouser-app/src/main.rs` call `mouser_platform_windows::cursor_guard::run(pid)` (signature frozen in contracts/platform-api-delta.md) for guard mode with no window (depends on Phase 19 T395 being merged)
-- [ ] T243 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T244 [US1-app] Commit: phase boundary "US1-app" (5.3)
+- [X] T243 [US1-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
+- [X] T244 [US1-app] Commit: phase boundary "US1-app" (5.3)
 
 #### Phase 10: US2-app — As a troubleshooting agent, I want the diagnostic log to show what Mouser did and why (P1)
 
@@ -379,10 +379,10 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T256 [US3-app] Split `apps/mouser-app/src/shell.rs` into `apps/mouser-app/src/shell.rs` (builder and plugins) and `apps/mouser-app/src/tray_runtime.rs` (the tray menu closure and tray event handling), behaviour unchanged; verified by the existing app tests passing (debt Tier 2)
 - [X] T257 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs`: menu items are the summary, the version/update line, Open Mouser (`#desk`, or `#welcome` while setup is needed), Pause/Resume, Arrange displays (`#displays`), Mouser health (`#health`), Send Ctrl-Alt-Del (when available), Quit; each navigating item calls `windows::navigate`; an unknown menu id is ignored instead of panicking (`tray.rs:266`)
 - [X] T258 [US3-app] Implement the menu and its navigation in `apps/mouser-app/src/tray.rs`
-- [ ] T259 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs probe P4, T015): the icon is chosen from `tray_summary.state` × `tray_summary.connection` × theme (light, dark, macOS template); the tooltip names both states, e.g. "Mouser is paused · not connected to Beta" (Story 3 sc. 14–15)
-- [ ] T260 [US3-app] Implement icon and tooltip selection in `apps/mouser-app/src/tray.rs`
-- [ ] T261 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs P4): the tray is built with `show_menu_on_left_click(false)`; `TrayIconEvent::Click { button: Left, button_state: Up }` toggles `active.pause` / `active.resume`; right click opens the menu (Story 3 sc. 13)
-- [ ] T262 [US3-app] Implement click handling in `apps/mouser-app/src/tray_runtime.rs`
+- [X] T259 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs probe P4, T015): the icon is chosen from `tray_summary.state` × `tray_summary.connection` × theme (light, dark, macOS template); the tooltip names both states, e.g. "Mouser is paused · not connected to Beta" (Story 3 sc. 14–15)
+- [X] T260 [US3-app] Implement icon and tooltip selection in `apps/mouser-app/src/tray.rs`
+- [X] T261 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_tests.rs` (needs P4): the tray is built with `show_menu_on_left_click(false)`; `TrayIconEvent::Click { button: Left, button_state: Up }` toggles `active.pause` / `active.resume`; right click opens the menu (Story 3 sc. 13)
+- [X] T262 [US3-app] Implement click handling in `apps/mouser-app/src/tray_runtime.rs`
 - [X] T263 [P] [US3-app] Write unit tests in `apps/mouser-app/src/tray_icons_tests.rs`: an icon file exists under `apps/mouser-app/icons/` for every {active, paused} × {connected, disconnected, alone} × {light, dark, template} variant; converted to greyscale, the connected, disconnected and alone variants of each state differ pixel-wise (SC-008)
 - [X] T264 [US3-app] Generate the tray PNGs with `apps/mouser-app/scripts/make-tray-icons.mjs` into `apps/mouser-app/icons/tray-<theme>-<state>-<connection>.png`: disconnected adds a hollow ring with a slash (red in colour builds), connected adds a small filled dot (green in colour builds), alone has no badge; template variants are monochrome
 - [X] T265 [P] [US3-app] Write unit tests in `apps/mouser-app/src/notify_tests.rs`: `Toasts` are keyed by `(problem_id, computer)`; a toast names its computer; the startup-limitation exclusions (`notify.rs:42-48`) are gone because limitations never arrive as problems; the `elevated_app` toast navigates to `#health/<computer id>`
@@ -428,7 +428,7 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 - [X] T305 [US3-app] Re-key and attribute banners in `apps/mouser-app/ui/notify.js` (lines 19–50)
 - [X] T306 [US3-app] Delete the removed pages and their tests now that their content lives in sections (uniform mechanical change): `apps/mouser-app/ui/first_run.html`, `first_run.js`, `first_run.test.js`, `desk_settings.html`, `desk_settings.js`, `desk_settings.test.js`, `health.html`, `health.js`, `health.test.js`, `arranger.html`, `join_prompt.html`, `join_prompt.js`, `join_prompt.test.js`, `transfer.html`, `transfer.js`, `transfer.test.js` (all under `apps/mouser-app/ui/`); the per-page 2–3 s `status` polling goes with them (one subscription in `nav.js` replaces it). `input_settings.*` are deleted in T318; `nav.test.js` is not created (its content is `contract_navigation.test.js`)
 - [X] T307 [US3-app] Gate: `cargo xtask gate --packages mouser-app --lane app`
-- [ ] T308 [US3-app] Commit: phase boundary "US3-app" (5.3)
+- [X] T308 [US3-app] Commit: phase boundary "US3-app" (5.3)
 
 #### Phase 12: US4-app — As a desk owner, I want to tailor hotkeys, names and pointer behavior from the Mouser window (P2)
 
@@ -461,28 +461,28 @@ Package `apps/mouser-app` (Tauri 2.12.5 host + `ui/` static ES modules). Gate pe
 
 **Independent test**: app tests pass for the elevated restart sequence behind a seam, `--wait-for`, UI mode when `MouserService` runs, and `--headless --machine` on Windows.
 
-- [ ] T329 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs` (behind a `Shell` seam, never elevating in tests): the restart runs `ShellExecuteExW(verb="runas", exe, "--wait-for <pid>")`; `ERROR_CANCELLED` changes nothing, the problem stays, and `elevation.restart {outcome: declined}` is logged; acceptance logs `prompted` then `handed_over`, runs `Host::shutdown()` and exits; the data folder stays `MouserData/` (FR-005; states `idle → prompting → handing_over → elevated_running`, declined → `idle`)
-- [ ] T330 [US5-app] Implement the restart sequence in `apps/mouser-app/src/elevation.rs` and run it on `EngineEvent::RestartElevated` from `apps/mouser-app/src/host.rs`
-- [ ] T331 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--wait-for <pid>` waits for that process to exit before any Tauri initialisation, so the single-instance plugin's mutex is free (Windows only)
-- [ ] T332 [US5-app] Implement `--wait-for` in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
-- [ ] T333 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs`: an instance started elevated in portable mode writes its pid to `MouserData/elevated.pid` at start and deletes the file on exit (data-model "Elevated marker")
-- [ ] T334 [US5-app] Write and delete the elevated marker in `apps/mouser-app/src/elevation.rs`
-- [ ] T335 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: a launch that is not elevated and finds a live pid in `MouserData/elevated.pid` shows "Mouser is already running as administrator on this computer. Open it from the tray icon." through the `Shell` seam's message box and exits 0 before any Tauri initialisation; a stale pid or an elevated launch continues to the single-instance plugin as in 001 (spec edge case; probe P3)
-- [ ] T336 [US5-app] Implement the second-launch check in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
+- [X] T329 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs` (behind a `Shell` seam, never elevating in tests): the restart runs `ShellExecuteExW(verb="runas", exe, "--wait-for <pid>")`; `ERROR_CANCELLED` changes nothing, the problem stays, and `elevation.restart {outcome: declined}` is logged; acceptance logs `prompted` then `handed_over`, runs `Host::shutdown()` and exits; the data folder stays `MouserData/` (FR-005; states `idle → prompting → handing_over → elevated_running`, declined → `idle`)
+- [X] T330 [US5-app] Implement the restart sequence in `apps/mouser-app/src/elevation.rs` and run it on `EngineEvent::RestartElevated` from `apps/mouser-app/src/host.rs`
+- [X] T331 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: `--wait-for <pid>` waits for that process to exit before any Tauri initialisation, so the single-instance plugin's mutex is free (Windows only)
+- [X] T332 [US5-app] Implement `--wait-for` in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
+- [X] T333 [P] [US5-app] Write unit tests in `apps/mouser-app/src/elevation_tests.rs`: an instance started elevated in portable mode writes its pid to `MouserData/elevated.pid` at start and deletes the file on exit (data-model "Elevated marker")
+- [X] T334 [US5-app] Write and delete the elevated marker in `apps/mouser-app/src/elevation.rs`
+- [X] T335 [P] [US5-app] Write unit tests in `apps/mouser-app/src/args_tests.rs`: a launch that is not elevated and finds a live pid in `MouserData/elevated.pid` shows "Mouser is already running as administrator on this computer. Open it from the tray icon." through the `Shell` seam's message box and exits 0 before any Tauri initialisation; a stale pid or an elevated launch continues to the single-instance plugin as in 001 (spec edge case; probe P3)
+- [X] T336 [US5-app] Implement the second-launch check in `apps/mouser-app/src/args.rs` and `apps/mouser-app/src/main.rs`
 - [X] T337 [P] [US5-app] Write UI tests in `apps/mouser-app/ui/fixes.test.js`: the `restart_elevated:<id>` fix runs the restart locally when `<id>` is this computer and calls `elevation.restart {computer: id}` otherwise; the message says "Approve the Windows prompt on <computer>" (OD-1)
 - [X] T338 [US5-app] Add `restart_elevated` to `apps/mouser-app/ui/fixes.js`
-- [ ] T339 [P] [US5-app] Write unit tests in `apps/mouser-app/src/ui_mode_tests.rs`: when `MouserService` is installed and running, the tray app starts in UI mode with no engine of its own and talks to the session engine over `\\.\pipe\mouser-service` (through a service-query seam)
-- [ ] T340 [US5-app] Implement UI-mode detection in `apps/mouser-app/src/ui_mode.rs` and the remote control client in `apps/mouser-app/src/host.rs`
+- [X] T339 [P] [US5-app] Write unit tests in `apps/mouser-app/src/ui_mode_tests.rs`: when `MouserService` is installed and running, the tray app starts in UI mode with no engine of its own and talks to the session engine over `\\.\pipe\mouser-service` (through a service-query seam)
+- [X] T340 [US5-app] Implement UI-mode detection in `apps/mouser-app/src/ui_mode.rs` and the remote control client in `apps/mouser-app/src/host.rs`
 - [X] T341 [P] [US5-app] Write unit tests in `apps/mouser-app/src/commands_tests.rs`: in UI mode (this computer's `status` mode is `service`) `collect_logs()` calls `logs.collect_stream {}`, reassembles the `logs.chunk` notifications, checks `size` and `sha256`, and writes the zip as the signed-in user to their Downloads folder with log-bundle.md's naming and collision rule, returning that path; a size or hash mismatch returns an error and leaves no file (OD-7; Story 3 sc. 12)
-- [ ] T342 [US5-app] Implement the UI-mode path of `collect_logs` in `apps/mouser-app/src/commands.rs` and `apps/mouser-app/src/bundle_save.rs`
-- [ ] T343 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: `--headless --machine` on Windows runs the engine with the machine folder `C:\ProgramData\Mouser`, machine-scope secrets and mode `service`
-- [ ] T344 [US5-app] Implement Windows `--headless --machine` folder, secrets and mode selection in `apps/mouser-app/src/headless.rs`
-- [ ] T345 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: Windows `--headless --machine` connects with `ServiceClient::connect(version)` and builds the backend with `WinPlatform::with_service_client` (signatures frozen in contracts/platform-api-delta.md); on the service's `Shutdown` (the `on_shutdown` callback) it runs `Engine::shutdown` and exits
-- [ ] T346 [US5-app] Implement the service client wiring and `Shutdown` handling in `apps/mouser-app/src/headless.rs` using `mouser_platform_windows::service_client`
-- [ ] T347 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: before a voluntary exit the engine calls `stopping(StopReason::Quit)`, and after a caught fault that ends it `stopping(StopReason::Fault)`
-- [ ] T348 [US5-app] Send `Stopping` before a voluntary exit in `apps/mouser-app/src/headless.rs`
-- [ ] T349 [US5-app] Gate: `cargo xtask gate --packages mouser-app --lane app` (including the Windows runner)
-- [ ] T350 [US5-app] Commit: phase boundary "US5-app" (5.3)
+- [X] T342 [US5-app] Implement the UI-mode path of `collect_logs` in `apps/mouser-app/src/commands.rs` and `apps/mouser-app/src/bundle_save.rs`
+- [X] T343 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: `--headless --machine` on Windows runs the engine with the machine folder `C:\ProgramData\Mouser`, machine-scope secrets and mode `service`
+- [X] T344 [US5-app] Implement Windows `--headless --machine` folder, secrets and mode selection in `apps/mouser-app/src/headless.rs`
+- [X] T345 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: Windows `--headless --machine` connects with `ServiceClient::connect(version)` and builds the backend with `WinPlatform::with_service_client` (signatures frozen in contracts/platform-api-delta.md); on the service's `Shutdown` (the `on_shutdown` callback) it runs `Engine::shutdown` and exits
+- [X] T346 [US5-app] Implement the service client wiring and `Shutdown` handling in `apps/mouser-app/src/headless.rs` using `mouser_platform_windows::service_client`
+- [X] T347 [P] [US5-app] Write unit tests in `apps/mouser-app/src/headless_tests.rs`: before a voluntary exit the engine calls `stopping(StopReason::Quit)`, and after a caught fault that ends it `stopping(StopReason::Fault)`
+- [X] T348 [US5-app] Send `Stopping` before a voluntary exit in `apps/mouser-app/src/headless.rs`
+- [X] T349 [US5-app] Gate: `cargo xtask gate --packages mouser-app --lane app` (including the Windows runner)
+- [X] T350 [US5-app] Commit: phase boundary "US5-app" (5.3)
 
 #### Phase 14: US6-app — As a desk owner, I want Mouser to run without its window or tray on Windows and Linux (P3)
 
@@ -532,7 +532,7 @@ Package `apps/mouser-cli`. Gate per phase: `cargo xtask gate --packages mouser-c
 - [X] T376 [P] [US5-cli] Write tests in `apps/mouser-cli/tests/contract_cli_logs_collect.rs` against an in-process engine started in mode `service`: `mouser logs collect --out DIR` sees mode `service` in `status`, calls `logs.collect_stream`, reassembles the chunks, checks `size` and `sha256`, writes the zip itself into DIR (or the user's Downloads folder without `--out`) with log-bundle.md's naming and collision rule, and prints the path and per-computer lines as for `logs.collect` (OD-7)
 - [X] T377 [US5-cli] Implement the streamed path of `logs collect` in `apps/mouser-cli/src/logs.rs`
 - [X] T378 [US5-cli] Gate: `cargo xtask gate --packages mouser-cli --lane cli` (including the Windows runner)
-- [ ] T379 [US5-cli] Commit: phase boundary "US5-cli" (5.3)
+- [X] T379 [US5-cli] Commit: phase boundary "US5-cli" (5.3)
 
 ### Lane: platform-windows
 
