@@ -36,8 +36,15 @@ system-configuration = "=0.7.0"
 [dev-dependencies]
 mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
 
+[features]
+# Opt-in: the real file-drag test. Hosted macOS 15/26 runners never deliver
+# mouse events to AppKit's drag loop, so it hangs there; it passes on real
+# hardware and is run by the owner before release (owner-confirmations row 16).
+real-drag = []
+
 # The file-drag test needs the real main thread running AppKit's event loop,
 # which libtest's harness never does.
 [[test]]
 name = "contract_platform_macos_us7"
 harness = false
+required-features = ["real-drag"]
