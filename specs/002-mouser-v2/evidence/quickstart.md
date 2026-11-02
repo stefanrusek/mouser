@@ -59,3 +59,8 @@ One row per quickstart.md check. Outcome starts as `PENDING`.
 | check | outcome | hardware and OS | Mouser version | date | who ran it | bundle file name | defect (Story 7) |
 |---|---|---|---|---|---|---|---|
 | S7 headless | PENDING |  |  |  |  |  |  |
+
+## 0.3.0 release candidate (T506)
+
+- Release run 41546161066 on tag v0.3.0 (commit 39892d9; CI 41484800998 green on Linux, Windows and macOS).
+- Published as a GitHub pre-release with the Windows installer and portable zip, the macOS universal dmg and the Linux AppImage/deb, plus updater signatures and latest.json.

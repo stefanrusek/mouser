@@ -740,7 +740,7 @@ Package `apps/mouser-service-win` (built as `mouser-service.exe`; `MouserService
 - [X] T503 [P] Update `docs/technical-decisions.md` with the as-built V1–V20 decisions, the `zip`/`windows-service` dependencies, the cursor guard, the service + session-engine model, and the probe P1–P4 outcomes from `specs/002-mouser-v2/spikes/FINDINGS.md`
 - [X] T504 [P] Update `docs/product-requirements.md` so every item states what v2 delivers, including the two new accepted limitations (unknown-publisher warning; Linux login screen) and 001 limitation 4 superseded for installed Windows
 - [X] T505 Review all files under `docs/` against the delivered behaviour and record "docs/ reviewed, no drift" or the corrections made in `specs/002-mouser-v2/evidence/docs-review.md` (a review record written by the reviewer, not gate evidence; verification only)
-- [ ] T506 Build the 0.3.0 release candidate with `.github/workflows/release.yml` (the owner confirms and pushes the tag) producing the Windows NSIS installer, the Windows portable zip, the macOS dmg and the Linux AppImage/deb used by the checks below; record the run id in `specs/002-mouser-v2/evidence/quickstart.md` (verification only)
+- [X] T506 Build the 0.3.0 release candidate with `.github/workflows/release.yml` (the owner confirms and pushes the tag) producing the Windows NSIS installer, the Windows portable zip, the macOS dmg and the Linux AppImage/deb used by the checks below; record the run id in `specs/002-mouser-v2/evidence/quickstart.md` (verification only)
 
 ### Story 7 — real-hardware verification (quickstart.md; SC-011)
 
