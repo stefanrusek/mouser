@@ -7,8 +7,10 @@ use std::process::{Child, Command, Stdio};
 use crate::feature_dir;
 
 const UI_DIR: &str = "apps/mouser-app/ui";
-// OD-5: SYSTEM-only WinApi pass-through, verified by probe P2 and Story 7 R8/R9 (debt)
-const EXCLUDE: &str = "(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\\.rs)";
+// OD-5: SYSTEM-only WinApi pass-through, verified by probe P2 and Story 7 R8/R9 (debt).
+// dragwin.rs: AppKit drag source, only reachable by the opt-in real-drag test,
+// which hosted macOS 15/26 runners cannot run (owner-confirmations row 16).
+const EXCLUDE: &str = "(mouser-testkit|xtask|spikes|probes|/gen/|e2e|winapi_sys\\.rs|dragwin\\.rs)";
 
 #[derive(ClapArgs)]
 pub struct Args {

@@ -28,6 +28,17 @@ fn exclude_matches_no_other_service_win_source() {
     }
 }
 
+#[test]
+fn exclude_matches_the_macos_drag_window_and_no_other_macos_source() {
+    assert!(excluded("crates/mouser-platform-macos/src/dragwin.rs"));
+    for f in ["drag.rs", "drag_tests.rs", "lib.rs"] {
+        assert!(
+            !excluded(&format!("crates/mouser-platform-macos/src/{f}")),
+            "{f}"
+        );
+    }
+}
+
 const HELPER: &str = "XTASK_TEE_HELPER";
 
 /// Not a test of its own: a portable child process for the `tee` tests, run
