@@ -453,3 +453,19 @@ async fn a_rotator_that_cannot_store_the_new_key_keeps_the_desk_as_it_was() {
     assert_eq!(status(&a).await.computers.len(), 3);
     assert_eq!(key_of(&a, &desk), old_key);
 }
+
+#[test]
+fn a_computer_that_is_added_again_replaces_its_entry_instead_of_appearing_twice() {
+    let mut newer = member(2);
+    newer.mouser_version = "0.3.0".into();
+    let added = with_member(&state(&[1, 2, 3]), newer, ComputerId([1; 16]));
+    let twos: Vec<_> = added
+        .members
+        .iter()
+        .filter(|m| m.computer_id == ComputerId([2; 16]))
+        .collect();
+    assert_eq!(twos.len(), 1);
+    assert_eq!(twos[0].mouser_version, "0.3.0");
+    assert_eq!(added.members.len(), 3);
+    assert_eq!(added.epoch, 5);
+}

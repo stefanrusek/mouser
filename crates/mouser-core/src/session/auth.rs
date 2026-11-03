@@ -48,7 +48,11 @@ pub fn verify(
 
 use std::sync::Arc;
 
+use mouser_proto::control::ProblemKind;
+use mouser_proto::model::DeskState;
 use mouser_proto::wire::ControlMessage;
+
+use crate::desk::membership::{rotator, with_member, without_member};
 
 use crate::engine::{Core, Ctx, Phase};
 use crate::logging::events;
@@ -83,9 +87,24 @@ impl Ctx {
         else {
             return Err("DeskAuth while not on a desk".into());
         };
+        let listed = core.is_member(peer);
         let entry = core.peers.get_mut(&peer).expect("peer registered");
         if !verify(&key, &export(&entry.conn), &desk, &peer, &hmac) {
             entry.close_for(CloseReason::NotMember);
+            let name = entry.hello.display_name.clone();
+            drop(core);
+            // A computer this desk lists that cannot prove it holds the desk
+            // key (it was offline when the key was rotated) will never get
+            // in by trying again: say so once, until it does.
+            if listed {
+                self.problems.raise(
+                    ProblemKind::JoinRefused,
+                    &peer.to_string(),
+                    peer,
+                    format!("{name} is on this desk but does not hold its key; it must join the desk again."),
+                    None,
+                );
+            }
             return Ok(());
         }
         entry.phase = Phase::Authed;
@@ -98,8 +117,11 @@ impl Ctx {
             &entry.hello.mouser_version,
             entry.hello.os,
         ));
+        core.refusals.accepted(peer);
+        self.problems
+            .clear(ProblemKind::JoinRefused, &peer.to_string(), peer);
         self.mark_present(&mut core, peer);
-        let state = core.state.desk.as_ref().expect("on a desk").state.clone();
+        let state = self.refreshed_entry(&mut core, peer);
         let displays = self.local_displays(&core);
         core.peers[&peer].send(ControlMessage::DeskState(state));
         core.peers[&peer].send(ControlMessage::Displays { displays });
@@ -111,5 +133,43 @@ impl Ctx {
         drop(core);
         self.notify_status();
         Ok(())
+    }
+}
+
+impl Ctx {
+    /// The desk state to send `peer`, once it has proven membership. If it
+    /// runs another version or goes by another name than the desk records,
+    /// the desk-mate that would issue the state were it to leave (the one
+    /// `on_leave` makes it) records what it says, under a new epoch, and
+    /// tells every other desk-mate. The layout is untouched, so nothing
+    /// is re-placed by it.
+    fn refreshed_entry(&self, core: &mut Core, peer: ComputerId) -> DeskState {
+        let desk = core.state.desk.as_mut().expect("on a desk");
+        let hello = &core.peers[&peer].hello;
+        // A holder of the desk key that the state does not list (a state
+        // that lost it, see `on_desk_state`) is recorded when it is back.
+        let Some(recorded) = desk.state.members.iter().find(|m| m.computer_id == peer) else {
+            return desk.state.clone();
+        };
+        // The name is the desk's to give (a rename made while the computer
+        // was away is on the desk before the computer says its old one), so
+        // only the version is taken from the computer.
+        let changed = recorded.mouser_version != hello.mouser_version;
+        let refresher =
+            changed && rotator(&without_member(&desk.state, peer, self.me())) == self.me();
+        if !refresher {
+            return desk.state.clone();
+        }
+        let mut member = recorded.clone();
+        member.mouser_version = hello.mouser_version.clone();
+        desk.state = with_member(&desk.state, member, self.me());
+        let state = desk.state.clone();
+        let _ = self.persist(core);
+        for (id, other) in core.peers.iter() {
+            if *id != peer && other.phase == Phase::Authed {
+                other.send(ControlMessage::DeskState(state.clone()));
+            }
+        }
+        state
     }
 }

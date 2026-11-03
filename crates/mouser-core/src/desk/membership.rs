@@ -21,10 +21,25 @@ use crate::state::Membership;
 /// `state` plus `member`, one epoch later, authored by `author`.
 pub fn with_member(state: &DeskState, member: Member, author: ComputerId) -> DeskState {
     let mut next = state.clone();
+    next.members.retain(|m| m.computer_id != member.computer_id);
     next.members.push(member);
     next.epoch += 1;
     next.author = author;
     next
+}
+
+/// Keep one entry per computer: the newest by `joined_at`, the later one in
+/// the list on a tie. The survivors keep their order.
+pub fn keep_newest_entries(members: &mut Vec<Member>) {
+    let all = members.clone();
+    let mut index = 0;
+    members.retain(|m| {
+        index += 1;
+        !all.iter().enumerate().any(|(i, other)| {
+            other.computer_id == m.computer_id
+                && (other.joined_at > m.joined_at || (other.joined_at == m.joined_at && i >= index))
+        })
+    });
 }
 
 /// `state` without `who`, one epoch later, authored by `author`.
@@ -50,6 +65,23 @@ pub fn rotator(state: &DeskState) -> ComputerId {
         .map(|m| m.computer_id)
         .min()
         .expect("a desk has members")
+}
+
+impl Core {
+    /// The computers the desk no longer lists take their displays with them.
+    pub(crate) fn forget_displays_of_non_members(&mut self) {
+        let members: Vec<ComputerId> = self
+            .state
+            .desk
+            .as_ref()
+            .expect("on a desk")
+            .state
+            .members
+            .iter()
+            .map(|m| m.computer_id)
+            .collect();
+        self.state.displays.retain(|c, _| members.contains(c));
+    }
 }
 
 impl Ctx {
@@ -94,6 +126,7 @@ impl Ctx {
         let (id, name) = (desk.desk_id, desk.name.clone());
         self.store_desk_key(&id, &key)?;
         desk.state = state.clone();
+        core.forget_displays_of_non_members();
         core.desk_key = Some(key);
         let _ = self.persist(core);
         let sealed = seal(&Sealed { key, name, state });

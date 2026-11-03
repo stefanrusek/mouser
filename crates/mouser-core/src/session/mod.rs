@@ -6,6 +6,7 @@ pub mod close_reason;
 pub mod handshake;
 pub mod liveness;
 pub mod redial;
+pub mod refusal;
 
 #[cfg(test)]
 mod auth_tests;
@@ -21,6 +22,8 @@ mod handshake_tests;
 mod liveness_tests;
 #[cfg(test)]
 mod redial_tests;
+#[cfg(test)]
+mod refusal_tests;
 
 use crate::lock::LockExt;
 use std::net::SocketAddr;
@@ -459,6 +462,9 @@ impl Ctx {
                     .map_or(LinkLossReason::PeerLeft, |error| LinkLossReason::of(&error))
             });
             self.log.write(events::peer_disconnected(peer, reason));
+            if reason == LinkLossReason::Removed {
+                core.refusals.refused(peer, Instant::now());
+            }
             if gone.phase != Phase::Departed && core.is_member(peer) {
                 core.mark_absent(peer, gone.last_seen, Instant::now());
             }

@@ -12,6 +12,8 @@ pub mod validate;
 #[cfg(test)]
 mod autoplace_tests;
 #[cfg(test)]
+mod converge_tests;
+#[cfg(test)]
 mod details_tests;
 #[cfg(test)]
 mod displays_tests;

@@ -16,9 +16,13 @@ mod create_tests;
 #[cfg(test)]
 mod join_tests;
 #[cfg(test)]
+mod lost_member_tests;
+#[cfg(test)]
 mod manual_tests;
 #[cfg(test)]
 mod membership_tests;
+#[cfg(test)]
+mod refresh_tests;
 #[cfg(test)]
 mod rename_tests;
 #[cfg(test)]

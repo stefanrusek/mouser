@@ -225,6 +225,16 @@ impl Ctx {
     /// the highest `(epoch, author)` wins. Deferred while the size of a
     /// placed display is not known.
     pub(crate) fn sync_layout(&self, core: &mut Core) {
+        self.sync_layout_of(core, None);
+    }
+
+    /// [`Self::sync_layout`], placing only `only`'s displays when given.
+    /// A desk state a desk-mate published is answered for this computer's
+    /// own displays alone: what this computer knows of the others' is what
+    /// they last reported, and two members that disagree about it would
+    /// otherwise replace each other's layout for ever. Each republishes
+    /// when its own report changes.
+    pub(crate) fn sync_layout_of(&self, core: &mut Core, only: Option<ComputerId>) {
         let me = self.me();
         let mine = self.local_displays(core);
         // This is where this computer's own display list is brought up to
@@ -276,6 +286,7 @@ impl Ctx {
         let cut_off = isolated(&edges::placed(&all_displays, &old));
         let stale: BTreeSet<ComputerId> = known
             .keys()
+            .filter(|c| only.is_none_or(|o| o == **c))
             .filter(|c| {
                 placed_for(c) != wanted(c)
                     || cut_off.contains(*c)

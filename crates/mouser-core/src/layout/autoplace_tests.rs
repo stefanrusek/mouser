@@ -475,16 +475,17 @@ mod on_the_wire {
             joined["fields"],
             serde_json::json!({"by": ia, "computer": ib, "change": "auto_placed"})
         );
-        let before = log_events(a, "layout.changed").len();
-        // A second display makes Beta's group be placed again.
+        let before = log_events(b, "layout.changed").len();
+        // A second display makes Beta's group be placed again, by Beta: a
+        // desk-mate's state is answered for its own displays only.
         let mut all = b.platform.displays().unwrap();
         all.push(screen("side", (1920.0, 0.0)));
         b.platform.set_displays(all);
         eventually("Beta to be placed again", || async {
-            log_events(a, "layout.changed").len() > before
+            log_events(b, "layout.changed").len() > before
         })
         .await;
-        let again = log_events(a, "layout.changed").pop().unwrap();
+        let again = log_events(b, "layout.changed").pop().unwrap();
         assert_eq!(again["fields"]["computer"], ib);
         assert_eq!(again["fields"]["change"], "auto_placed");
     }

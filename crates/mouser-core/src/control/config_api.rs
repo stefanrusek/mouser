@@ -116,6 +116,12 @@ impl Ctx {
             return;
         };
         let state = &mut desk.state;
+        if state.layout.block_fullscreen == core.config.crossing.block_fullscreen
+            && state.layout.equalize_dimensions == core.config.crossing.equalize_dimensions
+            && state.allowlist == core.config.advanced.allowlist
+        {
+            return;
+        }
         let old = state.layout.clone();
         state.layout.block_fullscreen = core.config.crossing.block_fullscreen;
         state.layout.equalize_dimensions = core.config.crossing.equalize_dimensions;

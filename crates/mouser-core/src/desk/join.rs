@@ -427,6 +427,7 @@ impl Ctx {
             let old = desk.state.layout.clone();
             desk.state = sealed.state.clone();
             core.desk_key = Some(sealed.key);
+            core.forget_displays_of_non_members();
             self.layout_changed(&mut core, &old, &sealed.state);
             drop(core);
             self.notify_status();

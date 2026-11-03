@@ -187,3 +187,48 @@ mod renames {
         assert_eq!(configured_name(&gamma).await, "Gamma Renamed");
     }
 }
+
+#[test]
+fn adopting_a_state_that_lists_a_computer_twice_keeps_only_its_newest_entry() {
+    let mut mine = state(3, 1, &[1, 2]);
+    let mut offered = state(4, 1, &[1, 2, 2]);
+    offered.members[1].mouser_version = "0.2.4".into();
+    offered.members[1].joined_at = "2026-10-01T00:00:00.000Z".into();
+    offered.members[2].mouser_version = "0.3.0".into();
+    offered.members[2].joined_at = "2026-11-01T00:00:00.000Z".into();
+    assert!(adopt(&mut mine, offered));
+    let twos: Vec<_> = mine
+        .members
+        .iter()
+        .filter(|m| m.computer_id == ComputerId([2; 16]))
+        .collect();
+    assert_eq!(mine.members.len(), 2);
+    assert_eq!(twos.len(), 1);
+    assert_eq!(twos[0].mouser_version, "0.3.0");
+    assert_eq!(mine.members[0].computer_id, ComputerId([1; 16]));
+    assert_eq!(mine.epoch, 4);
+}
+
+#[test]
+fn the_newest_entry_is_kept_whichever_order_the_list_has_it_in() {
+    let mut mine = state(3, 1, &[1]);
+    let mut offered = state(4, 1, &[2, 2]);
+    offered.members[0].mouser_version = "0.3.0".into();
+    offered.members[0].joined_at = "2026-11-01T00:00:00.000Z".into();
+    offered.members[1].mouser_version = "0.2.4".into();
+    offered.members[1].joined_at = "2026-10-01T00:00:00.000Z".into();
+    assert!(adopt(&mut mine, offered));
+    assert_eq!(mine.members.len(), 1);
+    assert_eq!(mine.members[0].mouser_version, "0.3.0");
+}
+
+#[test]
+fn two_entries_stamped_alike_keep_the_later_one() {
+    let mut mine = state(3, 1, &[1]);
+    let mut offered = state(4, 1, &[2, 2]);
+    offered.members[0].mouser_version = "0.2.4".into();
+    offered.members[1].mouser_version = "0.3.0".into();
+    assert!(adopt(&mut mine, offered));
+    assert_eq!(mine.members.len(), 1);
+    assert_eq!(mine.members[0].mouser_version, "0.3.0");
+}

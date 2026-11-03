@@ -386,3 +386,16 @@ async fn the_two_new_boolean_keys_refuse_anything_else_in_plain_words() {
         assert_eq!(get(&node, key).await, json!(true));
     }
 }
+
+#[tokio::test]
+async fn writing_a_shared_setting_it_already_holds_leaves_the_desk_state_alone() {
+    let lab = Lab::new();
+    let nodes = desk_of(&lab, &["Alpha", "Beta"]).await;
+    let (a, b) = (&nodes[0], &nodes[1]);
+    let before = epoch(a);
+    let current = get(a, "crossing.block_fullscreen").await;
+    set(a, "crossing.block_fullscreen", current).await;
+    settle().await;
+    assert_eq!(epoch(a), before);
+    assert_eq!(epoch(b), before);
+}

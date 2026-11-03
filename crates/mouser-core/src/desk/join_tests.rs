@@ -6,6 +6,7 @@ use mouser_proto::wire::ControlMessage;
 use serde_json::json;
 
 use super::join::{Requests, Sealed, open, seal};
+use crate::lock::LockExt;
 use crate::state::{LocalState, Membership};
 use crate::testing::{Lab, admit, call, call_err, connected, eventually, recv_topic, status};
 
@@ -372,4 +373,41 @@ async fn moving_desks_with_an_unwritable_store_keeps_the_old_desk() {
     recv_topic(&mut b_notes, Topic::Problem).await;
     let s = status(&b).await;
     assert_eq!(s.desk.unwrap().id, desk_b.desk_id);
+}
+
+#[tokio::test]
+async fn a_computer_that_joins_again_replaces_its_old_entry_on_the_desk() {
+    let lab = Lab::new();
+    let a = lab.start("Alpha").await;
+    desk_on(&a, "Home office").await;
+    let b = lab.start("Beta").await;
+    {
+        let mut core = a.engine.ctx.core.guard();
+        let desk = core.state.desk.as_mut().unwrap();
+        let mut stale = desk.state.members[0].clone();
+        stale.computer_id = b.engine.computer_id();
+        stale.display_name = "Old Beta".into();
+        stale.mouser_version = "0.2.4".into();
+        desk.state.members.push(stale);
+    }
+    admit(&a, &b).await;
+    let members = a
+        .engine
+        .ctx
+        .core
+        .guard()
+        .state
+        .desk
+        .as_ref()
+        .unwrap()
+        .state
+        .members
+        .clone();
+    let betas: Vec<_> = members
+        .iter()
+        .filter(|m| m.computer_id == b.engine.computer_id())
+        .collect();
+    assert_eq!(members.len(), 2, "{members:?}");
+    assert_eq!(betas.len(), 1);
+    assert_eq!(betas[0].display_name, "Beta");
 }

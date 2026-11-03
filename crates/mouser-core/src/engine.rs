@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use mouser_platform::{Platform, PlatformProblem, SecretStore};
 use mouser_proto::config::Config;
@@ -238,6 +238,8 @@ pub(crate) struct Core {
     /// Physical LAN addresses of this computer when last looked at.
     pub physical: BTreeSet<std::net::IpAddr>,
     pub dialing: BTreeSet<ComputerId>,
+    /// Computers that refused this one as not a member of their desk.
+    pub refusals: crate::session::refusal::Refusals,
     pub requests: Requests,
     pub paused: bool,
     /// Displays whose placement the desk owner has not reviewed yet.
@@ -573,6 +575,7 @@ impl Engine {
                 moves: 0,
                 physical: crate::transport::netchange::physical_addrs(&interfaces),
                 dialing: BTreeSet::new(),
+                refusals: Default::default(),
                 requests: Requests::default(),
                 paused: false,
                 needs_review: BTreeSet::new(),
@@ -808,7 +811,8 @@ impl Ctx {
             let same_desk = my_desk.is_some() && f.desk.as_ref().map(|d| d.0) == my_desk;
             let incompatible =
                 !mouser_proto::wire::is_compatible(f.protocol, self.protocol_version);
-            if !known && (same_desk || incompatible) && self.me() < f.computer {
+            let refused = core.refusals.waiting(f.computer, Instant::now());
+            if !known && !refused && (same_desk || incompatible) && self.me() < f.computer {
                 core.dialing.insert(f.computer);
                 self.spawn(self.clone().dial_found(f));
             }
