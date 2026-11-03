@@ -695,11 +695,18 @@ async fn display_and_layout_records(w: &mut LogWorld) {
         .await;
     assert_eq!(*field(&moved, "by"), alpha);
     assert_eq!(*field(&moved, "computer"), beta);
-    // Beta was placed by the desk when it joined.
-    w.wait_for("Alpha", "layout.changed", "auto_placed", |r| {
-        *field(r, "change") == "auto_placed" && *field(r, "computer") == beta
-    })
-    .await;
+    // Beta was placed by the desk when it joined: by the computer that
+    // placed it, Alpha or Beta (each answers a desk-mate's state for its own
+    // displays only).
+    let placed = |r: &Value| {
+        r["event"] == "layout.changed"
+            && *field(r, "change") == "auto_placed"
+            && *field(r, "computer") == beta
+    };
+    assert!(
+        w.records("Alpha").iter().any(placed) || w.records("Beta").iter().any(placed),
+        "no computer logged placing Beta"
+    );
     w.check_catalog("Alpha");
     w.check_catalog("Beta");
 }
