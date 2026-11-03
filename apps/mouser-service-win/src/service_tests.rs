@@ -6,6 +6,7 @@ use mouser_proto::service_ipc::{EngineMessage, SasResult, StopReason, engine_pip
 use crate::fake::{FakeWin, NO_SESSION};
 use crate::service::{Control, Reported, Scm, SessionReason, dispatch, serve};
 use crate::session::{Event, Supervisor};
+use crate::session_tests::served;
 use crate::test_log::TestLog;
 use crate::winapi::WinApi;
 
@@ -99,6 +100,7 @@ fn an_engine_that_quits_has_the_service_report_stopped() {
         move || serve(&*scm, supervisor, heard)
     });
     let engine = fake.connect_engine(1);
+    served(&fake, &engine_pipe_name(1));
     fake.send(
         &engine_pipe_name(1),
         &EngineMessage::Stopping {
