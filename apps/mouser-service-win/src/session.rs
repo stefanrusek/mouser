@@ -1,6 +1,7 @@
 //! The service's state machine (contracts/service-ipc.md "Lifecycle"): one
-//! session engine in the console session, started again when it exits or
-//! the console session changes, and shut down when the service stops. It
+//! session engine in the console session, started again when it exits
+//! (unless the desk user chose Quit, which stops the service) or the
+//! console session changes, and shut down when the service stops. It
 //! moves only on events: no polling, sleep or timer, and no back-off.
 
 use std::path::PathBuf;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use mouser_core::logging::{Log, events};
+use mouser_proto::service_ipc::StopReason;
 
 use crate::launch::{Answer, Engine, launch};
 use crate::winapi::WinApi;
@@ -119,9 +121,16 @@ impl Supervisor {
                     pid: running,
                 },
             ) if pid == running => {
-                self.end_engine();
-                self.enter(State::Relaunching);
-                self.launch_in(session);
+                // The desk user chose Quit: Mouser stays stopped until the
+                // service is started again.
+                if self.end_engine() == Some(StopReason::Quit) {
+                    self.enter(State::Stopping);
+                    self.log.write(events::service_stopped(StopReason::Quit));
+                    self.enter(State::Stopped);
+                } else {
+                    self.enter(State::Relaunching);
+                    self.launch_in(session);
+                }
             }
             (Event::Stop, State::Running { .. }) => {
                 self.enter(State::Stopping);
@@ -161,11 +170,13 @@ impl Supervisor {
         }
     }
 
-    /// Shuts the engine down (it may have ended already) and waits for it.
-    fn end_engine(&mut self) {
+    /// Shuts the engine down (it may have ended already) and waits for it:
+    /// why it said it was stopping, if it did.
+    fn end_engine(&mut self) -> Option<StopReason> {
         let engine = self.engine.take().expect("a running engine");
         engine.shutdown();
-        let code = engine.finish();
-        self.log.write(events::service_engine_exited(code));
+        let ended = engine.finish();
+        self.log.write(events::service_engine_exited(ended.code));
+        ended.stopping
     }
 }

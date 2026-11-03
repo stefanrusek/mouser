@@ -38,7 +38,7 @@ The **Spec** column cites spec.md (Story n sc. m). A `peer` column value of ✓ 
 | `capture.probe`, `capture.reinstall`, `capture.hook_thread`, `capture.start` | debug | – | as 001 (2026-10-23 decision), plus `capture.probe.outcome` value `live` (real input seen, V7) | S3 sc.16 |
 | `capture.lost` | warn | – | `reason` (elevated_foreground/other_desktop/hooks_silent), `foreground?` (program name) | S1 sc.3 |
 | `capture.desktop` | info | – | `desktop` (default/winlogon/other) (session engine, V9) | S5 |
-| `service.*` (service log only) | info | – | `service.session` {`session`}, `service.engine_started` {`pid`, `session`}, `service.engine_exited` {`code`}, `service.sas` {`result`} | S5 |
+| `service.*` (service log only) | info | – | `service.session` {`session`}, `service.engine_started` {`pid`, `session`}, `service.engine_exited` {`code`}, `service.stopped` {`reason`: `quit` \| `fault`} (the engine quit and the service stopped itself), `service.sas` {`result`} | S5 |
 
 ## Rotation and header
 

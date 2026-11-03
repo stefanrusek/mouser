@@ -10,7 +10,7 @@ use mouser_proto::control::{BundleReason, Problem, SettingChange, SettingOrigin}
 use mouser_proto::ids::ComputerId;
 use mouser_proto::log::{LogComputer, LogLevel, LogRecord};
 use mouser_proto::model::Os;
-use mouser_proto::service_ipc::SasResult;
+use mouser_proto::service_ipc::{SasResult, StopReason};
 use mouser_proto::wire::ClipboardKind;
 use serde_json::{Map, Value, json};
 
@@ -477,6 +477,20 @@ pub fn service_engine_exited(code: u32) -> Event {
         "service.engine_exited",
         None,
         fields(json!({"code": code})),
+    )
+}
+
+/// The service stopped itself because the engine stopped for `reason`.
+pub fn service_stopped(reason: StopReason) -> Event {
+    let reason = match reason {
+        StopReason::Quit => "quit",
+        StopReason::Fault => "fault",
+    };
+    Event::new(
+        LogLevel::Info,
+        "service.stopped",
+        None,
+        fields(json!({"reason": reason})),
     )
 }
 

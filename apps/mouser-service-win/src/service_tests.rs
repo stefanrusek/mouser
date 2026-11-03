@@ -1,7 +1,7 @@
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
-use mouser_proto::service_ipc::SasResult;
+use mouser_proto::service_ipc::{EngineMessage, SasResult, StopReason, engine_pipe_name};
 
 use crate::fake::{FakeWin, NO_SESSION};
 use crate::service::{Control, Reported, Scm, SessionReason, dispatch, serve};
@@ -78,5 +78,41 @@ fn the_service_reports_running_until_its_supervisor_stops_then_stopped() {
     assert_eq!(
         *scm.0.lock().unwrap(),
         [Reported::Running, Reported::Stopped]
+    );
+}
+
+#[test]
+fn an_engine_that_quits_has_the_service_report_stopped() {
+    let fake = Arc::new(FakeWin::new());
+    let log = TestLog::new();
+    let (events, heard) = channel();
+    let supervisor = Supervisor::new(
+        fake.clone() as Arc<dyn WinApi>,
+        log.log.clone(),
+        r"C:\Mouser".into(),
+        Arc::new(|| SasResult::Sent),
+        events,
+    );
+    let scm = Arc::new(Reports::default());
+    let serving = std::thread::spawn({
+        let scm = scm.clone();
+        move || serve(&*scm, supervisor, heard)
+    });
+    let engine = fake.connect_engine(1);
+    fake.send(
+        &engine_pipe_name(1),
+        &EngineMessage::Stopping {
+            reason: StopReason::Quit,
+        },
+    );
+    fake.exit(engine, 0);
+    serving.join().unwrap();
+    assert_eq!(
+        *scm.0.lock().unwrap(),
+        [Reported::Running, Reported::Stopped]
+    );
+    assert_eq!(
+        log.events().last().unwrap(),
+        r#"service.stopped {"reason":"quit"}"#
     );
 }
