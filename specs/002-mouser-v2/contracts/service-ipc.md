@@ -23,7 +23,7 @@ The types live in the contract crate, in `crates/mouser-proto/src/service_ipc.rs
 | engine → service | `SendSas` | Asks for Ctrl-Alt-Del. The service calls `SendSAS(FALSE)`. |
 | service → engine | `SasResult(Sent \| PolicyBlocked \| Failed(String))` | `PolicyBlocked` means `SoftwareSASGeneration` is not 1 or 3 when read. The engine's `secure_attention()` returns `Err(Os(..))` for any outcome other than `Sent`. |
 | service → engine | `Shutdown` | The service is stopping or uninstalling, or the console session changed. The engine runs `Engine::shutdown` (research V4) and exits. |
-| engine → service | `Stopping { reason: StopReason }` (`StopReason = Quit \| Fault`) | Sent before a voluntary exit, so the service can log it. The service starts the engine again in either case, unless the service itself is stopping. |
+| engine → service | `Stopping { reason: StopReason }` (`StopReason = Quit \| Fault`) | Sent before a voluntary exit, so the service can log it. After `Fault` the service starts the engine again. After `Quit` (the desk user chose Quit) the service stops itself and does not relaunch the engine (owner decision 2026-11-03). |
 
 ## What does not travel on this pipe
 
@@ -35,12 +35,13 @@ The service leaves `WaitingForSession` only on a `SERVICE_CONTROL_SESSIONCHANGE`
 
 ```text
 service start → wait console session (≠0xFFFFFFFF) → create pipe(session) → launch engine(winlogon token, winsta0\default)
-engine exits ─▶ log service.engine_exited ─▶ relaunch (same session)
+engine exits after Stopping{Quit} ─▶ log service.engine_exited ─▶ service stops (no relaunch)
+engine exits otherwise ─▶ log service.engine_exited ─▶ relaunch (same session)
 SESSIONCHANGE (console connect/disconnect, logon/logoff) ─▶ Shutdown old engine ─▶ wait exit ─▶ new pipe/session ─▶ launch
 SERVICE_CONTROL_STOP / PRESHUTDOWN ─▶ Shutdown ─▶ wait exit ─▶ stop
 ```
 
-The service relaunches the engine as soon as it exits. This is not a retry after a timeout, and there is no back-off. A crash loop is visible in `service.log` as repeated `service.engine_exited` records.
+The service relaunches the engine as soon as it exits, except after `Stopping { Quit }`. This is not a retry after a timeout, and there is no back-off. A crash loop is visible in `service.log` as repeated `service.engine_exited` records.
 
 ## Tests
 
@@ -55,3 +56,9 @@ The service relaunches the engine as soon as it exits. This is not a retry after
 - A `Shutdown` for an engine that has not connected yet is held and sent as it connects.
 - An engine that cannot be launched (no `winlogon.exe`, or `CreateProcessAsUserW` fails) is relaunched at the next session change; there is no timer (owner confirmation row 4 checks cold boot).
 - Lock, unlock and remote session changes do not restart the engine; console connect and disconnect, logon and logoff do.
+
+## Quit stops the service (added 2026-11-03, owner decision)
+
+- Tray Quit on a computer where `MouserService` runs (the tray app in UI mode, or the engine's own tray) asks the engine to quit. The engine runs `Engine::shutdown`, sends `Stopping { Quit }` and exits; the service logs `service.stopped` with reason `quit` and reports `SERVICE_STOPPED`.
+- Mouser comes back when the service starts again: at the next boot (start type stays Automatic), or when the desk user starts Mouser from the Start menu. The installer grants the interactive user group (`IU`) `SERVICE_START` and `SERVICE_QUERY_STATUS` on `MouserService` and nothing more, so a standard user's Mouser can start the service without an elevation prompt; it cannot stop, reconfigure or delete it.
+- A Mouser started by the desk user that finds `MouserService` installed but stopped starts it, then connects in UI mode as in T534.
