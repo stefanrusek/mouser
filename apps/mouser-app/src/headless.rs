@@ -126,7 +126,7 @@ pub async fn run(params: EngineParams, shutdown: impl Future<Output = ()>) {
 }
 
 /// Completes when the control API's `quit` asks the engine to end.
-async fn quit_asked(mut events: tokio::sync::broadcast::Receiver<EngineEvent>) {
+pub(crate) async fn quit_asked(mut events: tokio::sync::broadcast::Receiver<EngineEvent>) {
     use tokio::sync::broadcast::error::RecvError;
     // A lagging receiver missed only other events. The engine outlives this
     // wait, so its events do not close while it waits.

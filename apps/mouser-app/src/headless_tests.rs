@@ -661,3 +661,24 @@ async fn the_session_engine_told_to_quit_tells_the_service_it_quit() {
     assert!(!served.exists(), "the engine shut down");
     assert_eq!(service.told(), [StopReason::Quit]);
 }
+
+#[tokio::test]
+async fn the_wait_for_quit_lets_other_events_pass_and_ends_on_quit() {
+    use mouser_core::EngineEvent;
+    let (events, heard) = tokio::sync::broadcast::channel(8);
+    events.send(EngineEvent::QuickJumpHide).unwrap();
+    events
+        .send(EngineEvent::Fault {
+            r#where: "reconcile".into(),
+        })
+        .unwrap();
+    events.send(EngineEvent::Quit).unwrap();
+    crate::headless::quit_asked(heard).await;
+}
+
+#[tokio::test]
+async fn the_wait_for_quit_ends_when_the_engine_s_events_close() {
+    let (events, heard) = tokio::sync::broadcast::channel::<mouser_core::EngineEvent>(8);
+    drop(events);
+    crate::headless::quit_asked(heard).await;
+}
