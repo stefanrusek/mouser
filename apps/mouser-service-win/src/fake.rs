@@ -53,6 +53,7 @@ pub enum Call {
     WriteDword(String, String, u32),
     DeleteValue(String, String),
     CreateService(ServiceSpec),
+    SetServiceSecurity(String, String),
     StartService(String),
     StopService(String),
     DeleteService(String),
@@ -615,6 +616,11 @@ impl WinApi for FakeWin {
         self.take_failure("create_service")?;
         self.update(|s| s.services.insert(spec.name.clone(), (spec.clone(), false)));
         Ok(())
+    }
+
+    fn set_service_security(&self, name: &str, sddl: &str) -> ApiResult<()> {
+        self.call(Call::SetServiceSecurity(name.into(), sddl.into()));
+        self.take_failure("set_service_security")
     }
 
     fn start_service(&self, name: &str) -> ApiResult<()> {

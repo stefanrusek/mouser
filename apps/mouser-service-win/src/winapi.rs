@@ -144,6 +144,8 @@ pub trait WinApi: Send + Sync {
 
     /// `CreateServiceW`.
     fn create_service(&self, spec: &ServiceSpec) -> ApiResult<()>;
+    /// `SetServiceObjectSecurity`: the service `name` gets the DACL `sddl`.
+    fn set_service_security(&self, name: &str, sddl: &str) -> ApiResult<()>;
     /// `StartServiceW`.
     fn start_service(&self, name: &str) -> ApiResult<()>;
     /// `ControlService(SERVICE_CONTROL_STOP)`; the service goes on stopping
