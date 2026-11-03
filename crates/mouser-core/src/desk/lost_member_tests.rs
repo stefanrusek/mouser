@@ -44,13 +44,14 @@ async fn a_member_admitted_while_one_was_offline_survives_that_ones_older_state(
     let delta = lab.boot("Delta", platform, dir).await;
     nodes.push(echo);
     nodes.push(delta);
-    settle().await;
-    settle().await;
-    for node in &nodes {
-        assert_eq!(members_of(node).len(), 5, "{}", node.engine.computer_id());
-    }
-    let epochs: Vec<_> = nodes.iter().map(epoch_of).collect();
-    assert!(epochs.iter().all(|e| *e == epochs[0]), "{epochs:?}");
+    eventually(
+        "all five members on every computer, at one epoch",
+        || async {
+            let epochs: Vec<_> = nodes.iter().map(epoch_of).collect();
+            nodes.iter().all(|n| members_of(n).len() == 5) && epochs.iter().all(|e| *e == epochs[0])
+        },
+    )
+    .await;
 }
 
 /// A member that holds another desk key than its desk-mate (it was offline

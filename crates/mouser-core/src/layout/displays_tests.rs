@@ -154,7 +154,11 @@ mod on_the_wire {
         assert_eq!(flagged.len(), 2);
         // Alpha's own displays were not touched.
         assert_eq!(keys_placed(a, a), ["virtual-0"]);
-        assert_eq!(status(a).await.computers[1].displays, 2);
+        // Beta's report of its displays follows the state that places them.
+        eventually("Alpha to count Beta's two displays", || async {
+            status(a).await.computers[1].displays == 2
+        })
+        .await;
     }
 
     #[tokio::test]
