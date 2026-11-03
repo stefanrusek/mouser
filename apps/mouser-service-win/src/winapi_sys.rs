@@ -40,6 +40,9 @@ use windows::Win32::System::Registry::{
 use windows::Win32::System::RemoteDesktop::{
     WTS_PROCESS_INFOW, WTSEnumerateProcessesW, WTSFreeMemory, WTSGetActiveConsoleSessionId,
 };
+use windows::Win32::System::Services::{
+    CloseServiceHandle, OpenSCManagerW, OpenServiceW, SetServiceObjectSecurity,
+};
 use windows::Win32::System::Threading::{
     CREATE_UNICODE_ENVIRONMENT, CreateEventW, CreateProcessAsUserW, GetExitCodeProcess, INFINITE,
     OpenProcess, OpenProcessToken, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -451,6 +454,38 @@ impl WinApi for System {
             .create_service(&info, ServiceAccess::QUERY_STATUS)
             .map(drop)
             .map_err(scm)
+    }
+
+    fn set_service_security(&self, name: &str, sddl: &str) -> ApiResult<()> {
+        const SC_MANAGER_CONNECT: u32 = 0x0001;
+        const WRITE_DAC: u32 = 0x0004_0000;
+        let mut descriptor = PSECURITY_DESCRIPTOR::default();
+        unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                &HSTRING::from(sddl),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                None,
+            )
+        }
+        .map_err(api)?;
+        let set = unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }
+            .map_err(api)
+            .and_then(|manager| {
+                let service = unsafe { OpenServiceW(manager, &HSTRING::from(name), WRITE_DAC) };
+                let set = service.map_err(api).and_then(|service| {
+                    let set = unsafe {
+                        SetServiceObjectSecurity(service, DACL_SECURITY_INFORMATION, descriptor)
+                    }
+                    .map_err(api);
+                    let _ = unsafe { CloseServiceHandle(service) };
+                    set
+                });
+                let _ = unsafe { CloseServiceHandle(manager) };
+                set
+            });
+        unsafe { LocalFree(Some(HLOCAL(descriptor.0))) };
+        set
     }
 
     fn start_service(&self, name: &str) -> ApiResult<()> {

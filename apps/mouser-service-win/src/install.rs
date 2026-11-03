@@ -25,6 +25,13 @@ pub const UDP_PORT: u16 = 47801;
 /// The machine secrets folder: SYSTEM and Administrators only, nothing
 /// inherited.
 pub const SECRETS_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+/// `MouserService`'s DACL: SYSTEM and Administrators keep the SCM's
+/// defaults; the desk user (`IU`, interactive) may only start it (`RP`)
+/// and ask after it (`LC`), so a Mouser started from the Start menu brings
+/// back a service that Quit stopped, with no elevation prompt. They cannot
+/// stop, reconfigure or delete it.
+pub const SERVICE_SDDL: &str =
+    "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;RPLC;;;IU)";
 /// `ERROR_SERVICE_ALREADY_RUNNING`.
 const ERROR_SERVICE_ALREADY_RUNNING: u32 = 1056;
 /// `ERROR_SERVICE_EXISTS`.
@@ -66,6 +73,8 @@ pub fn install(
     };
     unless(api.create_service(&spec), &[ERROR_SERVICE_EXISTS])
         .map_err(|e| step("creating MouserService", e))?;
+    api.set_service_security(SERVICE_NAME, SERVICE_SDDL)
+        .map_err(|e| step("letting the desk user start MouserService", e))?;
     api.write_dword(POLICY_KEY, POLICY_VALUE, 1)
         .map_err(|e| step("setting SoftwareSASGeneration", e))?;
     add_rule(api, dir).map_err(|e| step("adding the firewall rule", e))?;

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::fake::{Call, FakeWin};
-use crate::install::{exit_code, install, uninstall};
+use crate::install::{SERVICE_SDDL, exit_code, install, uninstall};
 use crate::winapi::{Account, FirewallRule, ServiceSpec, StartType};
 
 const DIR: &str = r"C:\Program Files\Mouser";
@@ -53,6 +53,56 @@ fn install_creates_mouser_service_as_local_system_started_automatically() {
     assert_eq!(fake.calls()[0], Call::CreateService(spec()));
 }
 
+/// The SDDL service rights, two letters each (`[MS-DTYP]` 2.5.1.1, with
+/// the SCM's service mapping).
+const START: &str = "RP";
+const QUERY_STATUS: &str = "LC";
+
+/// The rights the ace for `who` grants in `sddl`, if it has one.
+fn rights_of(sddl: &str, who: &str) -> Option<Vec<String>> {
+    let dacl = sddl.strip_prefix("D:").unwrap();
+    let ace = dacl
+        .trim_matches(|c| c == '(' || c == ')')
+        .split(")(")
+        .find(|ace| ace.ends_with(&format!(";;;{who}")))?;
+    let fields: Vec<&str> = ace.split(';').collect();
+    assert_eq!(fields[0], "A", "{ace} allows");
+    let rights = fields[2].as_bytes().chunks(2);
+    Some(
+        rights
+            .map(|r| String::from_utf8(r.to_vec()).unwrap())
+            .collect(),
+    )
+}
+
+#[test]
+fn install_lets_the_desk_user_start_mouser_service_and_ask_after_it_and_nothing_more() {
+    let fake = FakeWin::new();
+    install_on(&fake).unwrap();
+    let calls = fake.calls();
+    // Given as soon as the service exists: an install over an older one
+    // gives it too.
+    assert_eq!(
+        calls[1],
+        Call::SetServiceSecurity("MouserService".into(), SERVICE_SDDL.into())
+    );
+    let mut iu = rights_of(SERVICE_SDDL, "IU").unwrap();
+    iu.sort();
+    assert_eq!(iu, [QUERY_STATUS, START]);
+    // SYSTEM and Administrators keep what the SCM gives them; no other
+    // group is named.
+    assert_eq!(
+        SERVICE_SDDL,
+        "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;RPLC;;;IU)"
+    );
+    for who in ["SY", "BA"] {
+        assert!(rights_of(SERVICE_SDDL, who).unwrap().contains(&"WP".into()));
+    }
+    for who in ["AU", "BU", "WD", "SU"] {
+        assert_eq!(rights_of(SERVICE_SDDL, who), None, "{who}");
+    }
+}
+
 #[test]
 fn install_lets_services_send_ctrl_alt_del() {
     let fake = FakeWin::new();
@@ -94,6 +144,10 @@ fn a_step_of_install_that_fails_exits_1_with_its_reason() {
         (
             "create_service",
             "creating MouserService: create_service failed (error 5)",
+        ),
+        (
+            "set_service_security",
+            "letting the desk user start MouserService: set_service_security failed (error 5)",
         ),
         (
             "write_dword",
