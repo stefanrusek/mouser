@@ -215,6 +215,21 @@ async fn the_controller_redraws_on_new_status_and_on_a_theme_change() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_same_status_twice_applies_once_and_a_changed_one_applies_again() {
+    let f = fixture().await;
+    let status = status_of(&f.host).await;
+    let port = FakeTray::default();
+    let controller = TrayController::new(Box::new(port.clone()), Appearance::Light);
+    controller.update_status(status.clone());
+    controller.update_status(status.clone());
+    assert_eq!(port.views.lock().unwrap().len(), 1);
+    let changed = with_desk_mates(status, &[("Beta", ConnectionState::Connected)]);
+    controller.update_status(changed.clone());
+    controller.update_status(changed);
+    assert_eq!(port.views.lock().unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 #[should_panic(expected = "a status arrived before any theme change")]
 async fn a_theme_change_before_any_status_is_a_bug() {
     let port = FakeTray::default();

@@ -267,6 +267,9 @@ struct Last {
     update: Option<UpdateResult>,
     /// Whether the engine is there; in UI mode it can be away (T533, T534).
     ready: bool,
+    /// What the tray was last given; an identical view is not applied again,
+    /// so a storm of status notifications does not flicker the tray (T543).
+    applied: Option<TrayView>,
 }
 
 /// Keeps the tray current: the last status and the system appearance.
@@ -284,21 +287,22 @@ impl TrayController {
                 appearance,
                 update: None,
                 ready: true,
+                applied: None,
             }),
         }
     }
 
     pub fn update_status(&self, status: Status) {
         let mut last = self.last.lock().unwrap();
-        self.port
-            .apply(&view(&status, last.appearance, last.update.as_ref()));
+        let shown = view(&status, last.appearance, last.update.as_ref());
         last.status = Some(status);
+        self.show(&mut last, shown);
     }
 
     pub fn update_appearance(&self, appearance: Appearance) {
         let mut last = self.last.lock().unwrap();
         last.appearance = appearance;
-        self.redraw(&last);
+        self.redraw(&mut last);
     }
 
     /// What `update.check` found. The tray shows it with the next status if
@@ -307,7 +311,7 @@ impl TrayController {
         let mut last = self.last.lock().unwrap();
         last.update = Some(update);
         if last.status.is_some() {
-            self.redraw(&last);
+            self.redraw(&mut last);
         }
     }
 
@@ -318,22 +322,28 @@ impl TrayController {
         let mut last = self.last.lock().unwrap();
         last.ready = ready;
         if !ready || last.status.is_some() {
-            self.redraw(&last);
+            self.redraw(&mut last);
         }
     }
 
-    fn redraw(&self, last: &Last) {
-        if !last.ready {
-            self.port
-                .apply(&crate::tray_not_ready::view(last.appearance));
-            return;
+    fn redraw(&self, last: &mut Last) {
+        let shown = if last.ready {
+            let status = last
+                .status
+                .as_ref()
+                .expect("a status arrived before any theme change");
+            view(status, last.appearance, last.update.as_ref())
+        } else {
+            crate::tray_not_ready::view(last.appearance)
+        };
+        self.show(last, shown);
+    }
+
+    fn show(&self, last: &mut Last, shown: TrayView) {
+        if last.applied.as_ref() != Some(&shown) {
+            self.port.apply(&shown);
+            last.applied = Some(shown);
         }
-        let status = last
-            .status
-            .as_ref()
-            .expect("a status arrived before any theme change");
-        self.port
-            .apply(&view(status, last.appearance, last.update.as_ref()));
     }
 }
 

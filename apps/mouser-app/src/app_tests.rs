@@ -174,11 +174,8 @@ async fn the_app_shows_setup_and_the_tray_then_follows_the_engine() {
     assert_eq!(port.views.lock().unwrap().len(), 1);
 
     tauri::async_runtime::spawn(pump(handle_.clone(), tray, dynamic, notes));
-    // Creating a desk changes the status, which the engine announces.
-    control
-        .call(Method::DeskCreate, Some(json!({"name": "Home office"})))
-        .await
-        .unwrap();
+    // Pausing changes what the tray shows, which the engine announces.
+    control.call(Method::ActivePause, None).await.unwrap();
     eventually(|| port.views.lock().unwrap().len() >= 2).await;
 }
 
