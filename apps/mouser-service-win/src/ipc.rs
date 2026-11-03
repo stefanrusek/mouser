@@ -6,7 +6,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use mouser_proto::service_ipc::{EngineMessage, SasResult, ServiceMessage, engine_pipe_name};
+use mouser_proto::service_ipc::{
+    EngineMessage, SasResult, ServiceMessage, StopReason, engine_pipe_name,
+};
 use mouser_proto::wire::{FrameError, decode_frame, encode_frame};
 
 use crate::winapi::{ApiResult, Handle, WinApi};
@@ -35,6 +37,8 @@ pub struct Pipe {
     /// Held while writing: answers and `Shutdown` come from two threads.
     link: Mutex<Link>,
     ended: AtomicBool,
+    /// Why the engine said it is stopping, if it did.
+    stopping: Mutex<Option<StopReason>>,
 }
 
 impl Pipe {
@@ -53,11 +57,17 @@ impl Pipe {
             name,
             link: Mutex::new(Link::default()),
             ended: AtomicBool::new(false),
+            stopping: Mutex::new(None),
         })
     }
 
     pub fn handle(&self) -> Handle {
         self.handle
+    }
+
+    /// Why the engine said it is stopping, if it did.
+    pub fn stopping(&self) -> Option<StopReason> {
+        *self.stopping.lock().unwrap()
     }
 
     fn write(&self, msg: &ServiceMessage) -> ApiResult<()> {
@@ -110,8 +120,8 @@ impl Pipe {
     }
 
     /// Serves process `engine` until it goes: each `SendSas` is answered
-    /// with `sas()`. A `Hello` of another version and `Stopping` change
-    /// nothing (the catalog has no event for them).
+    /// with `sas()`, and a `Stopping` is remembered. A `Hello` of another
+    /// version changes nothing (the catalog has no event for it).
     pub fn serve(&self, engine: u32, sas: &dyn Fn() -> SasResult) {
         if !self.accept(engine) {
             return;
@@ -122,12 +132,18 @@ impl Pipe {
             match decode_frame::<EngineMessage>(&buf) {
                 Ok((msg, used)) => {
                     buf.drain(..used);
-                    if msg == EngineMessage::SendSas {
-                        let answer = ServiceMessage::SasResult(sas());
-                        let _link = self.link.lock().unwrap();
-                        if self.write(&answer).is_err() {
-                            return;
+                    match msg {
+                        EngineMessage::SendSas => {
+                            let answer = ServiceMessage::SasResult(sas());
+                            let _link = self.link.lock().unwrap();
+                            if self.write(&answer).is_err() {
+                                return;
+                            }
                         }
+                        EngineMessage::Stopping { reason } => {
+                            *self.stopping.lock().unwrap() = Some(reason);
+                        }
+                        EngineMessage::Hello { .. } => {}
                     }
                 }
                 Err(FrameError::Incomplete) => match self.api.read_pipe(self.handle, &mut chunk) {

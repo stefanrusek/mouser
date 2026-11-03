@@ -35,7 +35,7 @@ The service leaves `WaitingForSession` only on a `SERVICE_CONTROL_SESSIONCHANGE`
 
 ```text
 service start → wait console session (≠0xFFFFFFFF) → create pipe(session) → launch engine(winlogon token, winsta0\default)
-engine exits after Stopping{Quit} ─▶ log service.engine_exited ─▶ service stops (no relaunch)
+engine exits after Stopping{Quit} ─▶ log service.engine_exited, service.stopped ─▶ service stops (no relaunch)
 engine exits otherwise ─▶ log service.engine_exited ─▶ relaunch (same session)
 SESSIONCHANGE (console connect/disconnect, logon/logoff) ─▶ Shutdown old engine ─▶ wait exit ─▶ new pipe/session ─▶ launch
 SERVICE_CONTROL_STOP / PRESHUTDOWN ─▶ Shutdown ─▶ wait exit ─▶ stop

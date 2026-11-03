@@ -553,7 +553,7 @@ fn no_constructor_takes_a_free_form_map_or_value() {
 
 #[test]
 fn the_service_writes_its_session_engine_and_ctrl_alt_del_events() {
-    use mouser_proto::service_ipc::SasResult;
+    use mouser_proto::service_ipc::{SasResult, StopReason};
     expect(
         service_session(2),
         "service.session",
@@ -575,6 +575,15 @@ fn the_service_writes_its_session_engine_and_ctrl_alt_del_events() {
         None,
         json!({"code": 0xC000_0005u32}),
     );
+    for (reason, text) in [(StopReason::Quit, "quit"), (StopReason::Fault, "fault")] {
+        expect(
+            service_stopped(reason),
+            "service.stopped",
+            "info",
+            None,
+            json!({"reason": text}),
+        );
+    }
     for (result, text) in [
         (SasResult::Sent, "sent"),
         (SasResult::PolicyBlocked, "policy_blocked"),

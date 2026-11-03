@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
-use mouser_proto::service_ipc::SasResult;
+use mouser_proto::service_ipc::{SasResult, StopReason};
 
 use crate::ipc::Pipe;
 use crate::session::Event;
@@ -95,13 +95,24 @@ impl Engine {
         self.pipe.shutdown();
     }
 
-    /// Waits for the engine to end and lets go of it: its exit code.
-    pub fn finish(self) -> u32 {
+    /// Waits for the engine to end and lets go of it: how it ended.
+    pub fn finish(self) -> Ended {
         let code = self.api.wait_process(self.process).unwrap_or(u32::MAX);
         self.pipe.end();
         let _ = self.server.join();
         let _ = self.watcher.join();
         self.api.close(self.process);
-        code
+        Ended {
+            code,
+            stopping: self.pipe.stopping(),
+        }
     }
+}
+
+/// How a session engine ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ended {
+    pub code: u32,
+    /// Why it said it was stopping, if it did.
+    pub stopping: Option<StopReason>,
 }

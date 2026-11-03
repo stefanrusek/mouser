@@ -2,7 +2,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
 
-use mouser_proto::service_ipc::{SasResult, ServiceMessage, engine_pipe_name};
+use mouser_proto::service_ipc::{
+    EngineMessage, SasResult, ServiceMessage, StopReason, engine_pipe_name,
+};
 
 use crate::fake::{FakeWin, NO_SESSION};
 use crate::session::{Event, State, Supervisor};
@@ -149,6 +151,67 @@ fn an_engine_that_exits_is_started_again_at_once_in_the_same_session() {
         r.log.events()[2..],
         [
             r#"service.engine_exited {"code":3}"#.to_string(),
+            format!(r#"service.engine_started {{"pid":{second},"session":1}}"#),
+        ]
+    );
+    r.supervisor.on(Event::Stop);
+}
+
+#[test]
+fn an_engine_that_quits_stops_the_service_and_is_not_started_again() {
+    let mut r = rig();
+    r.supervisor.start();
+    let (session, pid) = running(&r);
+    let name = engine_pipe_name(session);
+    r.fake.send(
+        &name,
+        &EngineMessage::Stopping {
+            reason: StopReason::Quit,
+        },
+    );
+    r.fake.exit(pid, 0);
+    r.supervisor.on(r.heard.recv().unwrap());
+    assert_eq!(r.supervisor.state(), State::Stopped);
+    assert_eq!(
+        r.supervisor.states()[2..],
+        [State::Stopping, State::Stopped]
+    );
+    assert_eq!(
+        r.log.events()[2..],
+        [
+            r#"service.engine_exited {"code":0}"#,
+            r#"service.stopped {"reason":"quit"}"#
+        ]
+    );
+    // Nothing more was launched.
+    assert!(
+        r.fake
+            .running()
+            .iter()
+            .all(|(name, _)| name != "mouser-app.exe")
+    );
+    assert!(!r.fake.has_pipe(&name));
+}
+
+#[test]
+fn an_engine_that_ends_with_a_fault_is_started_again() {
+    let mut r = rig();
+    r.supervisor.start();
+    let (session, first) = running(&r);
+    r.fake.send(
+        &engine_pipe_name(session),
+        &EngineMessage::Stopping {
+            reason: StopReason::Fault,
+        },
+    );
+    r.fake.exit(first, 101);
+    r.supervisor.on(r.heard.recv().unwrap());
+    let (_, second) = running(&r);
+    assert_ne!(second, first);
+    assert_eq!(
+        r.log.events()[2..],
+        [
+            r#"service.engine_exited {"code":101}"#.to_string(),
             format!(r#"service.engine_started {{"pid":{second},"session":1}}"#),
         ]
     );

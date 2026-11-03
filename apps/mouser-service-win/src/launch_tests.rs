@@ -53,7 +53,7 @@ fn the_engine_runs_beside_the_service_on_the_sessions_winlogon_token_and_default
     assert!(fake.running().contains(&("mouser-app.exe".into(), 3)));
     assert_eq!(engine.session, 3);
     fake.exit(engine.pid, 0);
-    assert_eq!(engine.finish(), 0);
+    assert_eq!(engine.finish().code, 0);
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn the_engine_is_served_and_its_exit_is_heard() {
         heard.recv().unwrap(),
         Event::EngineExited { pid: engine.pid }
     );
-    assert_eq!(engine.finish(), 7);
+    assert_eq!(engine.finish().code, 7);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn shutdown_tells_the_engine_and_finishing_waits_for_it_and_lets_go() {
     let name = engine_pipe_name(1);
     fake.connect(&name, engine.pid);
     engine.shutdown();
-    assert_eq!(engine.finish(), 0);
+    assert_eq!(engine.finish().code, 0);
     assert_eq!(fake.received(&name), [ServiceMessage::Shutdown]);
     assert!(!fake.has_pipe(&name));
     assert!(!fake.running().contains(&("mouser-app.exe".into(), 1)));
@@ -102,7 +102,7 @@ fn an_engine_that_cannot_be_waited_for_ends_with_an_unknown_code() {
         Event::EngineExited { pid: engine.pid }
     );
     fake.fail("wait_process", 6);
-    assert_eq!(engine.finish(), u32::MAX);
+    assert_eq!(engine.finish().code, u32::MAX);
 }
 
 #[test]
