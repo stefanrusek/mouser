@@ -41,9 +41,6 @@ impl<R: Runtime> TrayPort for LiveTray<R> {
             .set_icon(Some(image))
             .expect("tray icon can be set");
         self.icon
-            .set_icon_as_template(view.icon.is_template())
-            .expect("tray template flag can be set");
-        self.icon
             .set_tooltip(Some(&view.tooltip))
             .expect("tray tooltip can be set");
         self.icon

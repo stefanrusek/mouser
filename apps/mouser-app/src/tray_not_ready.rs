@@ -2,20 +2,17 @@
 //! service has not started it yet, or is starting it again after a user
 //! switch. Only opening Mouser and quitting make sense then.
 
-use mouser_platform::Os;
-use mouser_proto::control::TrayConnection;
-
-use crate::tray::{Appearance, Entry, Icon, OPEN_ID, QUIT_ID, TrayView};
+use crate::tray::{Appearance, Entry, Icon, OPEN_ID, QUIT_ID, TrayConnection, TrayView};
 
 /// The tray's first line while the session engine is away.
 pub const SUMMARY: &str = "Mouser isn't ready yet";
 /// Its hover text.
 pub const TOOLTIP: &str = "Mouser is waiting for its service to start";
 
-/// The tray on `os` in `appearance` while the session engine is away.
-pub fn view(os: Os, appearance: Appearance) -> TrayView {
+/// The tray in `appearance` while the session engine is away.
+pub fn view(appearance: Appearance) -> TrayView {
     TrayView {
-        icon: Icon::choose(os, appearance, false, TrayConnection::Disconnected),
+        icon: Icon::choose(appearance, false, TrayConnection::Disconnected),
         summary: SUMMARY.into(),
         tooltip: TOOLTIP.into(),
         entries: vec![

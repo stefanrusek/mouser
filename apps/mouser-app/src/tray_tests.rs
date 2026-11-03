@@ -1,13 +1,12 @@
-use mouser_platform::Os;
-use mouser_proto::control::{EngineState, TrayConnection};
+use mouser_proto::control::{ConnectionState, EngineState, Status};
 use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 
 use crate::support_tests::{FakeTray, app_with, eventually, fixture, has_window, status_of};
 use crate::tray::{
     ARRANGE_ID, Action, Appearance, HEALTH_ID, Icon, OPEN_ID, PAUSE_ID, QUIT_ID, RESUME_ID,
-    TrayController, UPDATE_ID, Variant, action, appearance_of, current_status, handle_menu,
-    handle_tray_event, open, run_pause, system_appearance, view,
+    TrayConnection, TrayController, UPDATE_ID, Variant, action, appearance_of, current_status,
+    handle_menu, handle_tray_event, open, run_pause, system_appearance, view,
 };
 
 fn is_png(bytes: &[u8]) -> bool {
@@ -15,32 +14,21 @@ fn is_png(bytes: &[u8]) -> bool {
 }
 
 #[test]
-fn macos_always_uses_the_template_image() {
-    for appearance in [Appearance::Light, Appearance::Dark] {
-        let icon = Icon::choose(Os::MacOs, appearance, false, TrayConnection::Alone);
-        assert_eq!(icon.variant, Variant::Template);
-        assert!(icon.is_template());
-    }
+fn the_variant_follows_the_appearance_so_a_coloured_dot_shows_on_macos_too() {
+    let light = Icon::choose(Appearance::Light, false, TrayConnection::Alone);
+    let dark = Icon::choose(Appearance::Dark, false, TrayConnection::Alone);
+    assert_eq!(light.variant, Variant::Light);
+    assert_eq!(dark.variant, Variant::Dark);
 }
 
 #[test]
-fn other_systems_follow_the_system_appearance() {
-    for os in [Os::Windows, Os::Linux] {
-        let light = Icon::choose(os, Appearance::Light, false, TrayConnection::Alone);
-        let dark = Icon::choose(os, Appearance::Dark, false, TrayConnection::Alone);
-        assert_eq!(light.variant, Variant::Light);
-        assert_eq!(dark.variant, Variant::Dark);
-        assert!(!light.is_template() && !dark.is_template());
-    }
-}
-
-#[test]
-fn all_eighteen_icons_are_distinct_pngs() {
+fn all_sixteen_icons_are_distinct_pngs() {
     let mut seen = Vec::new();
-    for variant in [Variant::Template, Variant::Light, Variant::Dark] {
+    for variant in [Variant::Light, Variant::Dark] {
         for paused in [false, true] {
             for connection in [
                 TrayConnection::Connected,
+                TrayConnection::Partial,
                 TrayConnection::Disconnected,
                 TrayConnection::Alone,
             ] {
@@ -58,17 +46,93 @@ fn all_eighteen_icons_are_distinct_pngs() {
     }
 }
 
+/// `status` with exactly these desk-mates (this computer stays first).
+fn with_desk_mates(mut status: Status, mates: &[(&str, ConnectionState)]) -> Status {
+    status.computers.truncate(1);
+    for (name, connection) in mates {
+        let mut mate = status.computers[0].clone();
+        mate.name = (*name).into();
+        mate.connection = *connection;
+        status.computers.push(mate);
+    }
+    status
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_dot_is_green_yellow_or_red_by_how_many_desk_mates_are_connected() {
+    use ConnectionState::{Connected, Incompatible, Offline, Reconnecting};
+    let f = fixture().await;
+    let base = status_of(&f.host).await;
+    let dot = |mates: &[(&str, ConnectionState)]| {
+        let status = with_desk_mates(base.clone(), mates);
+        (
+            TrayConnection::of(&status),
+            view(&status, Appearance::Dark, None),
+        )
+    };
+    assert_eq!(dot(&[]).0, TrayConnection::Alone);
+    assert_eq!(dot(&[("B", Connected)]).0, TrayConnection::Connected);
+    assert_eq!(
+        dot(&[("B", Connected), ("C", Connected)]).0,
+        TrayConnection::Connected
+    );
+    assert_eq!(
+        dot(&[("B", Connected), ("C", Offline)]).0,
+        TrayConnection::Partial
+    );
+    assert_eq!(
+        dot(&[("B", Reconnecting), ("C", Connected), ("D", Offline)]).0,
+        TrayConnection::Partial
+    );
+    assert_eq!(dot(&[("B", Offline)]).0, TrayConnection::Disconnected);
+    assert_eq!(
+        dot(&[("B", Reconnecting), ("C", Incompatible)]).0,
+        TrayConnection::Disconnected
+    );
+    // The icon carries the dot.
+    let (_, partial) = dot(&[("B", Connected), ("C", Offline)]);
+    assert_eq!(partial.icon.connection, TrayConnection::Partial);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_tooltip_names_the_computers_that_are_not_connected_when_some_or_none_are() {
+    use ConnectionState::{Connected, Offline, Reconnecting};
+    let f = fixture().await;
+    let base = status_of(&f.host).await;
+    let tip = |mates: &[(&str, ConnectionState)]| {
+        view(
+            &with_desk_mates(base.clone(), mates),
+            Appearance::Light,
+            None,
+        )
+        .tooltip
+    };
+    assert_eq!(
+        tip(&[]),
+        "Mouser is active · no other computers on this desk"
+    );
+    assert_eq!(tip(&[("B", Connected)]), "Mouser is active · connected");
+    assert_eq!(
+        tip(&[("B", Connected), ("C", Offline), ("D", Reconnecting)]),
+        "Mouser is active · not connected to C, D"
+    );
+    assert_eq!(
+        tip(&[("B", Offline), ("C", Reconnecting)]),
+        "Mouser is active · not connected to B, C"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_icon_follows_state_connection_and_theme_and_the_tooltip_names_both_states() {
     let f = fixture().await;
     let mut status = status_of(&f.host).await;
     let mut beta = status.computers[0].clone();
     beta.name = "Beta".into();
-    beta.connection = mouser_proto::control::ConnectionState::Offline;
+    beta.connection = ConnectionState::Offline;
     status.computers.push(beta);
 
-    status.tray_summary.connection = TrayConnection::Alone;
-    let alone = view(&status, Os::Windows, Appearance::Dark, None);
+    let alone_status = with_desk_mates(status.clone(), &[]);
+    let alone = view(&alone_status, Appearance::Dark, None);
     assert_eq!(
         alone.icon,
         Icon {
@@ -82,16 +146,15 @@ async fn the_icon_follows_state_connection_and_theme_and_the_tooltip_names_both_
         "Mouser is active · no other computers on this desk"
     );
 
-    status.tray_summary.connection = TrayConnection::Connected;
-    let connected = view(&status, Os::MacOs, Appearance::Light, None);
-    assert_eq!(connected.icon.variant, Variant::Template);
+    let connected_status = with_desk_mates(status.clone(), &[("Beta", ConnectionState::Connected)]);
+    let connected = view(&connected_status, Appearance::Light, None);
+    assert_eq!(connected.icon.variant, Variant::Light);
     assert_eq!(connected.icon.connection, TrayConnection::Connected);
     assert_eq!(connected.tooltip, "Mouser is active · connected");
 
     status.state = EngineState::Paused;
     status.tray_summary.state = EngineState::Paused;
-    status.tray_summary.connection = TrayConnection::Disconnected;
-    let paused = view(&status, Os::Linux, Appearance::Light, None);
+    let paused = view(&status, Appearance::Light, None);
     assert!(paused.icon.paused);
     assert_eq!(paused.icon.connection, TrayConnection::Disconnected);
     assert_eq!(paused.tooltip, "Mouser is paused · not connected to Beta");
@@ -110,7 +173,7 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     status.tray_summary.computers = 2;
     status.tray_summary.displays = 5;
 
-    let active = view(&status, Os::MacOs, Appearance::Dark, None);
+    let active = view(&status, Appearance::Dark, None);
     assert_eq!(active.summary, "Mouser is active: 2 computers, 5 displays");
     assert!(!active.icon.paused);
     assert_eq!(active.entries[0].label, active.summary);
@@ -129,7 +192,7 @@ async fn the_tray_shows_active_or_paused_and_the_counts() {
     status.tray_summary.state = EngineState::Paused;
     status.tray_summary.computers = 1;
     status.tray_summary.displays = 1;
-    let paused = view(&status, Os::Windows, Appearance::Dark, None);
+    let paused = view(&status, Appearance::Dark, None);
     assert_eq!(paused.summary, "Mouser is paused: 1 computer, 1 display");
     assert!(paused.icon.paused);
     assert_eq!(paused.icon.variant, Variant::Dark);
@@ -142,21 +205,20 @@ async fn the_controller_redraws_on_new_status_and_on_a_theme_change() {
     let f = fixture().await;
     let status = status_of(&f.host).await;
     let port = FakeTray::default();
-    let controller = TrayController::new(Box::new(port.clone()), Os::Linux, Appearance::Light);
+    let controller = TrayController::new(Box::new(port.clone()), Appearance::Light);
     controller.update_status(status.clone());
     controller.update_appearance(Appearance::Dark);
     let views = port.views.lock().unwrap();
     assert_eq!(views.len(), 2);
-    assert_eq!(views[0], view(&status, Os::Linux, Appearance::Light, None));
-    assert_eq!(views[1], view(&status, Os::Linux, Appearance::Dark, None));
+    assert_eq!(views[0], view(&status, Appearance::Light, None));
+    assert_eq!(views[1], view(&status, Appearance::Dark, None));
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[should_panic(expected = "a status arrived before any theme change")]
 async fn a_theme_change_before_any_status_is_a_bug() {
     let port = FakeTray::default();
-    TrayController::new(Box::new(port), Os::Linux, Appearance::Light)
-        .update_appearance(Appearance::Dark);
+    TrayController::new(Box::new(port), Appearance::Light).update_appearance(Appearance::Dark);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -322,8 +384,8 @@ async fn while_the_engine_is_away_the_tray_says_mouser_isnt_ready_and_comes_back
     let f = fixture().await;
     let status = status_of(&f.host).await;
     let port = FakeTray::default();
-    let controller = TrayController::new(Box::new(port.clone()), Os::Linux, Appearance::Light);
-    let not_ready = |appearance| crate::tray_not_ready::view(Os::Linux, appearance);
+    let controller = TrayController::new(Box::new(port.clone()), Appearance::Light);
+    let not_ready = |appearance| crate::tray_not_ready::view(appearance);
     // UI mode before the engine is up; a theme change then is no bug.
     controller.update_ready(false);
     controller.update_appearance(Appearance::Dark);
@@ -339,9 +401,9 @@ async fn while_the_engine_is_away_the_tray_says_mouser_isnt_ready_and_comes_back
         [
             not_ready(Appearance::Light),
             not_ready(Appearance::Dark),
-            view(&status, Os::Linux, Appearance::Dark, None),
+            view(&status, Appearance::Dark, None),
             not_ready(Appearance::Dark),
-            view(&status, Os::Linux, Appearance::Dark, None),
+            view(&status, Appearance::Dark, None),
         ]
     );
 }

@@ -4,10 +4,7 @@
 use std::sync::Mutex;
 
 use crate::host::Control;
-use mouser_platform::Os;
-use mouser_proto::control::{
-    ConnectionState, EngineState, Method, Status, TrayConnection, UpdateResult,
-};
+use mouser_proto::control::{ConnectionState, EngineState, Method, Status, UpdateResult};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime, Theme};
 
@@ -20,15 +17,54 @@ pub enum Appearance {
     Dark,
 }
 
-/// Which icon file.
+/// Which icon file: a dark glyph for a light menu bar or taskbar, a light
+/// glyph for a dark one. (macOS too: a template image cannot show colour.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
-    /// macOS tints a template image itself.
-    Template,
-    /// Dark glyph for a light taskbar.
     Light,
-    /// Light glyph for a dark taskbar.
     Dark,
+}
+
+/// The dot on the icon: how many desk-mates are connected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayConnection {
+    /// No desk-mates: no dot.
+    Alone,
+    /// Every desk-mate: a green disc.
+    Connected,
+    /// Some but not all: a yellow triangle.
+    Partial,
+    /// None: a red slashed ring.
+    Disconnected,
+}
+
+fn is_connected(connection: ConnectionState) -> bool {
+    matches!(
+        connection,
+        ConnectionState::SelfComputer | ConnectionState::Connected
+    )
+}
+
+impl TrayConnection {
+    /// The dot for `status`: counts the connected desk-mates among the computers.
+    pub fn of(status: &Status) -> Self {
+        let mates = status
+            .computers
+            .iter()
+            .filter(|c| c.connection != ConnectionState::SelfComputer);
+        let (total, connected) = mates.fold((0, 0), |(total, connected), c| {
+            (
+                total + 1,
+                connected + usize::from(is_connected(c.connection)),
+            )
+        });
+        match (total, connected) {
+            (0, _) => Self::Alone,
+            (total, connected) if connected == total => Self::Connected,
+            (_, 0) => Self::Disconnected,
+            _ => Self::Partial,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,17 +75,11 @@ pub struct Icon {
 }
 
 impl Icon {
-    /// macOS always uses the template image; other systems follow `appearance`.
-    pub fn choose(
-        os: Os,
-        appearance: Appearance,
-        paused: bool,
-        connection: TrayConnection,
-    ) -> Self {
-        let variant = match (os, appearance) {
-            (Os::MacOs, _) => Variant::Template,
-            (_, Appearance::Light) => Variant::Light,
-            (_, Appearance::Dark) => Variant::Dark,
+    /// Every system follows `appearance`, so the dot's colour shows.
+    pub fn choose(appearance: Appearance, paused: bool, connection: TrayConnection) -> Self {
+        let variant = match appearance {
+            Appearance::Light => Variant::Light,
+            Appearance::Dark => Variant::Dark,
         };
         Self {
             variant,
@@ -58,34 +88,15 @@ impl Icon {
         }
     }
 
-    pub fn is_template(self) -> bool {
-        self.variant == Variant::Template
-    }
-
     /// The PNG `icons/tray-<theme>-<state>-<connection>.png`.
     pub fn png(self) -> &'static [u8] {
-        use TrayConnection::{Alone, Connected, Disconnected};
+        use TrayConnection::{Alone, Connected, Disconnected, Partial};
         match (self.variant, self.paused, self.connection) {
-            (Variant::Template, false, Connected) => {
-                include_bytes!("../icons/tray-template-active-connected.png")
-            }
-            (Variant::Template, false, Disconnected) => {
-                include_bytes!("../icons/tray-template-active-disconnected.png")
-            }
-            (Variant::Template, false, Alone) => {
-                include_bytes!("../icons/tray-template-active-alone.png")
-            }
-            (Variant::Template, true, Connected) => {
-                include_bytes!("../icons/tray-template-paused-connected.png")
-            }
-            (Variant::Template, true, Disconnected) => {
-                include_bytes!("../icons/tray-template-paused-disconnected.png")
-            }
-            (Variant::Template, true, Alone) => {
-                include_bytes!("../icons/tray-template-paused-alone.png")
-            }
             (Variant::Light, false, Connected) => {
                 include_bytes!("../icons/tray-light-active-connected.png")
+            }
+            (Variant::Light, false, Partial) => {
+                include_bytes!("../icons/tray-light-active-partial.png")
             }
             (Variant::Light, false, Disconnected) => {
                 include_bytes!("../icons/tray-light-active-disconnected.png")
@@ -96,24 +107,39 @@ impl Icon {
             (Variant::Light, true, Connected) => {
                 include_bytes!("../icons/tray-light-paused-connected.png")
             }
+            (Variant::Light, true, Partial) => {
+                include_bytes!("../icons/tray-light-paused-partial.png")
+            }
             (Variant::Light, true, Disconnected) => {
                 include_bytes!("../icons/tray-light-paused-disconnected.png")
             }
-            (Variant::Light, true, Alone) => include_bytes!("../icons/tray-light-paused-alone.png"),
+            (Variant::Light, true, Alone) => {
+                include_bytes!("../icons/tray-light-paused-alone.png")
+            }
             (Variant::Dark, false, Connected) => {
                 include_bytes!("../icons/tray-dark-active-connected.png")
+            }
+            (Variant::Dark, false, Partial) => {
+                include_bytes!("../icons/tray-dark-active-partial.png")
             }
             (Variant::Dark, false, Disconnected) => {
                 include_bytes!("../icons/tray-dark-active-disconnected.png")
             }
-            (Variant::Dark, false, Alone) => include_bytes!("../icons/tray-dark-active-alone.png"),
+            (Variant::Dark, false, Alone) => {
+                include_bytes!("../icons/tray-dark-active-alone.png")
+            }
             (Variant::Dark, true, Connected) => {
                 include_bytes!("../icons/tray-dark-paused-connected.png")
+            }
+            (Variant::Dark, true, Partial) => {
+                include_bytes!("../icons/tray-dark-paused-partial.png")
             }
             (Variant::Dark, true, Disconnected) => {
                 include_bytes!("../icons/tray-dark-paused-disconnected.png")
             }
-            (Variant::Dark, true, Alone) => include_bytes!("../icons/tray-dark-paused-alone.png"),
+            (Variant::Dark, true, Alone) => {
+                include_bytes!("../icons/tray-dark-paused-alone.png")
+            }
         }
     }
 }
@@ -152,15 +178,10 @@ fn count(n: u32, noun: &str) -> String {
 }
 
 /// The tray for `status`, with the version line when `update.check` has answered.
-pub fn view(
-    status: &Status,
-    os: Os,
-    appearance: Appearance,
-    update: Option<&UpdateResult>,
-) -> TrayView {
+pub fn view(status: &Status, appearance: Appearance, update: Option<&UpdateResult>) -> TrayView {
     let summary = status.tray_summary;
     let paused = summary.state == EngineState::Paused;
-    let summary_connection = summary.connection;
+    let connection = TrayConnection::of(status);
     let words = if paused { "paused" } else { "active" };
     let summary = format!(
         "Mouser is {words}: {}, {}",
@@ -168,28 +189,24 @@ pub fn view(
         count(summary.displays, "display")
     );
     let state_words = if paused { "paused" } else { "active" };
-    let tooltip = match summary_connection {
+    let not_connected = || {
+        let names: Vec<&str> = status
+            .computers
+            .iter()
+            .filter(|c| !is_connected(c.connection))
+            .map(|c| c.name.as_str())
+            .collect();
+        format!(
+            "Mouser is {state_words} · not connected to {}",
+            names.join(", ")
+        )
+    };
+    let tooltip = match connection {
         TrayConnection::Connected => format!("Mouser is {state_words} · connected"),
         TrayConnection::Alone => {
             format!("Mouser is {state_words} · no other computers on this desk")
         }
-        TrayConnection::Disconnected => {
-            let names: Vec<&str> = status
-                .computers
-                .iter()
-                .filter(|c| {
-                    !matches!(
-                        c.connection,
-                        ConnectionState::SelfComputer | ConnectionState::Connected
-                    )
-                })
-                .map(|c| c.name.as_str())
-                .collect();
-            format!(
-                "Mouser is {state_words} · not connected to {}",
-                names.join(", ")
-            )
-        }
+        TrayConnection::Partial | TrayConnection::Disconnected => not_connected(),
     };
     let version = update.map(|update| {
         let (id, label) = updater::line(update);
@@ -232,7 +249,7 @@ pub fn view(
     let quit = entries.len() - 1;
     entries.splice(quit..quit, tray_sas::entry(status));
     TrayView {
-        icon: Icon::choose(os, appearance, paused, summary_connection),
+        icon: Icon::choose(appearance, paused, connection),
         entries,
         summary,
         tooltip,
@@ -255,15 +272,13 @@ struct Last {
 /// Keeps the tray current: the last status and the system appearance.
 pub struct TrayController {
     port: Box<dyn TrayPort>,
-    os: Os,
     last: Mutex<Last>,
 }
 
 impl TrayController {
-    pub fn new(port: Box<dyn TrayPort>, os: Os, appearance: Appearance) -> Self {
+    pub fn new(port: Box<dyn TrayPort>, appearance: Appearance) -> Self {
         Self {
             port,
-            os,
             last: Mutex::new(Last {
                 status: None,
                 appearance,
@@ -275,12 +290,8 @@ impl TrayController {
 
     pub fn update_status(&self, status: Status) {
         let mut last = self.last.lock().unwrap();
-        self.port.apply(&view(
-            &status,
-            self.os,
-            last.appearance,
-            last.update.as_ref(),
-        ));
+        self.port
+            .apply(&view(&status, last.appearance, last.update.as_ref()));
         last.status = Some(status);
     }
 
@@ -314,19 +325,15 @@ impl TrayController {
     fn redraw(&self, last: &Last) {
         if !last.ready {
             self.port
-                .apply(&crate::tray_not_ready::view(self.os, last.appearance));
+                .apply(&crate::tray_not_ready::view(last.appearance));
             return;
         }
         let status = last
             .status
             .as_ref()
             .expect("a status arrived before any theme change");
-        self.port.apply(&view(
-            status,
-            self.os,
-            last.appearance,
-            last.update.as_ref(),
-        ));
+        self.port
+            .apply(&view(status, last.appearance, last.update.as_ref()));
     }
 }
 

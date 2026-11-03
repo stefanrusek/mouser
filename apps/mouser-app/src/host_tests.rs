@@ -89,7 +89,7 @@ async fn a_join_request_and_a_transfer_question_open_the_desk() {
         let f = fixture().await;
         let app = app_with(f.host);
         let handle = app.handle().clone();
-        let tray = TrayController::new(Box::new(FakeTray::default()), Os::MacOs, Appearance::Light);
+        let tray = TrayController::new(Box::new(FakeTray::default()), Appearance::Light);
         let note = Notification {
             jsonrpc: "2.0".into(),
             method: topic,

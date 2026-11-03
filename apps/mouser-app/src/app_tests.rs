@@ -10,7 +10,7 @@ use crate::support_tests::{
     FakeNotifier, FakeTray, app_with, eventually, fixture, has_window, status_of,
 };
 use crate::tray::{Appearance, TrayController};
-use mouser_platform::{Os, Platform};
+use mouser_platform::Platform;
 
 fn note(method: Topic, params: serde_json::Value) -> Notification {
     Notification {
@@ -27,7 +27,7 @@ async fn each_notification_reaches_the_windows_and_its_consumer() {
     let app = app_with(f.host);
     let handle_ = app.handle().clone();
     let port = FakeTray::default();
-    let tray = TrayController::new(Box::new(port.clone()), Os::MacOs, Appearance::Light);
+    let tray = TrayController::new(Box::new(port.clone()), Appearance::Light);
     let notifier = FakeNotifier::default();
 
     let events = Arc::new(std::sync::Mutex::new(0));
@@ -71,7 +71,7 @@ async fn a_config_notification_reaches_the_windows_and_registers_hotkeys_again()
     app.manage(set.hotkeys.clone());
     let handle_ = app.handle().clone();
     let port = FakeTray::default();
-    let tray = TrayController::new(Box::new(port.clone()), Os::MacOs, Appearance::Light);
+    let tray = TrayController::new(Box::new(port.clone()), Appearance::Light);
     let notifier = FakeNotifier::default();
     let events = Arc::new(std::sync::Mutex::new(0));
     let seen = events.clone();
@@ -191,7 +191,6 @@ fn pump_parts() -> (
     let port = FakeTray::default();
     let tray = Arc::new(TrayController::new(
         Box::new(port.clone()),
-        Os::MacOs,
         Appearance::Light,
     ));
     let notifier = FakeNotifier::default();

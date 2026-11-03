@@ -53,12 +53,12 @@ async fn the_line_shows_only_while_a_windows_computer_is_active() {
 async fn the_tray_menu_carries_the_line_before_quit() {
     let f = fixture().await;
     let mut status = status_of(&f.host).await;
-    let plain = view(&status, HostOs::Windows, Appearance::Light, None);
+    let plain = view(&status, Appearance::Light, None);
     assert!(plain.entries.iter().all(|e| e.id != Some(SEND_CAD_ID)));
 
     status = windows_status(status, true);
     status.state = EngineState::Active;
-    let with = view(&status, HostOs::Windows, Appearance::Light, None);
+    let with = view(&status, Appearance::Light, None);
     let ids: Vec<_> = with.entries.iter().map(|e| e.id).collect();
     let at = ids.iter().position(|id| *id == Some(SEND_CAD_ID)).unwrap();
     assert_eq!(ids[at + 1], Some(crate::tray::QUIT_ID));
