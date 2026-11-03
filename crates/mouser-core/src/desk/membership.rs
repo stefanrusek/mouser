@@ -180,6 +180,7 @@ impl Ctx {
                 removed.close();
                 removed.phase = Phase::Departed;
             }
+            self.refresh_map(&core);
         }
         self.notify_status();
         Ok(())

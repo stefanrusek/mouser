@@ -4,6 +4,7 @@ use mouser_proto::model::{DeskState, Layout, Member, Os};
 use serde_json::json;
 
 use super::membership::{rotator, with_member, without_member};
+use crate::lock::LockExt;
 use crate::state::desk_key_name;
 use crate::testing::{
     Lab, TestNode, admit, call, call_err, connected, eventually, recv_topic, status,
@@ -131,6 +132,28 @@ async fn removing_a_member_removes_it_everywhere_and_rotates_the_key() {
     );
     // Alpha and Beta are still connected under the new key.
     assert_eq!(connected(&a).await, 1);
+}
+
+/// T550: the input path's map drops the removed computer as soon as the
+/// removal returns, not whenever its connection happens to close.
+#[tokio::test]
+async fn the_remover_s_map_no_longer_holds_the_removed_computer() {
+    let lab = Lab::new();
+    let (a, _b, c, _desk) = three_on_a_desk(&lab).await;
+    let c_id = c.engine.computer_id();
+    assert!(a.engine.ctx.crossing.guard().map.wires.contains_key(&c_id));
+
+    let _: Empty = call(&a, Method::DeskRemoveMember, json!({ "computer_id": c_id })).await;
+
+    let crossing = a.engine.ctx.crossing.guard();
+    assert!(!crossing.map.wires.contains_key(&c_id));
+    assert!(
+        crossing
+            .map
+            .placed
+            .iter()
+            .all(|p| p.display.display_id.computer != c_id)
+    );
 }
 
 impl TestNode {
