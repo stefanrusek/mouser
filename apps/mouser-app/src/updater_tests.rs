@@ -3,7 +3,6 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 use mouser_core::release::{Bundle, minisign};
-use mouser_platform::Os;
 use mouser_proto::control::{RpcError, UpdateResult};
 
 use crate::support_tests::{FakeTray, fixture_offline, fixture_releasing_at, status_of};
@@ -62,13 +61,8 @@ fn the_tray_says_the_version_and_offers_the_update_when_there_is_one() {
 async fn the_version_line_comes_right_after_the_summary() {
     let f = fixture_offline().await;
     let status = status_of(&f.host).await;
-    let plain = view(&status, Os::MacOs, Appearance::Light, None);
-    let with = view(
-        &status,
-        Os::MacOs,
-        Appearance::Light,
-        Some(&update(Some("1.3.0"))),
-    );
+    let plain = view(&status, Appearance::Light, None);
+    let with = view(&status, Appearance::Light, Some(&update(Some("1.3.0"))));
     assert_eq!(with.entries.len(), plain.entries.len() + 1);
     assert_eq!(with.entries[0], plain.entries[0]);
     assert_eq!(
@@ -79,7 +73,7 @@ async fn the_version_line_comes_right_after_the_summary() {
         }
     );
     assert_eq!(with.entries[2].id, Some(OPEN_ID));
-    let current = view(&status, Os::MacOs, Appearance::Light, Some(&update(None)));
+    let current = view(&status, Appearance::Light, Some(&update(None)));
     assert_eq!(current.entries[1].id, None);
     assert_eq!(current.entries[1].label, "Version 1.2.3");
 }
@@ -94,7 +88,7 @@ async fn what_update_check_found_is_shown_with_the_status() {
     let f = fixture_offline().await;
     let status = status_of(&f.host).await;
     let port = FakeTray::default();
-    let tray = TrayController::new(Box::new(port.clone()), Os::Linux, Appearance::Light);
+    let tray = TrayController::new(Box::new(port.clone()), Appearance::Light);
     // Nothing to draw until a status arrives.
     show(&tray, Ok(update(Some("1.3.0"))));
     assert!(port.views.lock().unwrap().is_empty());
@@ -104,21 +98,11 @@ async fn what_update_check_found_is_shown_with_the_status() {
     assert_eq!(views.len(), 2);
     assert_eq!(
         views[0],
-        view(
-            &status,
-            Os::Linux,
-            Appearance::Light,
-            Some(&update(Some("1.3.0")))
-        )
+        view(&status, Appearance::Light, Some(&update(Some("1.3.0"))))
     );
     assert_eq!(
         views[1],
-        view(
-            &status,
-            Os::Linux,
-            Appearance::Light,
-            Some(&update(Some("1.4.0")))
-        )
+        view(&status, Appearance::Light, Some(&update(Some("1.4.0"))))
     );
 }
 
@@ -126,7 +110,7 @@ async fn what_update_check_found_is_shown_with_the_status() {
 async fn a_failed_check_leaves_the_tray_as_it_was() {
     let f = fixture_offline().await;
     let port = FakeTray::default();
-    let tray = TrayController::new(Box::new(port.clone()), Os::Linux, Appearance::Light);
+    let tray = TrayController::new(Box::new(port.clone()), Appearance::Light);
     tray.update_status(status_of(&f.host).await);
     let failed = check(&f.host.control()).await;
     let RpcError { message, .. } = failed.clone().unwrap_err();
@@ -141,7 +125,6 @@ async fn the_tray_keeps_asking_update_check() {
     let port = FakeTray::default();
     let tray = Arc::new(TrayController::new(
         Box::new(port.clone()),
-        Os::Linux,
         Appearance::Light,
     ));
     tray.update_status(status_of(&f.host).await);

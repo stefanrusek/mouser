@@ -1,11 +1,9 @@
-use mouser_platform::Os;
-
 use crate::tray::{Appearance, OPEN_ID, QUIT_ID};
 use crate::tray_not_ready::*;
 
 #[test]
 fn while_the_service_engine_is_away_the_tray_says_so_and_offers_open_and_quit() {
-    let view = view(Os::Windows, Appearance::Dark);
+    let view = view(Appearance::Dark);
     assert_eq!(view.summary, "Mouser isn't ready yet");
     assert_eq!(view.tooltip, "Mouser is waiting for its service to start");
     let ids: Vec<_> = view.entries.iter().map(|e| e.id).collect();

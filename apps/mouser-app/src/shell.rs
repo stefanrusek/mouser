@@ -342,7 +342,6 @@ pub fn run() {
                     app: handle.clone(),
                     icon,
                 }),
-                platform_select::current_os(),
                 appearance,
             ));
             tauri::async_runtime::spawn(updater::poll(control.clone(), controller.clone()));

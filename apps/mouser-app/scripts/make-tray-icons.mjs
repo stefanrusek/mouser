@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Generates the tray icons: apps/mouser-app/icons/tray-<theme>-<state>-<connection>.png
-//   theme:      light (dark glyph), dark (light glyph), template (monochrome, macOS tints it)
+//   theme:      light (dark glyph), dark (light glyph); macOS picks one by the menu bar's appearance
 //   state:      active (filled mouse) | paused (outline mouse)
-//   connection: connected (small filled dot) | disconnected (hollow ring with a slash) | alone (no badge)
-// Badges are green / red in the colour themes and black in the template.
+//   connection: connected (green filled disc) | partial (yellow filled triangle)
+//               | disconnected (red hollow ring with a slash) | alone (no badge)
+// The badges differ in shape as well as colour, so they stay apart in greyscale (SC-008).
 // Usage: node scripts/make-tray-icons.mjs
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -14,9 +15,11 @@ const SIZE = 32;
 const SUPER = 4;
 const BADGE = { x: 24, y: 24 };
 
-const GLYPH = { light: [28, 28, 28], dark: [242, 242, 242], template: [0, 0, 0] };
+const GLYPH = { light: [28, 28, 28], dark: [242, 242, 242] };
 const RED = [217, 45, 32];
 const GREEN = [22, 163, 74];
+const YELLOW = [234, 179, 8];
+const BADGE_COLOUR = { connected: GREEN, partial: YELLOW, disconnected: RED };
 
 const distanceToSegment = (px, py, ax, ay, bx, by) => {
   const dx = bx - ax;
@@ -35,9 +38,19 @@ function glyph(px, py, state) {
   return !(divider || split);
 }
 
+// Is (px, py) inside the triangle (ax, ay) (bx, by) (cx, cy)?
+function inTriangle(px, py, [ax, ay], [bx, by], [cx, cy]) {
+  const side = (x1, y1, x2, y2) => (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+  const d1 = side(ax, ay, bx, by);
+  const d2 = side(bx, by, cx, cy);
+  const d3 = side(cx, cy, ax, ay);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
 function badge(px, py, connection) {
   const d = Math.hypot(px - BADGE.x, py - BADGE.y);
   if (connection === 'connected') return d <= 4;
+  if (connection === 'partial') return inTriangle(px, py, [BADGE.x, BADGE.y - 5.5], [BADGE.x + 5.5, BADGE.y + 4.5], [BADGE.x - 5.5, BADGE.y + 4.5]);
   if (connection === 'disconnected') {
     const ring = d <= 6 && d >= 3.6;
     const slash = distanceToSegment(px, py, BADGE.x - 4.2, BADGE.y + 4.2, BADGE.x + 4.2, BADGE.y - 4.2) <= 0.9 && d <= 6;
@@ -49,7 +62,7 @@ function badge(px, py, connection) {
 const halo = (px, py, connection) => connection !== 'alone' && Math.hypot(px - BADGE.x, py - BADGE.y) <= 8;
 
 function render(theme, state, connection) {
-  const badgeColour = theme === 'template' ? GLYPH.template : connection === 'connected' ? GREEN : RED;
+  const badgeColour = BADGE_COLOUR[connection];
   const rgba = Buffer.alloc(SIZE * SIZE * 4);
   for (let y = 0; y < SIZE; y += 1) {
     for (let x = 0; x < SIZE; x += 1) {
@@ -123,9 +136,9 @@ export function png(rgba) {
 
 const icons = join(dirname(fileURLToPath(import.meta.url)), '..', 'icons');
 mkdirSync(icons, { recursive: true });
-for (const theme of ['light', 'dark', 'template']) {
+for (const theme of ['light', 'dark']) {
   for (const state of ['active', 'paused']) {
-    for (const connection of ['connected', 'disconnected', 'alone']) {
+    for (const connection of ['connected', 'partial', 'disconnected', 'alone']) {
       writeFileSync(join(icons, `tray-${theme}-${state}-${connection}.png`), png(render(theme, state, connection)));
     }
   }
