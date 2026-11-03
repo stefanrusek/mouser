@@ -62,8 +62,13 @@ icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant '
 4. Install Mouser (see "Install" below), launch it once by hand, and grant the
    prompts: the firewall prompt (private networks) and any input permission
    prompts.
-5. Find the installed paths and note them (the defaults the runner assumes are
-   `%LOCALAPPDATA%\Mouser\mouser.exe` and `%LOCALAPPDATA%\Mouser\mouser-app.exe`):
+5. Find the installed paths and note them. The VM uses the **machine-wide
+   installer** (0.3.0, `MouserService`), so set
+   `MOUSER_J1_PEER_CLI='C:\Program Files\Mouser\mouser.exe'` and
+   `MOUSER_J1_PEER_APP='C:\Program Files\Mouser\mouser-app.exe'` (the runner's
+   defaults are the per-user paths `%LOCALAPPDATA%\Mouser\mouser.exe` and
+   `%LOCALAPPDATA%\Mouser\mouser-app.exe`). The SSH user must be an
+   administrator, because the engine runs as SYSTEM:
 
 ```powershell
 Get-ChildItem "$env:LOCALAPPDATA\Mouser" -Filter *.exe
@@ -89,9 +94,9 @@ mouser --version
 export MOUSER_J1_PEER='USER@VMHOST'          # ssh target of the Windows VM
 export MOUSER_J1_KEY="$HOME/.ssh/mouser_j1"  # private key from step 3
 export MOUSER_J1_VM='Windows 11'             # name from `prlctl list -a`
+export MOUSER_J1_PEER_CLI='C:\Program Files\Mouser\mouser.exe'      # machine-wide install
+export MOUSER_J1_PEER_APP='C:\Program Files\Mouser\mouser-app.exe'
 # Only if the defaults are wrong (see step 5 above):
-# export MOUSER_J1_PEER_CLI='C:\Users\USER\AppData\Local\Mouser\mouser.exe'
-# export MOUSER_J1_PEER_APP='C:\Users\USER\AppData\Local\Mouser\mouser-app.exe'
 # export MOUSER_J1_PEER_PROC='mouser-app'    # process name without .exe
 # export MOUSER_J1_LOCAL_CLI=mouser
 prlctl list -a    # the VM must be running, with the Windows user logged in
@@ -143,6 +148,18 @@ Ctrl-S and saves; the runner first fails if Secure Input is on on the Mac
 (it hides keys from every event tap, Mouser's included); the runner reads the
 file over SSH and compares it exactly. The CLI cannot observe received keys, so
 the file is the observation. The same mechanism starts the Mouser app on B.
+
+## Restarting Mouser on B under the service
+
+The runner asks B's `mouser --json status` whether B's own entry has mode
+`service`. If so, "Mouser is restarted on computer B" is: note the process ids
+of `mouser-app`, `Stop-Process` them over SSH, and wait until `mouser-app` runs
+again under different ids and the control API answers. The service relaunches
+the engine within about a second of its exit (service-ipc.md), so the runner
+never starts a second copy as the user; "Mouser is launched on both computers"
+likewise only waits for B's engine. Without the service (per-user install) the
+runner stops the app, waits for the control API to go away and relaunches it
+through the interactive scheduled task.
 
 ## Known limits
 

@@ -6,7 +6,7 @@
 
 use cucumber::{given, then, when};
 
-use crate::world::{Computer, J1World};
+use crate::world::{Computer, J1World, engine_replaced, parse_pids, runs_as_service};
 
 fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
@@ -17,7 +17,50 @@ fn peer_process() -> String {
     std::env::var("MOUSER_J1_PEER_PROC").unwrap_or_else(|_| "mouser-app".into())
 }
 
+/// Whether the Mouser answering on B reports that it runs as the Windows
+/// service. An engine that is not answering does not.
+fn under_service() -> bool {
+    let out = Computer::B.mouser(&["--json", "status"]);
+    out.status.success()
+        && serde_json::from_slice(&out.stdout)
+            .map(|status| runs_as_service(&status))
+            .unwrap_or(false)
+}
+
+/// The process ids of B's Mouser app.
+fn engine_pids() -> Vec<u32> {
+    let out = Computer::B.script(&format!(
+        "Get-Process -Name '{}' -ErrorAction SilentlyContinue | ForEach-Object {{ $_.Id }}",
+        peer_process()
+    ));
+    assert!(
+        out.status.success(),
+        "list Mouser processes: {}",
+        text(&out.stderr)
+    );
+    parse_pids(&text(&out.stdout))
+}
+
+/// Restart B's engine under the service: the service relaunches it as soon as
+/// it exits (service-ipc.md), so stop it and wait for a new process to answer.
+/// Starting a copy as the user would run two engines.
+fn restart_under_service() {
+    let stopped = engine_pids();
+    assert!(!stopped.is_empty(), "no Mouser app is running on B");
+    let ids: Vec<String> = stopped.iter().map(u32::to_string).collect();
+    let quit = Computer::B.script(&format!(
+        "Stop-Process -Id {} -Force -ErrorAction Stop",
+        ids.join(",")
+    ));
+    assert!(quit.status.success(), "quit Mouser: {}", text(&quit.stderr));
+    Computer::B.wait_for("the service to start Mouser again", |c| {
+        (engine_replaced(&stopped, &engine_pids()) && c.mouser(&["desks"]).status.code() != Some(2))
+            .then_some(())
+    });
+}
+
 /// Launch the Mouser app on `computer` and wait until its control API answers.
+/// Under the service B's engine is already running; it is only waited for.
 fn launch(computer: Computer) {
     match computer {
         Computer::A => {
@@ -28,6 +71,7 @@ fn launch(computer: Computer) {
                 text(&opened.stderr)
             );
         }
+        Computer::B if under_service() => {}
         Computer::B => computer.interactive(
             "app",
             &format!("Start-Process -FilePath \"{}\"", Computer::peer_app()),
@@ -217,8 +261,12 @@ async fn both_connected(_world: &mut J1World, name: String) {
 
 #[when("Mouser is restarted on computer B")]
 async fn restart_b(_world: &mut J1World) {
-    quit(Computer::B);
-    launch(Computer::B);
+    if under_service() {
+        restart_under_service();
+    } else {
+        quit(Computer::B);
+        launch(Computer::B);
+    }
 }
 
 #[then(expr = "computer B is back on {string} with no action in Mouser")]

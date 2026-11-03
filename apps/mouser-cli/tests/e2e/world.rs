@@ -13,8 +13,12 @@
 //! | `MOUSER_J1_KEY`       | ssh private key for it (optional)                |
 //! | `MOUSER_J1_VM`        | Parallels VM name for `prlctl` (required to sleep) |
 //! | `MOUSER_J1_LOCAL_CLI` | the `mouser` CLI on the Mac (default `mouser`)   |
-//! | `MOUSER_J1_PEER_CLI`  | `mouser.exe` on the VM (default `%LOCALAPPDATA%\Mouser\mouser.exe`) |
-//! | `MOUSER_J1_PEER_APP`  | the Mouser app exe on the VM (default `%LOCALAPPDATA%\Mouser\mouser-app.exe`) |
+//! | `MOUSER_J1_PEER_CLI`  | `mouser.exe` on the VM (default `%LOCALAPPDATA%\Mouser\mouser.exe`; machine-wide install: `C:\Program Files\Mouser\mouser.exe`) |
+//! | `MOUSER_J1_PEER_APP`  | the Mouser app exe on the VM (default `%LOCALAPPDATA%\Mouser\mouser-app.exe`; machine-wide install: `C:\Program Files\Mouser\mouser-app.exe`) |
+//! | `MOUSER_J1_PEER_PROC` | the app's process name on the VM, no `.exe` (default `mouser-app`) |
+//!
+//! Whether B runs under the Mouser service is not a setting: the runner reads it
+//! from `mouser --json status` (see `runs_as_service`).
 
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -51,6 +55,34 @@ fn env_or(name: &str, default: &str) -> String {
 /// Quote one word as a PowerShell single-quoted string.
 pub fn ps_quote(word: &str) -> String {
     format!("'{}'", word.replace('\'', "''"))
+}
+
+/// Whether a `mouser --json status` document says this computer runs as the
+/// installed Windows service: its own entry (connection `self`) has mode
+/// `service` (control-api-delta.md).
+pub fn runs_as_service(status: &serde_json::Value) -> bool {
+    status["computers"].as_array().is_some_and(|computers| {
+        computers
+            .iter()
+            .any(|c| c["connection"] == "self" && c["mode"] == "service")
+    })
+}
+
+/// The process ids in the output of `Get-Process ... | ForEach-Object Id`,
+/// one per line, sorted.
+pub fn parse_pids(output: &str) -> Vec<u32> {
+    let mut pids: Vec<u32> = output
+        .lines()
+        .map(|line| line.trim().parse().expect("a process id per line"))
+        .collect();
+    pids.sort_unstable();
+    pids
+}
+
+/// Whether the engine has been replaced: it runs again, and none of the
+/// process ids that were stopped is among the ones running now.
+pub fn engine_replaced(stopped: &[u32], running: &[u32]) -> bool {
+    !running.is_empty() && running.iter().all(|pid| !stopped.contains(pid))
 }
 
 /// Standard base64.
