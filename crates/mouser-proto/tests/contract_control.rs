@@ -285,6 +285,7 @@ fn method_names_match_contract_table() {
         "elevation.restart",
         "problem.fix",
         "transfer.resolve",
+        "quit",
     ];
     assert_eq!(Method::ALL.map(Method::name), names);
     for m in Method::ALL {

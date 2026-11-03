@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use mouser_core::engine_headless::FileSecrets;
 use mouser_core::paths::Paths;
-use mouser_core::{Engine, EngineParams};
+use mouser_core::{Engine, EngineEvent, EngineParams};
 use mouser_platform::{Os, Platform};
 use mouser_proto::service_ipc::StopReason;
 use mouser_proto::wire::ComputerMode;
@@ -113,12 +113,27 @@ pub fn stop_signal() -> impl Future<Output = ()> {
     }
 }
 
-/// Run the engine headless until `shutdown` completes, then stop it.
+/// Run the engine headless until `shutdown` completes or the control API's
+/// `quit` asks it to, then stop it.
 pub async fn run(params: EngineParams, shutdown: impl Future<Output = ()>) {
     let engine = Engine::start(params).await;
     mouser_core::faults::install(engine.log());
-    shutdown.await;
+    tokio::select! {
+        () = shutdown => {}
+        () = quit_asked(engine.events()) => {}
+    }
     engine.shutdown().await;
+}
+
+/// Completes when the control API's `quit` asks the engine to end.
+async fn quit_asked(mut events: tokio::sync::broadcast::Receiver<EngineEvent>) {
+    use tokio::sync::broadcast::error::RecvError;
+    // A lagging receiver missed only other events. The engine outlives this
+    // wait, so its events do not close while it waits.
+    while !matches!(
+        events.recv().await,
+        Ok(EngineEvent::Quit) | Err(RecvError::Closed)
+    ) {}
 }
 
 /// What the session engine (Windows `--headless --machine`) has of
@@ -137,7 +152,8 @@ pub type Stop = Pin<Box<dyn Future<Output = ()> + Send>>;
 /// Why a headless run ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ended {
-    /// The system asked it to stop (Ctrl-C, close, shutdown).
+    /// The system asked it to stop (Ctrl-C, close, shutdown), or the
+    /// control API's `quit` did (the desk user chose Quit).
     Asked,
     /// The service said to shut down.
     Service,
@@ -150,6 +166,7 @@ pub async fn run_until(params: EngineParams, stop: Stop, service_shutdown: Stop)
     mouser_core::faults::install(engine.log());
     let ended = tokio::select! {
         () = stop => Ended::Asked,
+        () = quit_asked(engine.events()) => Ended::Asked,
         () = service_shutdown => Ended::Service,
     };
     engine.shutdown().await;

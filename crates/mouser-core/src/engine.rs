@@ -138,6 +138,9 @@ pub enum EngineEvent {
     /// Restart this computer's Mouser as administrator (portable Windows,
     /// not elevated): the app runs the elevated restart sequence.
     RestartElevated,
+    /// The control API's `quit`: the process hosting the engine ends it as
+    /// its own tray Quit does (`Engine::shutdown`, then exit).
+    Quit,
     /// A unit of work faulted and was recovered from (`where` names it).
     Fault { r#where: String },
 }

@@ -44,7 +44,8 @@ impl Ctx {
 }
 
 /// The `engine_event` form of `event`, for the events an app in UI mode
-/// shows (a recovered fault is not one).
+/// shows (a recovered fault is not one, nor a quit: the app in UI mode
+/// quits by itself).
 pub(crate) fn ui_event(event: EngineEvent) -> Option<Wire> {
     Some(match event {
         EngineEvent::Landing {
@@ -62,6 +63,6 @@ pub(crate) fn ui_event(event: EngineEvent) -> Option<Wire> {
         EngineEvent::QuickJumpShow { letters } => Wire::QuickJumpShow { letters },
         EngineEvent::QuickJumpHide => Wire::QuickJumpHide,
         EngineEvent::RestartElevated => Wire::RestartElevated,
-        EngineEvent::Fault { .. } => return None,
+        EngineEvent::Fault { .. } | EngineEvent::Quit => return None,
     })
 }

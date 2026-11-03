@@ -255,9 +255,12 @@ pub fn run() {
                     exit: Arc::new(move || handle.exit(0)),
                 });
             }
+            let handle = app.handle().clone();
+            app.manage(crate::exit::Exit(Arc::new(move || handle.exit(0))));
             // UI mode: MouserService runs the session engine; talk to it.
             #[cfg(target_os = "windows")]
-            let ui_mode = crate::ui_mode::ui_mode(&crate::ui_mode::Scm);
+            let ui_mode =
+                crate::ui_mode::ui_mode(&crate::ui_mode::Scm(crate::ui_mode::SERVICE_NAME));
             #[cfg(not(target_os = "windows"))]
             let ui_mode = false;
             let config_dir = paths.dir.clone();
