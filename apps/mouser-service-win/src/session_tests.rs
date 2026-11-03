@@ -157,12 +157,20 @@ fn an_engine_that_exits_is_started_again_at_once_in_the_same_session() {
     r.supervisor.on(Event::Stop);
 }
 
+/// The engine on pipe `name` is served: its Ctrl-Alt-Del request is
+/// answered, so what it sends next is read.
+pub fn served(fake: &FakeWin, name: &str) {
+    fake.send(name, &EngineMessage::SendSas);
+    fake.await_received(name, 1);
+}
+
 #[test]
 fn an_engine_that_quits_stops_the_service_and_is_not_started_again() {
     let mut r = rig();
     r.supervisor.start();
     let (session, pid) = running(&r);
     let name = engine_pipe_name(session);
+    served(&r.fake, &name);
     r.fake.send(
         &name,
         &EngineMessage::Stopping {
@@ -198,6 +206,7 @@ fn an_engine_that_ends_with_a_fault_is_started_again() {
     let mut r = rig();
     r.supervisor.start();
     let (session, first) = running(&r);
+    served(&r.fake, &engine_pipe_name(session));
     r.fake.send(
         &engine_pipe_name(session),
         &EngineMessage::Stopping {
