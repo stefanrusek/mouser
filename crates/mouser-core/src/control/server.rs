@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc::{self, UnboundedSender};
 
+use crate::EngineEvent;
 use crate::control::ui_mode::ui_event;
 use crate::control::{invalid, status};
 use crate::discovery::group_by_desk;
@@ -163,6 +164,11 @@ async fn dispatch(
         }
         Method::TransferResolve => {
             ctx.resolve_transfer(parse(params)?);
+            json(Empty {})
+        }
+        Method::Quit => {
+            // The host ends the engine; no host listening is fine.
+            let _ = ctx.events.send(EngineEvent::Quit);
             json(Empty {})
         }
         Method::UpdateCheck => json(ctx.update_check().await?),

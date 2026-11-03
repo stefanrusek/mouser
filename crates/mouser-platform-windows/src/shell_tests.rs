@@ -86,10 +86,39 @@ fn a_message_box_waits_until_it_is_closed() {
 }
 
 #[test]
-fn a_running_service_is_running_and_one_that_is_not_there_is_not() {
+fn a_running_service_is_running_and_one_that_is_not_there_is_missing() {
     // The Windows Event Log runs on every Windows.
-    assert!(service_running("EventLog"));
-    assert!(!service_running("NoSuchMouserServiceForTests"));
+    assert_eq!(service_state("EventLog"), ServiceState::Running);
+    assert_eq!(
+        service_state("NoSuchMouserServiceForTests"),
+        ServiceState::Missing
+    );
+}
+
+#[test]
+fn a_service_stopped_or_on_its_way_down_is_stopped_and_any_other_state_runs() {
+    use windows::Win32::System::Services::{
+        SERVICE_CONTINUE_PENDING, SERVICE_PAUSED, SERVICE_RUNNING, SERVICE_START_PENDING,
+        SERVICE_STOP_PENDING, SERVICE_STOPPED,
+    };
+    for state in [SERVICE_STOPPED, SERVICE_STOP_PENDING] {
+        assert_eq!(state_of(state), ServiceState::Stopped, "{state:?}");
+    }
+    for state in [
+        SERVICE_RUNNING,
+        SERVICE_START_PENDING,
+        SERVICE_CONTINUE_PENDING,
+        SERVICE_PAUSED,
+    ] {
+        assert_eq!(state_of(state), ServiceState::Running, "{state:?}");
+    }
+}
+
+#[test]
+fn a_service_that_is_not_there_or_runs_already_is_not_started() {
+    assert!(!start_service("NoSuchMouserServiceForTests"));
+    // Started already, or not this user's to start: either way, no start.
+    assert!(!start_service("EventLog"));
 }
 
 #[test]

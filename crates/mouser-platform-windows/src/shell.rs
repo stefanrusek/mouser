@@ -108,21 +108,72 @@ pub fn message_box(text: &str) {
     unsafe { MessageBoxW(None, &HSTRING::from(text), w!("Mouser"), flags) };
 }
 
-/// Whether the Windows service `name` is installed and running.
-pub fn service_running(name: &str) -> bool {
+/// Whether a Windows service is installed, and whether it runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceState {
+    /// Not installed, or not this user's to ask after.
+    Missing,
+    /// Stopped, or stopping.
+    Stopped,
+    /// Running, or on its way there.
+    Running,
+}
+
+/// The state of a service whose SCM status is `current`.
+pub fn state_of(
+    current: windows::Win32::System::Services::SERVICE_STATUS_CURRENT_STATE,
+) -> ServiceState {
+    use windows::Win32::System::Services::{SERVICE_STOP_PENDING, SERVICE_STOPPED};
+    if current == SERVICE_STOPPED || current == SERVICE_STOP_PENDING {
+        ServiceState::Stopped
+    } else {
+        ServiceState::Running
+    }
+}
+
+/// Runs `f` on the service `name` opened with `access`; `None` when it
+/// cannot be opened.
+fn with_service<T>(
+    name: &str,
+    access: u32,
+    f: impl FnOnce(windows::Win32::System::Services::SC_HANDLE) -> T,
+) -> Option<T> {
     use windows::Win32::System::Services::{
-        CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatus, SC_MANAGER_CONNECT,
-        SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS,
+        CloseServiceHandle, OpenSCManagerW, OpenServiceW, SC_MANAGER_CONNECT,
     };
-    unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }.is_ok_and(|manager| {
+    let manager = unsafe { OpenSCManagerW(None, None, SC_MANAGER_CONNECT) }.ok()?;
+    let result = unsafe { OpenServiceW(manager, &HSTRING::from(name), access) }
+        .ok()
+        .map(|service| {
+            let result = f(service);
+            let _ = unsafe { CloseServiceHandle(service) };
+            result
+        });
+    let _ = unsafe { CloseServiceHandle(manager) };
+    result
+}
+
+/// The state of the Windows service `name`.
+pub fn service_state(name: &str) -> ServiceState {
+    use windows::Win32::System::Services::{
+        QueryServiceStatus, SERVICE_QUERY_STATUS, SERVICE_STATUS,
+    };
+    with_service(name, SERVICE_QUERY_STATUS, |service| {
         let mut status = SERVICE_STATUS::default();
-        let running = unsafe { OpenServiceW(manager, &HSTRING::from(name), SERVICE_QUERY_STATUS) }
-            .is_ok_and(|service| {
-                let queried = unsafe { QueryServiceStatus(service, &mut status) };
-                let _ = unsafe { CloseServiceHandle(service) };
-                queried.is_ok() && status.dwCurrentState == SERVICE_RUNNING
-            });
-        let _ = unsafe { CloseServiceHandle(manager) };
-        running
+        unsafe { QueryServiceStatus(service, &mut status) }
+            .ok()
+            .map(|()| state_of(status.dwCurrentState))
     })
+    .flatten()
+    .unwrap_or(ServiceState::Missing)
+}
+
+/// Starts the Windows service `name`: whether Windows took the request. A
+/// service that runs already, or that this user may not start, is not.
+pub fn start_service(name: &str) -> bool {
+    use windows::Win32::System::Services::{SERVICE_START, StartServiceW};
+    with_service(name, SERVICE_START, |service| unsafe {
+        StartServiceW(service, None)
+    })
+    .is_some_and(|started| started.is_ok())
 }

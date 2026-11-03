@@ -49,3 +49,36 @@ fn tray_quit_shuts_the_host_down_before_the_app_exits() {
     });
     assert_eq!(exited_after_shutdown.get(), Some(true));
 }
+
+#[test]
+fn tray_quit_in_ui_mode_asks_the_session_engine_to_quit_before_the_app_exits() {
+    let (f, mut events, app) = tauri::async_runtime::block_on(async {
+        let f = fixture().await;
+        let events = f.host.control().events();
+        let ui = crate::host_tests::remote::ui_host(&f).await;
+        (f, events, app_with(ui))
+    });
+    let exited = Cell::new(false);
+    quit(app.handle(), || exited.set(true));
+    assert!(exited.get());
+    tauri::async_runtime::block_on(async {
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while events.recv().await.unwrap() != mouser_core::EngineEvent::Quit {}
+        })
+        .await
+        .expect("the session engine was asked to quit");
+    });
+    drop(f);
+}
+
+#[test]
+fn tray_quit_in_ui_mode_with_no_session_engine_still_exits() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = tauri::async_runtime::block_on(async {
+        let gone = dir.path().join("no-engine");
+        app_with(crate::host_tests::remote::ui_host_at(&gone).await)
+    });
+    let exited = Cell::new(false);
+    quit(app.handle(), || exited.set(true));
+    assert!(exited.get());
+}

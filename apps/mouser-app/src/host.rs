@@ -155,6 +155,16 @@ impl Host {
         }
     }
 
+    /// The desk user chose Quit: in UI mode the session engine is asked to
+    /// quit (and with it `MouserService`); a session engine that is not
+    /// there has nothing to quit. The app's own engine is stopped by
+    /// [`shutdown`](Self::shutdown).
+    pub async fn quit(&self) {
+        if let Control::Remote(remote) = &self.control {
+            let _ = remote.call(Method::Quit, None).await;
+        }
+    }
+
     /// UI mode: a host with no engine of its own, talking to the engine whose
     /// control API is at `path` (the session engine, behind the service
     /// pipe), on this computer's `platform`. Its own log, in `log_dir`, is

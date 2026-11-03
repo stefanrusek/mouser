@@ -505,3 +505,15 @@ mod the_pipe_listener {
         drop(first);
     }
 }
+
+#[tokio::test]
+async fn quit_answers_and_asks_the_engine_s_host_to_quit() {
+    let lab = Lab::new();
+    let node = lab.start("Alpha").await;
+    let mut events = node.engine.events();
+    let mut c = client(&node).await;
+    assert_eq!(c.call(Method::Quit, None).await.unwrap(), json!({}));
+    // Only the host ends the engine: it is still there to answer.
+    while events.recv().await.unwrap() != crate::EngineEvent::Quit {}
+    assert!(c.call(Method::Status, None).await.is_ok());
+}

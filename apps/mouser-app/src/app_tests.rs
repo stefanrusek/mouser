@@ -541,3 +541,22 @@ async fn a_restart_request_off_windows_changes_nothing() {
     assert!(notifier.shown.lock().unwrap().is_empty());
     assert!(app.handle().webview_windows().is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_quit_from_the_control_api_shuts_the_engine_down_then_exits() {
+    let f = fixture().await;
+    let path = crate::support_tests::control_path_in(&f._dir);
+    let app = app_with(f.host);
+    let exited_after_shutdown = Arc::new(Mutex::new(None));
+    let seen = exited_after_shutdown.clone();
+    app.manage(crate::exit::Exit(Arc::new(move || {
+        *seen.lock().unwrap() = Some(!path.exists())
+    })));
+    handle_event(
+        app.handle(),
+        &FakeNotifier::default(),
+        mouser_core::EngineEvent::Quit,
+    );
+    crate::support_tests::eventually(|| exited_after_shutdown.lock().unwrap().is_some()).await;
+    assert_eq!(*exited_after_shutdown.lock().unwrap(), Some(true));
+}

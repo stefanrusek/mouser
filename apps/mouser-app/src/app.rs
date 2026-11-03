@@ -141,6 +141,12 @@ pub fn handle_event<R: Runtime>(app: &AppHandle<R>, notifier: &dyn Notifier, eve
         // Only a portable Windows computer is asked to restart elevated.
         #[cfg(not(target_os = "windows"))]
         EngineEvent::RestartElevated => {}
+        // The control API's `quit`: as tray Quit.
+        EngineEvent::Quit => {
+            let app = app.clone();
+            let exit = app.state::<crate::exit::Exit>().0.clone();
+            tauri::async_runtime::spawn_blocking(move || crate::exit::quit(&app, || exit()));
+        }
     }
 }
 

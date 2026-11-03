@@ -186,6 +186,8 @@ fn every_ui_facing_engine_event_has_its_control_api_form() {
         ),
         (EngineEvent::QuickJumpHide, Some(Wire::QuickJumpHide)),
         (EngineEvent::RestartElevated, Some(Wire::RestartElevated)),
+        // A quit is the session engine's own: the app in UI mode quits by itself.
+        (EngineEvent::Quit, None),
         // A recovered fault is for tests, not for the UI.
         (
             EngineEvent::Fault {

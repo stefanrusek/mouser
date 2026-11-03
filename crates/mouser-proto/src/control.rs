@@ -269,10 +269,12 @@ pub enum Method {
     ElevationRestart,
     ProblemFix,
     TransferResolve,
+    /// End the engine the call reaches, as its own tray Quit does.
+    Quit,
 }
 
 impl Method {
-    pub const ALL: [Method; 27] = [
+    pub const ALL: [Method; 28] = [
         Self::Status,
         Self::DesksDiscovered,
         Self::DeskCreate,
@@ -300,6 +302,7 @@ impl Method {
         Self::ElevationRestart,
         Self::ProblemFix,
         Self::TransferResolve,
+        Self::Quit,
     ];
 
     /// The JSON-RPC method name.
@@ -332,6 +335,7 @@ impl Method {
             Self::ElevationRestart => "elevation.restart",
             Self::ProblemFix => "problem.fix",
             Self::TransferResolve => "transfer.resolve",
+            Self::Quit => "quit",
         }
     }
 

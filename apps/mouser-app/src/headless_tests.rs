@@ -596,3 +596,68 @@ async fn a_service_that_went_without_a_word_leaves_the_engine_running() {
     task.await.unwrap();
     assert_eq!(service.told(), [StopReason::Quit]);
 }
+
+/// Asks the engine whose control API is at `path` to quit.
+async fn quit_at(path: &std::path::Path) {
+    let mut client = mouser_core::ControlClient::connect(path).await.unwrap();
+    client
+        .call(mouser_proto::control::Method::Quit, None)
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn headless_quits_when_the_control_api_says_to() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let control = control_path_in(&dir);
+    let task = tokio::spawn(run(
+        params(
+            Arc::new(VirtualPlatform::new()),
+            Os::MacOs,
+            dir.path().to_path_buf(),
+            control.clone(),
+            "Headless".into(),
+            "1.2.3".into(),
+            ComputerMode::Headless,
+        ),
+        std::future::pending(),
+    ));
+    crate::support_tests::eventually(|| control.exists()).await;
+    quit_at(&control).await;
+    task.await.unwrap();
+    assert!(!control.exists(), "the engine shut down");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_session_engine_told_to_quit_tells_the_service_it_quit() {
+    let _one_at_a_time = crate::support_tests::one_at_a_time().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = mouser_proto::config::Config::default();
+    config.advanced.port = u32::from(free_port());
+    mouser_core::config::save(dir.path(), &config);
+    let control = control_path_in(&dir);
+    let service = Arc::new(FakeService::default());
+    let task = tokio::spawn(serve(
+        params(
+            Arc::new(VirtualPlatform::new()),
+            Os::Windows,
+            dir.path().to_path_buf(),
+            control.clone(),
+            "Session engine".into(),
+            "1.2.3".into(),
+            ComputerMode::Service,
+        ),
+        service.clone(),
+        Box::pin(std::future::pending()),
+    ));
+    let served = crate::support_tests::served_at(&control, ComputerMode::Service);
+    crate::support_tests::eventually(|| served.exists()).await;
+    quit_at(&served).await;
+    task.await.unwrap();
+    assert!(!served.exists(), "the engine shut down");
+    assert_eq!(service.told(), [StopReason::Quit]);
+}

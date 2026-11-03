@@ -20,10 +20,15 @@ pub fn on_exit<R: Runtime>(app: &AppHandle<R>) {
 #[cfg(target_os = "windows")]
 pub struct Elevated(pub std::sync::Mutex<Option<crate::elevation::Marker>>);
 
+/// How the app exits; tests put a fake here.
+pub struct Exit(pub std::sync::Arc<dyn Fn() + Send + Sync>);
+
 /// Tray Quit: stop the engine, then `exit` the app. The engine goes first
 /// because exiting from the tray menu does not reach the exit event in time
-/// (tauri#12310).
+/// (tauri#12310). In UI mode the session engine is asked to quit too, so
+/// `MouserService` stops.
 pub fn quit<R: Runtime>(app: &AppHandle<R>, exit: impl FnOnce()) {
+    tauri::async_runtime::block_on(app.state::<Host>().quit());
     on_exit(app);
     exit();
 }
