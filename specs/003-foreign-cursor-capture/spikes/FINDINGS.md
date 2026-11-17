@@ -36,3 +36,7 @@ Setup: Mouser's log showed `control.changed` to the other computer at 17:57:39.6
 | Game output | `language: 2 lang files, no problem`, then only the kill signal. Not observed: whether a window opened, or whether the game captured the mouse. |
 
 Verdict: **CONFIRMED** that launching the real game while the pointer is remote makes the Mac cursor visible with Mouser unaware, which is the owner's "visible on both screens" symptom. The cause is the game launching or activating (a visibility change), NOT a capture warp: position never moved. This corrects S1 (visibility, not position, is the aspect the guard must re-read first) and means R1 resolves toward visibility. The cursor was left visible after the run (Mouser still believed remote); QuickJump or double-Escape recovers.
+
+## T001 Baseline before any 003 change (implementer, 2026-11-17)
+
+Pre-existing failure, no 003 code touched yet: `cargo test -p mouser-platform-macos --test contract_platform_macos_us2` fails `a_grab_swallows_local_keys_and_reports_pointer_motion_until_released` (crates/mouser-platform-macos/tests/contract_platform_macos_us2.rs:253, left 0, right 2: no pointer motion reported). It drives the real event tap, so it likely needs input/Accessibility permission or a quiet foreground; not investigated. Everything else passed: other macOS tests (8 of 9 in that file), `cargo test -p mouser-app` (203), `cargo clippy --workspace --all-targets`, `cargo fmt --check`.

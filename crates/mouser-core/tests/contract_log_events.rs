@@ -340,3 +340,42 @@ async fn a_scripted_session_writes_every_event_core_emits_and_only_the_catalog()
     );
     lab.shutdown().await;
 }
+
+fn foreign_change(fields: Value) -> Value {
+    json!({
+        "ts": "2026-11-17T12:00:00Z",
+        "level": "warn",
+        "computer": { "id": "0123456789abcdef0123456789abcdef", "name": "Mac" },
+        "event": "cursor.foreign_change",
+        "fields": fields,
+    })
+}
+
+/// `cursor.foreign_change` is written by the macOS backend, so core's
+/// scripted session never sees it; each value its fields can take is checked
+/// against the catalog here.
+#[test]
+fn a_foreign_cursor_change_validates_with_every_value_its_fields_can_take() {
+    let validator = logs::events_validator();
+    for aspect in ["visible", "associated", "position"] {
+        for phase in ["remote", "arrived"] {
+            for corrected in [true, false] {
+                let record = foreign_change(
+                    json!({"aspect": aspect, "phase": phase, "corrected": corrected, "count": 3}),
+                );
+                assert!(validator.is_valid(&record), "{record}");
+            }
+        }
+    }
+    for fields in [
+        json!({"aspect": "bogus", "phase": "remote", "corrected": true, "count": 1}),
+        json!({"aspect": "visible", "phase": "later", "corrected": true, "count": 1}),
+        json!({"aspect": "visible", "phase": "remote", "corrected": true, "count": 0}),
+        json!({"aspect": "visible", "phase": "remote", "corrected": true}),
+    ] {
+        assert!(
+            !validator.is_valid(&foreign_change(fields.clone())),
+            "{fields}"
+        );
+    }
+}

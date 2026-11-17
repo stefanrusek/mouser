@@ -14,9 +14,9 @@ Paths: `M` = `crates/mouser-platform-macos/src`, `A` = `apps/mouser-app/src`, `S
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm baseline is green before any change: run `cargo test -p mouser-platform-macos`, `cargo test -p mouser-app`, `cargo clippy --workspace --all-targets`, `cargo fmt --check`; record failures (if any) in `specs/003-foreign-cursor-capture/spikes/FINDINGS.md` as pre-existing.
-- [ ] T002 Add the `cursor.foreign_change` event to the log catalog: new row in `S/log-events.md` and a schema entry in `S/log-events.schema.json` (fields `aspect` enum `visible|associated|position`, `phase` enum `remote|arrived`, `corrected` bool, `count` integer; level `warn`; no peer; `additionalProperties: false`), exactly per `contracts/log-events-delta.md`.
-- [ ] T003 Extend `contract_log_events` and `contract_log_privacy` tests (locate with `grep -rn contract_log_events crates apps`) to cover the new row, including that no field can carry an app name or window title.
+- [X] T001 Confirm baseline is green before any change: run `cargo test -p mouser-platform-macos`, `cargo test -p mouser-app`, `cargo clippy --workspace --all-targets`, `cargo fmt --check`; record failures (if any) in `specs/003-foreign-cursor-capture/spikes/FINDINGS.md` as pre-existing.
+- [X] T002 Add the `cursor.foreign_change` event to the log catalog: new row in `S/log-events.md` and a schema entry in `S/log-events.schema.json` (fields `aspect` enum `visible|associated|position`, `phase` enum `remote|arrived`, `corrected` bool, `count` integer; level `warn`; no peer; `additionalProperties: false`), exactly per `contracts/log-events-delta.md`.
+- [X] T003 Extend `contract_log_events` and `contract_log_privacy` tests (locate with `grep -rn contract_log_events crates apps`) to cover the new row, including that no field can carry an app name or window title.
 
 ## Phase 2: Foundational (blocks all stories)
 
