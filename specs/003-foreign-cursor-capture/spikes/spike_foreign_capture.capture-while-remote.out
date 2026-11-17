@@ -1,0 +1,92 @@
+t=0ms visible=0 pos=(0,954) our_hides=0
+t=250ms visible=0 pos=(0,954) our_hides=0
+t=500ms visible=0 pos=(0,954) our_hides=0
+t=750ms visible=0 pos=(0,954) our_hides=0
+t=1000ms CAPTURE
+t=1000ms visible=0 pos=(1280,720) our_hides=1
+t=1250ms visible=0 pos=(1280,720) our_hides=1
+t=1500ms visible=0 pos=(1280,720) our_hides=1
+t=1750ms RECAPTURE
+t=1750ms visible=0 pos=(1280,720) our_hides=2
+t=2000ms visible=0 pos=(1280,720) our_hides=2
+t=2250ms visible=0 pos=(1280,720) our_hides=2
+t=2500ms visible=0 pos=(1280,720) our_hides=2
+t=2750ms visible=0 pos=(1280,720) our_hides=2
+t=3000ms visible=0 pos=(1280,720) our_hides=2
+t=3250ms visible=0 pos=(1280,720) our_hides=2
+t=3500ms visible=0 pos=(1280,720) our_hides=2
+t=3750ms RECAPTURE
+t=3750ms visible=0 pos=(1280,720) our_hides=3
+t=4000ms visible=0 pos=(1280,720) our_hides=3
+t=4250ms visible=0 pos=(1280,720) our_hides=3
+t=4500ms visible=0 pos=(1280,720) our_hides=3
+t=4750ms visible=0 pos=(1280,720) our_hides=3
+t=5000ms visible=0 pos=(1280,720) our_hides=3
+t=5250ms visible=0 pos=(1280,720) our_hides=3
+t=5500ms visible=0 pos=(1280,720) our_hides=3
+t=5750ms RECAPTURE
+t=5750ms visible=0 pos=(1280,720) our_hides=4
+t=6000ms visible=0 pos=(1280,720) our_hides=4
+t=6250ms visible=0 pos=(1280,720) our_hides=4
+t=6500ms visible=0 pos=(1280,720) our_hides=4
+t=6750ms visible=0 pos=(1280,720) our_hides=4
+t=7000ms visible=0 pos=(1280,720) our_hides=4
+t=7250ms visible=0 pos=(1280,720) our_hides=4
+t=7500ms visible=0 pos=(1280,720) our_hides=4
+t=7750ms RECAPTURE
+t=7750ms visible=0 pos=(1280,720) our_hides=5
+t=8000ms visible=0 pos=(1280,720) our_hides=5
+t=8250ms visible=0 pos=(1280,720) our_hides=5
+t=8500ms visible=0 pos=(1280,720) our_hides=5
+t=8750ms visible=0 pos=(1280,720) our_hides=5
+t=9000ms visible=0 pos=(1280,720) our_hides=5
+t=9250ms visible=0 pos=(1280,720) our_hides=5
+t=9500ms visible=0 pos=(1280,720) our_hides=5
+t=9750ms RECAPTURE
+t=9750ms visible=0 pos=(1280,720) our_hides=6
+t=10000ms visible=0 pos=(1280,720) our_hides=6
+t=10250ms visible=0 pos=(1280,720) our_hides=6
+t=10500ms visible=0 pos=(1280,720) our_hides=6
+t=10750ms visible=0 pos=(1280,720) our_hides=6
+t=11000ms visible=0 pos=(1280,720) our_hides=6
+t=11250ms visible=0 pos=(1280,720) our_hides=6
+t=11500ms visible=0 pos=(1280,720) our_hides=6
+t=11750ms RECAPTURE
+t=11750ms visible=0 pos=(1280,720) our_hides=7
+t=12000ms visible=0 pos=(1280,720) our_hides=7
+t=12250ms visible=0 pos=(1280,720) our_hides=7
+t=12500ms visible=0 pos=(1280,720) our_hides=7
+t=12750ms visible=0 pos=(1280,720) our_hides=7
+t=13000ms visible=0 pos=(1280,720) our_hides=7
+t=13250ms visible=0 pos=(1280,720) our_hides=7
+t=13500ms visible=0 pos=(1280,720) our_hides=7
+t=13750ms RECAPTURE
+t=13750ms visible=0 pos=(1280,720) our_hides=8
+t=14000ms visible=0 pos=(1280,720) our_hides=8
+t=14250ms visible=0 pos=(1280,720) our_hides=8
+t=14500ms visible=0 pos=(1280,720) our_hides=8
+t=14750ms visible=0 pos=(1280,720) our_hides=8
+t=15000ms visible=0 pos=(1280,720) our_hides=8
+t=15250ms visible=0 pos=(1280,720) our_hides=8
+t=15500ms visible=0 pos=(1280,720) our_hides=8
+t=15750ms RECAPTURE
+t=15750ms visible=0 pos=(1280,720) our_hides=9
+t=16000ms visible=0 pos=(1280,720) our_hides=9
+t=16250ms visible=0 pos=(1280,720) our_hides=9
+t=16500ms visible=0 pos=(1280,720) our_hides=9
+t=16750ms visible=0 pos=(1280,720) our_hides=9
+t=17000ms visible=0 pos=(1280,720) our_hides=9
+t=17250ms visible=0 pos=(1280,720) our_hides=9
+t=17500ms visible=0 pos=(1280,720) our_hides=9
+t=17750ms RECAPTURE
+t=17750ms visible=0 pos=(1280,720) our_hides=10
+t=18000ms visible=0 pos=(1280,720) our_hides=10
+t=18250ms visible=0 pos=(1280,720) our_hides=10
+t=18500ms visible=0 pos=(1280,720) our_hides=10
+t=18750ms visible=0 pos=(1280,720) our_hides=10
+t=19000ms visible=0 pos=(1280,720) our_hides=10
+t=19250ms visible=0 pos=(1280,720) our_hides=10
+t=19500ms visible=0 pos=(1280,720) our_hides=10
+t=19750ms RECAPTURE
+t=19750ms visible=0 pos=(1280,720) our_hides=11
+RELEASED all
