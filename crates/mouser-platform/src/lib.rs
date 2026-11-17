@@ -11,6 +11,10 @@ use std::sync::mpsc::Sender;
 
 #[cfg(feature = "conformance")]
 pub mod conformance;
+mod diag;
+pub use diag::{DiagLevel, DiagValue, Diagnostics};
+#[cfg(test)]
+mod diag_tests;
 
 /// Failure of a platform operation.
 #[derive(Debug, Clone, PartialEq, Eq)]

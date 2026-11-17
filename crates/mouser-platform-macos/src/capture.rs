@@ -15,13 +15,12 @@
 //! stuck keys).
 
 use crate::activity::Activity;
+use crate::cursor::{Cursor, SystemCursor};
 use crate::echo::Echo;
 use crate::keymap;
 use crate::tap::{self, Create, Tap, Verdict};
-use core_graphics::display::{CGDisplay, CGPoint};
 use core_graphics::event::{CGEvent, EventField};
-use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use mouser_platform::{Error, InputCapture, LocalInput, Result};
+use mouser_platform::{InputCapture, LocalInput, Result};
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -79,89 +78,6 @@ const TAPPED_TYPES: &[u32] = &[
 
 pub(crate) fn event_mask() -> u64 {
     TAPPED_TYPES.iter().fold(0, |mask, ty| mask | (1 << ty))
-}
-
-/// The cursor operations a grab needs; a seam so the grab sequence is
-/// testable without moving the real pointer.
-pub(crate) trait Cursor: Send + Sync {
-    fn position(&self) -> (f64, f64);
-    /// Fails when the point is on no display or the OS refuses.
-    fn warp(&self, x: f64, y: f64) -> Result<()>;
-    fn associate(&self, on: bool);
-    fn hide(&self);
-    fn show(&self);
-}
-
-/// FR-002: the OS refusing a warp is an error the caller sees, not a panic.
-pub(crate) fn warp_refused(code: core_graphics::base::CGError) -> Error {
-    Error::Os(format!("CGWarpMouseCursorPosition failed: {code}"))
-}
-
-pub(crate) struct SystemCursor;
-
-impl Cursor for SystemCursor {
-    fn position(&self) -> (f64, f64) {
-        let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState).unwrap();
-        let at = CGEvent::new(source).unwrap().location();
-        (at.x, at.y)
-    }
-    fn warp(&self, x: f64, y: f64) -> Result<()> {
-        let at = CGPoint::new(x, y);
-        let on_a_display = CGDisplay::display_count_with_point(at).is_ok_and(|count| count > 0);
-        if !on_a_display {
-            return Err(Error::Os(format!("({x}, {y}) is on no display")));
-        }
-        CGDisplay::warp_mouse_cursor_position(at).map_err(warp_refused)
-    }
-    fn associate(&self, on: bool) {
-        CGDisplay::associate_mouse_and_mouse_cursor_position(on)
-            .expect("CGAssociateMouseAndMouseCursorPosition");
-    }
-    fn hide(&self) {
-        allow_hiding_in_background();
-        CGDisplay::main()
-            .hide_cursor()
-            .expect("CGDisplayHideCursor");
-    }
-    fn show(&self) {
-        CGDisplay::main()
-            .show_cursor()
-            .expect("CGDisplayShowCursor");
-    }
-}
-
-// Private CoreGraphics (SkyLight) calls, as Synergy/Barrier use: without
-// `SetsCursorInBackground`, CGDisplayHideCursor does nothing unless the
-// caller is the frontmost app, and Mouser (a menu-bar app) never is.
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn _CGSDefaultConnection() -> i32;
-    fn CGSSetConnectionProperty(
-        connection: i32,
-        target: i32,
-        key: core_foundation::string::CFStringRef,
-        value: core_foundation::base::CFTypeRef,
-    ) -> i32;
-}
-
-/// Let this process hide the cursor while another app is frontmost.
-pub(crate) fn allow_hiding_in_background() {
-    use core_foundation::base::TCFType;
-    use core_foundation::boolean::CFBoolean;
-    use core_foundation::string::CFString;
-    let key = CFString::from_static_string("SetsCursorInBackground");
-    let value = CFBoolean::true_value();
-    // SAFETY: plain C calls with valid, retained CF objects.
-    let error = unsafe {
-        let connection = _CGSDefaultConnection();
-        CGSSetConnectionProperty(
-            connection,
-            connection,
-            key.as_concrete_TypeRef(),
-            value.as_CFTypeRef(),
-        )
-    };
-    assert_eq!(error, 0, "CGSSetConnectionProperty(SetsCursorInBackground)");
 }
 
 /// State shared with the tap callback.
@@ -309,11 +225,10 @@ pub(crate) fn handle(state: &State, ty: u32, ev: &CGEvent) -> Verdict {
 pub(crate) struct MacCapture {
     cursor: Arc<dyn Cursor>,
     create: Create,
-    state: Arc<State>,
+    pub(crate) state: Arc<State>,
     tap: Option<Tap>,
     /// Held while capturing so App Nap cannot throttle the event tap.
     pub(crate) activity: Option<Activity>,
-    grabbed: bool,
 }
 
 impl MacCapture {
@@ -324,7 +239,6 @@ impl MacCapture {
             state: Arc::new(State::new(echo)),
             tap: None,
             activity: None,
-            grabbed: false,
         }
     }
 
@@ -352,21 +266,31 @@ impl InputCapture for MacCapture {
     }
 
     fn set_grabbed(&mut self, grabbed: bool) -> Result<()> {
-        if grabbed == self.grabbed {
+        if grabbed == self.state.grabbed.load(Ordering::SeqCst) {
             return Ok(());
         }
-        self.grabbed = grabbed;
         self.state.grabbed.store(grabbed, Ordering::SeqCst);
         if grabbed {
-            let (x, y) = self.cursor.position();
-            self.cursor.warp(x, y)?;
-            self.cursor.associate(false);
-            self.cursor.hide();
+            let grab = || {
+                let (x, y) = self.cursor.position();
+                self.cursor.warp(x, y)?;
+                self.cursor.associate(false)?;
+                self.cursor.hide()
+            };
+            if let Err(refused) = grab() {
+                // Not grabbed after all: put the pointer back as far as the
+                // OS lets us, and let the caller see the refusal.
+                self.state.grabbed.store(false, Ordering::SeqCst);
+                let _ = self.cursor.associate(true);
+                return Err(refused);
+            }
+            Ok(())
         } else {
-            self.cursor.associate(true);
-            self.cursor.show();
+            // Both are tried, so one refusal does not leave the other undone.
+            let associated = self.cursor.associate(true);
+            let shown = self.cursor.show();
+            associated.and(shown)
         }
-        Ok(())
     }
 
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
@@ -378,7 +302,10 @@ impl InputCapture for MacCapture {
         self.tap = None;
         self.activity = None;
         *self.state.tx.lock().unwrap() = None;
-        self.set_grabbed(false).unwrap();
+        // `stop` also runs from `Drop`, which cannot return the refusal.
+        if let Err(refused) = self.set_grabbed(false) {
+            eprintln!("mouser: releasing the cursor at stop failed: {refused}");
+        }
     }
 }
 

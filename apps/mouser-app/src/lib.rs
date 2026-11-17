@@ -4,7 +4,6 @@ pub mod app;
 pub mod args;
 pub mod bundle_save;
 pub mod commands;
-#[cfg(target_os = "windows")]
 pub mod diagnostics;
 #[cfg(target_os = "windows")]
 pub mod elevation;
@@ -43,7 +42,7 @@ mod args_tests;
 pub(crate) mod commands_tests;
 #[cfg(test)]
 mod contract_navigation_tests;
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(test)]
 mod diagnostics_tests;
 #[cfg(all(test, target_os = "windows"))]
 mod elevation_tests;

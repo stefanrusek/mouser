@@ -1,15 +1,15 @@
 //! A platform backend's diagnostics (the Windows capture watchdog's probe
-//! outcomes, capture losses, the cursor guard), written to the diagnostic
-//! log.
+//! outcomes, capture losses, the Windows and macOS cursor guards), written to
+//! the diagnostic log.
 
 use std::sync::Arc;
 
 use mouser_core::logging::Log;
-use mouser_platform_windows::{DiagLevel, DiagValue, Diagnostics};
+use mouser_platform::{DiagLevel, DiagValue, Diagnostics};
 use mouser_proto::log::LogLevel;
 use serde_json::Value;
 
-/// Takes a level, an event name and its fields, as `mouser_platform_windows::Diagnostics`.
+/// Takes a level, an event name and its fields, as `mouser_platform::Diagnostics`.
 pub type Sink = Diagnostics;
 
 /// Writes each diagnostic to `log` at its level (only while logging is on).

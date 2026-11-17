@@ -567,7 +567,7 @@ pub fn update_check_failed(message: &str) -> Event {
 }
 
 /// What a platform backend reports through its diagnostics sink: a
-/// `capture.*` event of the catalog with the fields it names.
+/// `capture.*` or `cursor.*` event of the catalog with the fields it names.
 pub fn platform_diagnostic(
     level: LogLevel,
     event: &str,
@@ -575,8 +575,8 @@ pub fn platform_diagnostic(
     fields: Option<Map<String, Value>>,
 ) -> Event {
     assert!(
-        event.starts_with("capture."),
-        "a platform backend reports capture.* events, not {event}"
+        event.starts_with("capture.") || event.starts_with("cursor."),
+        "a platform backend reports capture.* and cursor.* events, not {event}"
     );
     Event::new(level, event, peer, fields)
 }

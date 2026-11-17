@@ -72,6 +72,8 @@ impl Host {
         let engine = Engine::start(params).await;
         #[cfg(target_os = "windows")]
         mouser_platform_windows::set_diagnostics(Some(crate::diagnostics::debug_to(engine.log())));
+        #[cfg(target_os = "macos")]
+        mouser_platform_macos::set_diagnostics(Some(crate::diagnostics::debug_to(engine.log())));
         Self {
             control: Control::Local(engine.control()),
             log: engine.log(),

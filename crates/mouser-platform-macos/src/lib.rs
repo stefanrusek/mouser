@@ -9,6 +9,8 @@ mod activity;
 mod autostart;
 mod capture;
 mod clipboard;
+mod cursor;
+mod diag;
 mod displays;
 mod drag;
 mod dragwin;
@@ -26,6 +28,7 @@ mod secrets;
 mod secure_input;
 mod tap;
 
+pub use diag::set_diagnostics;
 use mouser_platform::{
     Autostart, Capability, Clipboard, FileDrag, InputCapture, InputInject, Limitation,
     LocalDisplay, NetInterface, Os, PermissionKind, PermissionState, Platform, PlatformInfo,
@@ -188,6 +191,10 @@ mod autostart_tests;
 mod capture_tests;
 #[cfg(test)]
 mod clipboard_tests;
+#[cfg(test)]
+mod cursor_tests;
+#[cfg(test)]
+mod diag_tests;
 #[cfg(test)]
 mod displays_tests;
 #[cfg(test)]

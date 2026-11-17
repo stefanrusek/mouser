@@ -8,36 +8,9 @@
 //! event's fields, typed, and its level.
 
 use mouser_platform::CaptureLossReason;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
-/// The level of a line, as the catalog gives it per event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiagLevel {
-    Debug,
-    Info,
-    Warn,
-}
-
-/// The value of a field.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DiagValue {
-    Str(String),
-    Bool(bool),
-    Int(i64),
-}
-
-impl std::fmt::Display for DiagValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DiagValue::Str(s) => f.write_str(s),
-            DiagValue::Bool(b) => write!(f, "{b}"),
-            DiagValue::Int(i) => write!(f, "{i}"),
-        }
-    }
-}
-
-/// Takes a line's level, its event name and its fields.
-pub type Diagnostics = Arc<dyn Fn(DiagLevel, &str, Vec<(&'static str, DiagValue)>) + Send + Sync>;
+pub use mouser_platform::{DiagLevel, DiagValue, Diagnostics};
 
 /// A low-level hook, as a line names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,6 +219,7 @@ pub(crate) type Line = (DiagLevel, String, Vec<(&'static str, DiagValue)>);
 /// turns, so one does not take the sink from another.
 #[cfg(test)]
 pub(crate) fn heard_during(f: impl FnOnce()) -> Vec<Line> {
+    use std::sync::Arc;
     static LISTENING: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _turn = LISTENING
         .lock()

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mouser_core::logging::{FILE, Log};
-use mouser_platform_windows::{DiagLevel, DiagValue};
+use mouser_platform::{DiagLevel, DiagValue};
 
 use crate::diagnostics::debug_to;
 
@@ -46,4 +46,21 @@ fn diagnostics_become_lines_in_the_log_at_their_level_with_typed_fields() {
     let line = last_line(dir.path());
     assert_eq!(line["level"], "warn");
     assert_eq!(line["fields"]["ok"], true);
+    // The macOS cursor guard's event, with its typed fields.
+    sink(
+        DiagLevel::Warn,
+        "cursor.foreign_change",
+        vec![
+            ("aspect", DiagValue::Str("visible".into())),
+            ("phase", DiagValue::Str("remote".into())),
+            ("corrected", DiagValue::Bool(true)),
+            ("count", DiagValue::Int(3)),
+        ],
+    );
+    let line = last_line(dir.path());
+    assert_eq!(line["level"], "warn");
+    assert_eq!(line["event"], "cursor.foreign_change");
+    assert_eq!(line["fields"]["aspect"], "visible");
+    assert_eq!(line["fields"]["corrected"], true);
+    assert_eq!(line["fields"]["count"], 3);
 }
