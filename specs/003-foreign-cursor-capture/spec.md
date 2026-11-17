@@ -19,7 +19,7 @@ Root cause is a diagnosis from reading the code, not an observation of real even
 - The diagnosis rests on a recollection of how the game's windowing library captures the mouse; that recollection has not been checked.
 - The diagnosis found no recent commit that changed this behaviour, so the "about a week" timing may come from the game's side.
 - Which computer is the controller in the owner's setup is assumed, not verified.
-- The owner's recovery key (`Cmd+Shift+J`) is not a default Mouser hotkey; the default QuickJump is `Ctrl+Alt+Shift+J`. The owner needs to say which one they press, or whether their config is custom.
+- The owner's recovery key was reported as `Cmd+Shift+J`; the owner has since confirmed they press the default QuickJump (`Ctrl+Alt+Shift+J`), so no custom hotkey is involved.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -42,15 +42,15 @@ The owner is using the other computer through Mouser. A game on the Mac starts, 
 
 ### User Story 2 - Bringing the pointer onto the Mac while a game holds the mouse (Priority: P2)
 
-A game on the Mac is capturing the mouse. The user moves the pointer from the other computer onto the Mac. What happens should be predictable and the same each time, not a tug of war between Mouser and the game.
+A game on the Mac is capturing the mouse. The user moves the pointer from the other computer onto the Mac. Mouser takes the cursor back at once, re-associating and showing it, which breaks the game's capture. It must do this reliably and completely, with no tug of war and no half-taken state.
 
 **Why this priority**: This is the confusing case the owner reported. It is less harmful than Story 1 because the user can see what is going on, but it is the case that makes them reach for recovery keys.
 
-**Independent Test**: Start a mouse-capturing app on the Mac, move the pointer onto the Mac from the other computer, and check the result against the single rule chosen in the Assumptions section.
+**Independent Test**: Start a mouse-capturing app on the Mac, move the pointer onto the Mac from the other computer, and check that Mouser has the cursor visible, associated and under the user's control, and that the game's capture is broken.
 
 **Acceptance Scenarios**:
 
-1. **Given** another Mac app is capturing the mouse and the pointer is on the other computer, **When** the user moves the pointer onto the Mac screen, **Then** the result follows one consistent rule (see FR-005) and does not flicker between states.
+1. **Given** another Mac app is capturing the mouse and the pointer is on the other computer, **When** the user moves the pointer onto the Mac screen, **Then** Mouser immediately re-associates and shows the cursor (breaking the game's capture), the user controls it, and it does not flicker or get re-hidden or re-captured by the game.
 2. **Given** the pointer arrived on the Mac while a game was capturing, **When** the game releases the mouse, **Then** the cursor behaves normally with no further action from the user.
 3. **Given** the pointer arrived on the Mac while a game was capturing, **When** the user presses the recovery key, **Then** the pointer ends up in a clear, usable state.
 
@@ -82,6 +82,12 @@ If the Mac cursor state ever disagrees with what Mouser expects, the user can re
 - Full-screen games on a secondary display.
 - Secure Input held by another app at the same time.
 
+## Clarifications
+
+### Session 2026-11-17
+
+- Q: When the pointer moves onto the Mac while a game is holding the mouse captured, who should end up controlling the cursor? -> A: Mouser takes the cursor back at once, re-associating and showing it, which breaks the game's capture, and it must do so reliably and completely (it does not fully today). Updated FR-005, Story 2, SC-004, Assumptions.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -90,7 +96,7 @@ If the Mac cursor state ever disagrees with what Mouser expects, the user can re
 - **FR-002**: While the pointer is on another computer, cursor moves made by another Mac app (including moving the cursor to a window centre) MUST NOT move the pointer on the other computer, MUST NOT send input to it, and MUST NOT change which computer has the pointer.
 - **FR-003**: When the pointer is on another computer, keyboard and mouse input MUST reach only that computer, regardless of any other Mac app's mouse capture.
 - **FR-004**: Mouser MUST tell its own cursor changes apart from another app's, so that restoring its state never triggers a loop of corrections.
-- **FR-005**: When the pointer moves onto the Mac while another app is capturing the mouse, Mouser MUST apply one documented rule every time. The rule is chosen in the Assumptions section and covers whether Mouser or the game ends up controlling the cursor.
+- **FR-005**: When the pointer moves onto the Mac while another app is capturing the mouse, Mouser MUST take the cursor back at once: re-associate it with the mouse and show it, which breaks the game's capture. It MUST do so completely and reliably every time (no partial state, no flicker), and MUST keep that state if the game tries to re-capture while the pointer is on the Mac.
 - **FR-006**: When another app releases a capture while Mouser still holds the pointer elsewhere, the Mac cursor MUST stay hidden. When the pointer is on the Mac, the cursor MUST behave as the releasing app left it.
 - **FR-007**: Mouser MUST record in its JSON Lines diagnostic log each time it detects another app changing whether the Mac cursor is visible, whether it follows the mouse, or where it is, and whether it corrected it.
 - **FR-008**: The existing recovery keys (panic and QuickJump) MUST keep working while another app has the mouse captured, and MUST leave the cursor visible only on the computer that has the pointer.
@@ -111,13 +117,13 @@ If the Mac cursor state ever disagrees with what Mouser expects, the user can re
 - **SC-001**: In 100 consecutive start, pause and quit cycles of a mouse-capturing game while the pointer is on the other computer, the Mac cursor is never visible and no input reaches the Mac.
 - **SC-002**: After any foreign cursor change, the Mac cursor is back in Mouser's expected state in under 100 ms.
 - **SC-003**: The owner can run the game and the other computer side by side for a full working session without pressing a recovery key.
-- **SC-004**: In 100% of moves onto the Mac while a game holds the mouse, the outcome matches the one documented rule.
+- **SC-004**: In 100% of moves onto the Mac while a game holds the mouse, Mouser has the cursor visible, associated and under user control (the game's capture broken) within 100 ms, with no flicker.
 - **SC-005**: The diagnostic log answers "did another app change the cursor, and did Mouser correct it?" for every such event, without needing the code.
 - **SC-006**: Normal forwarding latency and the existing test suite are unchanged; no existing test needs loosening to pass.
 
 ## Assumptions
 
-- **Rule for FR-005 (decision for the owner, default shown):** when the pointer arrives on the Mac while a game holds the mouse, the game keeps its capture and Mouser places the cursor without re-associating or showing it until the game releases. The alternative is Mouser taking the cursor back immediately, which is what happens today and what causes the tug of war. This is a default I picked, not something the owner chose; it is the main open decision for `/speckit-clarify`.
+- **Rule for FR-005 (decided by the owner in clarification, 2026-11-17):** when the pointer arrives on the Mac while a game holds the mouse, Mouser takes the cursor back at once, re-associating and showing it, which breaks the game's capture. Today it does this only partly, so the requirement is that it does so reliably and completely. This reverses the earlier default (game keeps capture).
 - The diagnosis in the Background section is treated as a hypothesis. Planning starts by confirming it using the log check and the idle-Mac check described in the earlier diagnosis, neither of which needs a remote crossing or touches the VM.
 - Scope is macOS first, because that is where the bug was seen. Windows and Linux get the same behaviour or a documented limitation (FR-009).
 - This is a bug fix inside the frozen v2 scope; it adds no new user-facing settings and no protocol change.
