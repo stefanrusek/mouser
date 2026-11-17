@@ -532,8 +532,24 @@ fn a_platform_backends_capture_diagnostics_are_debug_records() {
 }
 
 #[test]
+fn a_platform_backends_cursor_diagnostics_are_warn_records_with_typed_fields() {
+    let fields = json!({"aspect": "visible", "phase": "remote", "corrected": true, "count": 3})
+        .as_object()
+        .cloned();
+    let value = checked(platform_diagnostic(
+        LogLevel::Warn,
+        "cursor.foreign_change",
+        None,
+        fields,
+    ));
+    assert_eq!(value["level"], "warn");
+    assert_eq!(value["fields"]["aspect"], "visible");
+    assert_eq!(value["fields"]["count"], 3);
+}
+
+#[test]
 #[should_panic(expected = "capture.")]
-fn only_capture_diagnostics_come_from_a_platform_backend() {
+fn only_capture_and_cursor_diagnostics_come_from_a_platform_backend() {
     platform_diagnostic(LogLevel::Debug, "control.changed", None, None);
 }
 

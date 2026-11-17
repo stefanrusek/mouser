@@ -1,4 +1,5 @@
-use crate::capture::{Cursor, MOUSER_TAG, MacCapture, State, event_mask, handle, translate};
+use crate::capture::{MOUSER_TAG, MacCapture, State, event_mask, handle, translate};
+use crate::cursor::Cursor;
 use crate::tap::Verdict;
 use core_graphics::display::CGPoint;
 use core_graphics::event::{
@@ -32,11 +33,24 @@ fn flags_changed(keycode: u16, flags: u64) -> CGEvent {
 #[derive(Default)]
 struct FakeCursor {
     calls: Mutex<Vec<String>>,
+    /// Calls named here (`associate`, `hide`, `show`) are refused.
+    refuse: Mutex<Vec<&'static str>>,
 }
 
 impl FakeCursor {
     fn log(&self, call: String) {
         self.calls.lock().unwrap().push(call);
+    }
+    fn refuse(&self, calls: &[&'static str]) {
+        *self.refuse.lock().unwrap() = calls.to_vec();
+    }
+    fn attempt(&self, call: &'static str, text: String) -> Result<()> {
+        self.log(text);
+        if self.refuse.lock().unwrap().contains(&call) {
+            Err(Error::Os(format!("{call} refused")))
+        } else {
+            Ok(())
+        }
     }
     fn take(&self) -> Vec<String> {
         std::mem::take(&mut *self.calls.lock().unwrap())
@@ -51,14 +65,18 @@ impl Cursor for FakeCursor {
         self.log(format!("warp {x} {y}"));
         Ok(())
     }
-    fn associate(&self, on: bool) {
-        self.log(format!("associate {on}"));
+    fn associate(&self, on: bool) -> Result<()> {
+        self.attempt("associate", format!("associate {on}"))
     }
-    fn hide(&self) {
-        self.log("hide".into());
+    fn hide(&self) -> Result<()> {
+        self.attempt("hide", "hide".into())
     }
-    fn show(&self) {
-        self.log("show".into());
+    fn show(&self) -> Result<()> {
+        self.attempt("show", "show".into())
+    }
+    fn visible(&self) -> bool {
+        // As a grab leaves it; the guard has nothing to correct.
+        false
     }
 }
 
@@ -222,6 +240,8 @@ fn grabbed_events_are_delivered_and_dropped_including_undelivered_classes() {
     );
     let m = mouse(CGEventType::MouseMoved, 5.0, 6.0);
     m.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, 3);
+    // Hardware motion carries the HID system state.
+    m.set_integer_value_field(EventField::EVENT_SOURCE_STATE_ID, 1);
     assert_eq!(handle(&state, 5, &m), Verdict::Drop);
     assert_eq!(
         rx.try_recv().unwrap(),
@@ -360,15 +380,6 @@ fn injecting_and_warping_record_the_position_for_echo_detection() {
     assert!(echo.is_echo(3.0, 4.0, Instant::now()));
 }
 
-#[test]
-fn the_window_server_lets_mouser_hide_the_cursor_from_the_background() {
-    // Without this, a grab leaves the cursor showing on the computer the
-    // user left (Mouser is never the frontmost app). It changes no state
-    // other than this process's permission to hide the cursor.
-    crate::capture::allow_hiding_in_background();
-    crate::capture::allow_hiding_in_background();
-}
-
 const LEFT_META: u32 = 0x0007_00E3;
 const RIGHT_META: u32 = 0x0007_00E7;
 const LEFT_SHIFT_USAGE: u32 = 0x0007_00E1;
@@ -384,6 +395,8 @@ fn with_flags(ev: CGEvent, flags: u64) -> CGEvent {
 fn moved(flags: u64) -> CGEvent {
     let ev = mouse(CGEventType::MouseMoved, 10.0, 10.0);
     ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, 1);
+    // Hardware motion carries the HID system state.
+    ev.set_integer_value_field(EventField::EVENT_SOURCE_STATE_ID, 1);
     with_flags(ev, flags)
 }
 
@@ -477,16 +490,58 @@ fn own_injected_events_and_pointer_echoes_do_not_release_held_modifiers() {
 }
 
 #[test]
-fn warping_to_a_point_on_no_display_is_an_error_not_a_panic() {
-    // Refused before any CoreGraphics call that could move the pointer.
-    let refused = crate::capture::SystemCursor.warp(10_000_000.0, 10_000_000.0);
-    assert!(matches!(refused, Err(Error::Os(_))));
+fn a_refused_release_at_stop_or_drop_does_not_panic() {
+    let (cursor, mut capture) = fake_capture();
+    capture.set_grabbed(true).unwrap();
+    cursor.take();
+    cursor.refuse(&["associate", "show"]);
+    capture.stop();
+    assert_eq!(cursor.take(), ["associate true", "show"]);
+    cursor.refuse(&["show"]);
+    capture.set_grabbed(true).unwrap();
+    drop(capture);
 }
 
 #[test]
-fn an_os_refused_warp_becomes_an_os_error_naming_the_code() {
+fn a_refused_release_still_tries_both_calls_and_reports_the_refusal() {
+    let (cursor, mut capture) = fake_capture();
+    capture.set_grabbed(true).unwrap();
+    cursor.take();
+    cursor.refuse(&["associate"]);
+    assert!(capture.set_grabbed(false).is_err());
+    assert_eq!(cursor.take(), ["associate true", "show"]);
+}
+
+#[test]
+fn a_refused_grab_leaves_the_capture_ungrabbed_and_reassociated() {
+    let (cursor, mut capture) = fake_capture();
+    cursor.refuse(&["hide"]);
+    assert!(capture.set_grabbed(true).is_err());
     assert_eq!(
-        crate::capture::warp_refused(1001),
-        Error::Os("CGWarpMouseCursorPosition failed: 1001".into())
+        cursor.take(),
+        ["warp 300 200", "associate false", "hide", "associate true"]
     );
+    assert!(
+        !capture
+            .state
+            .grabbed
+            .load(std::sync::atomic::Ordering::SeqCst)
+    );
+}
+
+#[test]
+fn setting_the_unchanged_grab_state_does_nothing_and_the_flag_is_the_states() {
+    let (cursor, mut capture) = fake_capture();
+    capture.set_grabbed(false).unwrap();
+    assert!(cursor.take().is_empty());
+    capture.set_grabbed(true).unwrap();
+    assert!(
+        capture
+            .state
+            .grabbed
+            .load(std::sync::atomic::Ordering::SeqCst)
+    );
+    cursor.take();
+    capture.set_grabbed(true).unwrap();
+    assert!(cursor.take().is_empty());
 }

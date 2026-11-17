@@ -15,13 +15,13 @@
 //! stuck keys).
 
 use crate::activity::Activity;
+use crate::cursor::{Cursor, SystemCursor};
+use crate::cursor_guard::{Guard, Watcher};
 use crate::echo::Echo;
 use crate::keymap;
 use crate::tap::{self, Create, Tap, Verdict};
-use core_graphics::display::{CGDisplay, CGPoint};
 use core_graphics::event::{CGEvent, EventField};
-use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use mouser_platform::{Error, InputCapture, LocalInput, Result};
+use mouser_platform::{InputCapture, LocalInput, Result};
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -79,89 +79,6 @@ const TAPPED_TYPES: &[u32] = &[
 
 pub(crate) fn event_mask() -> u64 {
     TAPPED_TYPES.iter().fold(0, |mask, ty| mask | (1 << ty))
-}
-
-/// The cursor operations a grab needs; a seam so the grab sequence is
-/// testable without moving the real pointer.
-pub(crate) trait Cursor: Send + Sync {
-    fn position(&self) -> (f64, f64);
-    /// Fails when the point is on no display or the OS refuses.
-    fn warp(&self, x: f64, y: f64) -> Result<()>;
-    fn associate(&self, on: bool);
-    fn hide(&self);
-    fn show(&self);
-}
-
-/// FR-002: the OS refusing a warp is an error the caller sees, not a panic.
-pub(crate) fn warp_refused(code: core_graphics::base::CGError) -> Error {
-    Error::Os(format!("CGWarpMouseCursorPosition failed: {code}"))
-}
-
-pub(crate) struct SystemCursor;
-
-impl Cursor for SystemCursor {
-    fn position(&self) -> (f64, f64) {
-        let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState).unwrap();
-        let at = CGEvent::new(source).unwrap().location();
-        (at.x, at.y)
-    }
-    fn warp(&self, x: f64, y: f64) -> Result<()> {
-        let at = CGPoint::new(x, y);
-        let on_a_display = CGDisplay::display_count_with_point(at).is_ok_and(|count| count > 0);
-        if !on_a_display {
-            return Err(Error::Os(format!("({x}, {y}) is on no display")));
-        }
-        CGDisplay::warp_mouse_cursor_position(at).map_err(warp_refused)
-    }
-    fn associate(&self, on: bool) {
-        CGDisplay::associate_mouse_and_mouse_cursor_position(on)
-            .expect("CGAssociateMouseAndMouseCursorPosition");
-    }
-    fn hide(&self) {
-        allow_hiding_in_background();
-        CGDisplay::main()
-            .hide_cursor()
-            .expect("CGDisplayHideCursor");
-    }
-    fn show(&self) {
-        CGDisplay::main()
-            .show_cursor()
-            .expect("CGDisplayShowCursor");
-    }
-}
-
-// Private CoreGraphics (SkyLight) calls, as Synergy/Barrier use: without
-// `SetsCursorInBackground`, CGDisplayHideCursor does nothing unless the
-// caller is the frontmost app, and Mouser (a menu-bar app) never is.
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn _CGSDefaultConnection() -> i32;
-    fn CGSSetConnectionProperty(
-        connection: i32,
-        target: i32,
-        key: core_foundation::string::CFStringRef,
-        value: core_foundation::base::CFTypeRef,
-    ) -> i32;
-}
-
-/// Let this process hide the cursor while another app is frontmost.
-pub(crate) fn allow_hiding_in_background() {
-    use core_foundation::base::TCFType;
-    use core_foundation::boolean::CFBoolean;
-    use core_foundation::string::CFString;
-    let key = CFString::from_static_string("SetsCursorInBackground");
-    let value = CFBoolean::true_value();
-    // SAFETY: plain C calls with valid, retained CF objects.
-    let error = unsafe {
-        let connection = _CGSDefaultConnection();
-        CGSSetConnectionProperty(
-            connection,
-            connection,
-            key.as_concrete_TypeRef(),
-            value.as_CFTypeRef(),
-        )
-    };
-    assert_eq!(error, 0, "CGSSetConnectionProperty(SetsCursorInBackground)");
 }
 
 /// State shared with the tap callback.
@@ -237,6 +154,38 @@ pub(crate) fn translate(ty: u32, ev: &CGEvent) -> Option<LocalInput> {
     }
 }
 
+/// `kCGEventSourceStateHIDSystemState`: events from real hardware.
+const HID_SYSTEM_STATE: i64 = 1;
+
+/// Decides whether a motion event came from another app rather than the user.
+type ForeignFilter = fn(&State, &CGEvent, &LocalInput) -> bool;
+
+/// Research D2 (default): hardware motion carries the HID system state; an
+/// app's synthesised or warped motion does not. UNVERIFIED on a real game
+/// (probe S2 unobserved).
+fn by_source_state(_: &State, ev: &CGEvent, _: &LocalInput) -> bool {
+    ev.get_integer_value_field(EventField::EVENT_SOURCE_STATE_ID) != HID_SYSTEM_STATE
+}
+
+/// Research D2 fallback: motion located where Mouser or the guard last put
+/// the pointer (the park point and foreign corrections are recorded in the
+/// echo ring) is not the user's.
+pub(crate) fn by_plausibility(state: &State, _: &CGEvent, input: &LocalInput) -> bool {
+    is_own_echo(state, input)
+}
+
+/// The filters, and which one is in force: switching after the S2 result
+/// (T035) is changing `FILTER_IN_FORCE` to 1.
+const FILTERS: [ForeignFilter; 2] = [by_source_state, by_plausibility];
+const FILTER_IN_FORCE: usize = 0;
+
+/// Motion that, while grabbed, another app produced (FR-002, FR-003).
+fn is_foreign_motion(state: &State, ev: &CGEvent, input: &LocalInput) -> bool {
+    matches!(input, LocalInput::Motion { .. })
+        && state.grabbed.load(Ordering::SeqCst)
+        && FILTERS[FILTER_IN_FORCE](state, ev, input)
+}
+
 /// A motion event at a position Mouser itself just set.
 fn is_own_echo(state: &State, input: &LocalInput) -> bool {
     match input {
@@ -290,6 +239,7 @@ pub(crate) fn handle(state: &State, ty: u32, ev: &CGEvent) -> Verdict {
     }
     if let Some(input) = translate(ty, ev)
         && !is_own_echo(state, &input)
+        && !is_foreign_motion(state, ev, &input)
     {
         let inputs = with_missed_releases(state, ty, ev, input);
         if let Some(tx) = state.tx.lock().unwrap().as_ref() {
@@ -309,22 +259,26 @@ pub(crate) fn handle(state: &State, ty: u32, ev: &CGEvent) -> Verdict {
 pub(crate) struct MacCapture {
     cursor: Arc<dyn Cursor>,
     create: Create,
-    state: Arc<State>,
+    pub(crate) state: Arc<State>,
+    /// What the cursor should be; shared with the watcher thread only.
+    pub(crate) guard: Arc<Mutex<Guard>>,
+    /// Runs from grab to release.
+    pub(crate) watcher: Option<Watcher>,
     tap: Option<Tap>,
     /// Held while capturing so App Nap cannot throttle the event tap.
     pub(crate) activity: Option<Activity>,
-    grabbed: bool,
 }
 
 impl MacCapture {
     pub(crate) fn new(cursor: Arc<dyn Cursor>, create: Create, echo: Arc<Echo>) -> Self {
         MacCapture {
+            guard: Arc::new(Mutex::new(Guard::new(cursor.clone(), echo.clone()))),
+            watcher: None,
             cursor,
             create,
             state: Arc::new(State::new(echo)),
             tap: None,
             activity: None,
-            grabbed: false,
         }
     }
 
@@ -352,21 +306,51 @@ impl InputCapture for MacCapture {
     }
 
     fn set_grabbed(&mut self, grabbed: bool) -> Result<()> {
-        if grabbed == self.grabbed {
+        if grabbed == self.state.grabbed.load(Ordering::SeqCst) {
             return Ok(());
         }
-        self.grabbed = grabbed;
         self.state.grabbed.store(grabbed, Ordering::SeqCst);
+        // The guard thread stops first, so it cannot undo what follows.
+        self.watcher = None;
         if grabbed {
-            let (x, y) = self.cursor.position();
-            self.cursor.warp(x, y)?;
-            self.cursor.associate(false);
-            self.cursor.hide();
+            let grab = || -> Result<(f64, f64)> {
+                let (x, y) = self.cursor.position();
+                self.cursor.warp(x, y)?;
+                self.cursor.associate(false)?;
+                self.cursor.hide()?;
+                Ok((x, y))
+            };
+            let park = match grab() {
+                Ok(park) => park,
+                Err(refused) => {
+                    // Not grabbed after all: put the pointer back as far as the
+                    // OS lets us, and let the caller see the refusal.
+                    self.state.grabbed.store(false, Ordering::SeqCst);
+                    let _ = self.cursor.associate(true);
+                    return Err(refused);
+                }
+            };
+            self.state.echo.record(park.0, park.1);
+            self.guard
+                .lock()
+                .unwrap()
+                .begin_remote(park, Instant::now());
+            self.watcher = Some(Watcher::spawn(self.guard.clone()));
+            Ok(())
         } else {
-            self.cursor.associate(true);
-            self.cursor.show();
+            // The caller's `warp` has put the pointer at the landing point.
+            let landing = self.cursor.position();
+            let hides = self.guard.lock().unwrap().arrive(landing, Instant::now());
+            // All are tried, so one refusal does not leave the others undone.
+            let associated = self.cursor.associate(true);
+            let mut shown = Ok(());
+            for _ in 0..hides {
+                shown = shown.and(self.cursor.show());
+            }
+            // The guard holds the take-back through the settle window.
+            self.watcher = Some(Watcher::spawn(self.guard.clone()));
+            associated.and(shown)
         }
-        Ok(())
     }
 
     fn warp(&mut self, x: f64, y: f64) -> Result<()> {
@@ -378,7 +362,13 @@ impl InputCapture for MacCapture {
         self.tap = None;
         self.activity = None;
         *self.state.tx.lock().unwrap() = None;
-        self.set_grabbed(false).unwrap();
+        // `stop` also runs from `Drop`, which cannot return the refusal.
+        if let Err(refused) = self.set_grabbed(false) {
+            eprintln!("mouser: releasing the cursor at stop failed: {refused}");
+        }
+        // No settle window at stop: the guard ends with the capture.
+        self.watcher = None;
+        self.guard.lock().unwrap().end();
     }
 }
 

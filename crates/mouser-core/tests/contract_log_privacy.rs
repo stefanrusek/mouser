@@ -170,3 +170,28 @@ async fn what_is_typed_and_copied_is_in_no_log_and_no_bundle() {
     }
     lab.shutdown().await;
 }
+
+/// `cursor.foreign_change` is about another app, and the catalog gives it no
+/// field that could name that app or its window.
+#[test]
+fn a_foreign_cursor_change_has_no_field_for_an_app_name_or_window_title() {
+    let validator = support::logs::events_validator();
+    let record = |extra: (&str, &str)| {
+        let mut fields =
+            json!({"aspect": "visible", "phase": "remote", "corrected": true, "count": 1});
+        fields[extra.0] = json!(extra.1);
+        json!({
+            "ts": "2026-11-17T12:00:00Z",
+            "level": "warn",
+            "computer": { "id": "0123456789abcdef0123456789abcdef", "name": "Mac" },
+            "event": "cursor.foreign_change",
+            "fields": fields,
+        })
+    };
+    for key in ["app", "title", "window", "window_title", "app_name"] {
+        assert!(
+            !validator.is_valid(&record((key, MARKER))),
+            "{key} is accepted"
+        );
+    }
+}

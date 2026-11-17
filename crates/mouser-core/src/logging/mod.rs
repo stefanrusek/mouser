@@ -269,7 +269,7 @@ impl Log {
     }
 
     /// What a platform backend reports through its diagnostics sink: a
-    /// `capture.*` event of the catalog.
+    /// `capture.*` or `cursor.*` event of the catalog.
     pub fn record(
         &self,
         level: LogLevel,
