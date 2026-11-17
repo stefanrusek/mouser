@@ -1,4 +1,4 @@
-use crate::cursor::{Cursor, SystemCursor, background_hiding_result, os_refused};
+use crate::cursor::{Cursor, SystemCursor, background_hiding_result, os_refused, refused_by};
 use mouser_platform::Error;
 
 #[test]
@@ -48,4 +48,12 @@ fn a_refused_cursor_call_is_an_os_error_naming_the_call_and_code() {
 fn the_system_cursor_reports_whether_it_is_visible_without_changing_it() {
     let before = SystemCursor.visible();
     assert_eq!(SystemCursor.visible(), before);
+}
+
+#[test]
+fn a_refused_call_handed_to_map_err_names_the_call_and_code() {
+    assert_eq!(
+        refused_by("CGDisplayShowCursor")(1002),
+        Error::Os("CGDisplayShowCursor failed: 1002".into())
+    );
 }

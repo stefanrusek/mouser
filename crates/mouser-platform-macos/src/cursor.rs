@@ -30,6 +30,11 @@ pub(crate) fn os_refused(call: &str, code: core_graphics::base::CGError) -> Erro
     Error::Os(format!("{call} failed: {code}"))
 }
 
+/// `os_refused` for `call`, ready to hand to `map_err`.
+pub(crate) fn refused_by(call: &'static str) -> impl Fn(core_graphics::base::CGError) -> Error {
+    move |code| os_refused(call, code)
+}
+
 pub(crate) struct SystemCursor;
 
 impl Cursor for SystemCursor {
@@ -48,18 +53,18 @@ impl Cursor for SystemCursor {
     }
     fn associate(&self, on: bool) -> Result<()> {
         CGDisplay::associate_mouse_and_mouse_cursor_position(on)
-            .map_err(|code| os_refused("CGAssociateMouseAndMouseCursorPosition", code))
+            .map_err(refused_by("CGAssociateMouseAndMouseCursorPosition"))
     }
     fn hide(&self) -> Result<()> {
         allow_hiding_in_background()?;
         CGDisplay::main()
             .hide_cursor()
-            .map_err(|code| os_refused("CGDisplayHideCursor", code))
+            .map_err(refused_by("CGDisplayHideCursor"))
     }
     fn show(&self) -> Result<()> {
         CGDisplay::main()
             .show_cursor()
-            .map_err(|code| os_refused("CGDisplayShowCursor", code))
+            .map_err(refused_by("CGDisplayShowCursor"))
     }
     fn visible(&self) -> bool {
         // SAFETY: a plain C call with no arguments.
