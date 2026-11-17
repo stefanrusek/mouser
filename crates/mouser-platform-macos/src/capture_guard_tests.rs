@@ -185,3 +185,42 @@ fn the_mac_as_the_controlled_computer_is_never_guarded() {
     });
     assert!(heard.is_empty(), "no log record: {heard:?}");
 }
+
+#[test]
+fn ungrab_against_a_recapturing_game_leaves_the_cursor_shown_and_associated() {
+    let heard = heard_during(|| {
+        let cursor = Scripted::untouched();
+        let mut capture = capture_over(&cursor);
+        capture.set_grabbed(true).unwrap();
+        // The game takes the mouse again on the focus change.
+        cursor.foreign_hide();
+        cursor.foreign_disassociate();
+        capture.set_grabbed(false).unwrap();
+        // Within one tick the take-back holds.
+        wait_until("the cursor shown and associated", || {
+            cursor.is_visible() && cursor.is_associated()
+        });
+        cursor.foreign_hide();
+        wait_until("a re-hide to be corrected within the window", || {
+            cursor.is_visible()
+        });
+        drop(capture);
+        assert!(cursor.is_visible());
+    });
+    assert!(!heard.is_empty());
+}
+
+#[test]
+fn the_guard_thread_ends_by_itself_after_the_settle_window() {
+    let heard = heard_during(|| {
+        let cursor = Scripted::untouched();
+        let mut capture = capture_over(&cursor);
+        capture.set_grabbed(true).unwrap();
+        capture.set_grabbed(false).unwrap();
+        std::thread::sleep(crate::cursor_guard::SETTLE + TICK * 5);
+        cursor.foreign_hide();
+        std::thread::sleep(TICK * 4);
+        assert!(!cursor.is_visible(), "the other app wins after the window");
+    });
+    let _ = heard;
+}

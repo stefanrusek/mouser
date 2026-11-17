@@ -26,6 +26,9 @@ pub(crate) const TICK: Duration = Duration::from_millis(20);
 pub(crate) const REASSOCIATE: Duration = Duration::from_millis(250);
 /// How long deviations are counted before one log record per aspect is written.
 pub(crate) const COALESCE: Duration = Duration::from_secs(1);
+/// How long after the pointer arrives the guard holds the cursor shown and
+/// associated against an app that captures again, before that app wins.
+pub(crate) const SETTLE: Duration = Duration::from_millis(1000);
 
 /// How far (points, per axis) the cursor may be from the park point.
 const PARK_TOLERANCE: f64 = 1.0;
@@ -34,6 +37,8 @@ const PARK_TOLERANCE: f64 = 1.0;
 pub(crate) enum Phase {
     /// Grabbed: hidden, still, disassociated.
     Remote,
+    /// Ungrabbed, within [`SETTLE`]: visible and associated.
+    Arrived,
     /// Nothing to enforce.
     Idle,
 }
@@ -46,6 +51,8 @@ pub(crate) struct Expectation {
     pub(crate) park: (f64, f64),
     /// Hides Mouser has issued and not yet shown.
     pub(crate) hides: u32,
+    /// When `Arrived` began.
+    pub(crate) arrived_at: Instant,
 }
 
 /// What the guard read this tick.
@@ -73,7 +80,7 @@ pub(crate) struct Deviation {
 
 pub(crate) fn deviation(exp: &Expectation, obs: &Observation, own_echo: bool) -> Deviation {
     match exp.phase {
-        Phase::Idle => Deviation {
+        Phase::Idle | Phase::Arrived => Deviation {
             visible: false,
             position: false,
         },
@@ -89,6 +96,13 @@ pub(crate) fn deviation(exp: &Expectation, obs: &Observation, own_echo: bool) ->
 /// The corrections that restore the expectation, in the order to apply them.
 /// `own_echo` is true when the observed position is one Mouser itself set.
 pub(crate) fn decide(exp: &Expectation, obs: &Observation, own_echo: bool) -> Vec<Correction> {
+    if exp.phase == Phase::Arrived {
+        return if obs.visible {
+            Vec::new()
+        } else {
+            vec![Correction::Show, Correction::Associate(true)]
+        };
+    }
     let dev = deviation(exp, obs, own_echo);
     let mut out = Vec::new();
     if dev.visible {
@@ -134,6 +148,7 @@ impl Guard {
                 phase: Phase::Idle,
                 park: (0.0, 0.0),
                 hides: 0,
+                arrived_at: now,
             },
             last_associated: now,
             window_start: now,
@@ -148,8 +163,25 @@ impl Guard {
             phase: Phase::Remote,
             park,
             hides: 1,
+            arrived_at: now,
         };
         self.last_associated = now;
+    }
+
+    /// The pointer arrived: the cursor was taken back at `landing` and is
+    /// held shown and associated until [`SETTLE`] has passed. Returns the
+    /// hides still to show.
+    pub(crate) fn arrive(&mut self, landing: (f64, f64), now: Instant) -> u32 {
+        self.flush();
+        let hides = std::mem::take(&mut self.exp.hides);
+        self.exp = Expectation {
+            phase: Phase::Arrived,
+            park: landing,
+            hides: 0,
+            arrived_at: now,
+        };
+        self.last_associated = now;
+        hides
     }
 
     /// The grab ended: enforce nothing more. Returns the hides still to show.
@@ -165,9 +197,16 @@ impl Guard {
     }
 
     /// Reads the cursor and restores the expectation if it deviates.
-    pub(crate) fn tick(&mut self, now: Instant) {
+    /// Returns false once there is nothing left to enforce.
+    pub(crate) fn tick(&mut self, now: Instant) -> bool {
+        if self.exp.phase == Phase::Arrived
+            && now.saturating_duration_since(self.exp.arrived_at) >= SETTLE
+        {
+            self.flush();
+            self.exp.phase = Phase::Idle;
+        }
         if self.exp.phase == Phase::Idle {
-            return;
+            return false;
         }
         let obs = Observation {
             visible: self.cursor.visible(),
@@ -175,11 +214,13 @@ impl Guard {
             at: now,
         };
         let own_echo = self.echo.is_echo(obs.position.0, obs.position.1, now);
-        let dev = deviation(&self.exp, &obs, own_echo);
+        let mut dev = deviation(&self.exp, &obs, own_echo);
+        dev.visible |= self.exp.phase == Phase::Arrived && !obs.visible;
         let mut corrections = decide(&self.exp, &obs, own_echo);
         let reassociate_due = obs.at.saturating_duration_since(self.last_associated) >= REASSOCIATE;
-        if reassociate_due && !corrections.contains(&Correction::Associate(false)) {
-            corrections.push(Correction::Associate(false));
+        let held = self.exp.phase != Phase::Remote;
+        if reassociate_due && !corrections.contains(&Correction::Associate(held)) {
+            corrections.push(Correction::Associate(held));
         }
         let corrected = self.apply(&corrections, now);
         if dev.visible || dev.position {
@@ -188,6 +229,7 @@ impl Guard {
         if now.saturating_duration_since(self.window_start) >= COALESCE {
             self.flush();
         }
+        true
     }
 
     /// Applies corrections in order. A refused call is logged and the rest
@@ -241,6 +283,11 @@ impl Guard {
 
     /// Writes one `cursor.foreign_change` record per counted aspect.
     fn flush(&mut self) {
+        let phase = if self.exp.phase == Phase::Arrived {
+            "arrived"
+        } else {
+            "remote"
+        };
         for (aspect, tally) in self.tallies.iter_mut().enumerate() {
             if let Some(tally) = tally.take() {
                 diag::emit(
@@ -248,7 +295,7 @@ impl Guard {
                     "cursor.foreign_change",
                     vec![
                         ("aspect", DiagValue::Str(ASPECTS[aspect].into())),
-                        ("phase", DiagValue::Str("remote".into())),
+                        ("phase", DiagValue::Str(phase.into())),
                         ("corrected", DiagValue::Bool(tally.corrected)),
                         ("count", DiagValue::Int(tally.count)),
                     ],
@@ -281,7 +328,9 @@ impl Watcher {
                 if stopped.load(Ordering::SeqCst) {
                     break;
                 }
-                guard.lock().unwrap().tick(Instant::now());
+                if !guard.lock().unwrap().tick(Instant::now()) {
+                    break;
+                }
             }
         });
         Watcher {

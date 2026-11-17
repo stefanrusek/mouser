@@ -310,6 +310,8 @@ impl InputCapture for MacCapture {
             return Ok(());
         }
         self.state.grabbed.store(grabbed, Ordering::SeqCst);
+        // The guard thread stops first, so it cannot undo what follows.
+        self.watcher = None;
         if grabbed {
             let grab = || -> Result<(f64, f64)> {
                 let (x, y) = self.cursor.position();
@@ -336,15 +338,17 @@ impl InputCapture for MacCapture {
             self.watcher = Some(Watcher::spawn(self.guard.clone()));
             Ok(())
         } else {
-            // The guard stops first, so it cannot undo the release.
-            self.watcher = None;
-            let hides = self.guard.lock().unwrap().end();
+            // The caller's `warp` has put the pointer at the landing point.
+            let landing = self.cursor.position();
+            let hides = self.guard.lock().unwrap().arrive(landing, Instant::now());
             // All are tried, so one refusal does not leave the others undone.
             let associated = self.cursor.associate(true);
             let mut shown = Ok(());
             for _ in 0..hides {
                 shown = shown.and(self.cursor.show());
             }
+            // The guard holds the take-back through the settle window.
+            self.watcher = Some(Watcher::spawn(self.guard.clone()));
             associated.and(shown)
         }
     }
@@ -362,6 +366,9 @@ impl InputCapture for MacCapture {
         if let Err(refused) = self.set_grabbed(false) {
             eprintln!("mouser: releasing the cursor at stop failed: {refused}");
         }
+        // No settle window at stop: the guard ends with the capture.
+        self.watcher = None;
+        self.guard.lock().unwrap().end();
     }
 }
 

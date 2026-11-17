@@ -1,7 +1,7 @@
 use crate::cursor::Cursor;
 use crate::cursor_guard::{
-    COALESCE, Correction, Deviation, Expectation, Guard, Observation, Phase, REASSOCIATE, TICK,
-    Watcher, decide, deviation,
+    COALESCE, Correction, Deviation, Expectation, Guard, Observation, Phase, REASSOCIATE, SETTLE,
+    TICK, Watcher, decide, deviation,
 };
 use crate::diag::heard_during;
 use crate::echo::Echo;
@@ -128,6 +128,7 @@ fn remote(hides: u32) -> Expectation {
         phase: Phase::Remote,
         park: PARK,
         hides,
+        arrived_at: Instant::now(),
     }
 }
 
@@ -501,4 +502,115 @@ fn dropping_a_watcher_right_after_spawning_joins_promptly() {
     let started = Instant::now();
     drop(Watcher::spawn(guard));
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+fn arrived() -> Expectation {
+    Expectation {
+        phase: Phase::Arrived,
+        hides: 0,
+        ..remote(0)
+    }
+}
+
+#[test]
+fn decide_shows_and_associates_a_cursor_hidden_while_arrived() {
+    assert_eq!(
+        decide(&arrived(), &seen(false, PARK), false),
+        vec![Correction::Show, Correction::Associate(true)]
+    );
+}
+
+#[test]
+fn decide_leaves_a_visible_arrived_cursor_and_its_position_alone() {
+    assert!(decide(&arrived(), &seen(true, PARK), false).is_empty());
+    assert!(decide(&arrived(), &seen(true, (5.0, 5.0)), false).is_empty());
+}
+
+/// A rig that has arrived at `PARK` at `start`, cursor shown and associated.
+fn arrived_rig() -> Rig {
+    let mut rig = Rig::new();
+    rig.cursor.foreign_release();
+    let hides = rig.guard.arrive(PARK, rig.start);
+    assert_eq!(hides, 1);
+    rig.cursor.take_calls();
+    rig
+}
+
+#[test]
+fn a_game_that_rehides_within_the_settle_window_is_corrected() {
+    let heard = heard_during(|| {
+        let mut rig = arrived_rig();
+        rig.cursor.foreign_hide();
+        rig.cursor.foreign_disassociate();
+        assert!(rig.guard.tick(rig.start + Duration::from_millis(100)));
+        assert!(rig.cursor.is_visible());
+        assert!(rig.cursor.is_associated());
+    });
+    assert!(!heard.is_empty());
+}
+
+#[test]
+fn a_game_that_rehides_after_the_settle_window_is_not_corrected() {
+    let heard = heard_during(|| {
+        let mut rig = arrived_rig();
+        rig.tick_at(500);
+        rig.cursor.take_calls();
+        rig.cursor.foreign_hide();
+        assert!(!rig.guard.tick(rig.start + Duration::from_millis(1200)));
+        assert!(!rig.cursor.is_visible());
+        assert!(rig.cursor.take_calls().is_empty());
+        assert_eq!(rig.guard.expectation().phase, Phase::Idle);
+    });
+    assert!(heard.is_empty());
+}
+
+#[test]
+fn the_guard_yields_at_exactly_the_settle_boundary() {
+    let mut rig = arrived_rig();
+    rig.cursor.foreign_hide();
+    assert!(
+        rig.guard
+            .tick(rig.start + SETTLE - Duration::from_millis(1))
+    );
+    rig.cursor.foreign_hide();
+    assert!(!rig.guard.tick(rig.start + SETTLE));
+    assert!(!rig.cursor.is_visible(), "no correction at the boundary");
+    assert_eq!(rig.guard.expectation().phase, Phase::Idle);
+}
+
+#[test]
+fn arrived_reasserts_association_as_true_on_the_slow_beat() {
+    let mut rig = arrived_rig();
+    rig.cursor.foreign_disassociate();
+    rig.tick_at(REASSOCIATE.as_millis() as u64);
+    assert!(rig.cursor.is_associated());
+}
+
+#[test]
+fn crossing_back_and_forth_quickly_ends_up_in_the_latest_phase() {
+    let heard = heard_during(|| {
+        let mut rig = arrived_rig();
+        // Back to the other computer within the window.
+        rig.guard
+            .begin_remote(PARK, rig.start + Duration::from_millis(50));
+        rig.cursor.foreign_hide();
+        rig.cursor.foreign_disassociate();
+        rig.guard.tick(rig.start + Duration::from_millis(70));
+        assert_eq!(rig.guard.expectation().phase, Phase::Remote);
+        rig.cursor.foreign_release();
+        rig.guard.tick(rig.start + Duration::from_millis(90));
+        assert!(!rig.cursor.is_visible());
+        assert!(!rig.cursor.is_associated());
+        // And onto the Mac again: a fresh window starts from this arrival.
+        let hides = rig
+            .guard
+            .arrive(PARK, rig.start + Duration::from_millis(900));
+        for _ in 0..hides {
+            rig.cursor.show().unwrap();
+        }
+        rig.cursor.associate(true).unwrap();
+        assert!(rig.guard.tick(rig.start + Duration::from_millis(1500)));
+        assert!(!rig.guard.tick(rig.start + Duration::from_millis(1900)));
+    });
+    assert!(!heard.is_empty());
 }
