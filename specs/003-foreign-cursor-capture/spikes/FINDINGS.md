@@ -40,3 +40,7 @@ Verdict: **CONFIRMED** that launching the real game while the pointer is remote 
 ## T001 Baseline before any 003 change (implementer, 2026-11-17)
 
 Pre-existing failure, no 003 code touched yet: `cargo test -p mouser-platform-macos --test contract_platform_macos_us2` fails `a_grab_swallows_local_keys_and_reports_pointer_motion_until_released` (crates/mouser-platform-macos/tests/contract_platform_macos_us2.rs:253, left 0, right 2: no pointer motion reported). It drives the real event tap, so it likely needs input/Accessibility permission or a quiet foreground; not investigated. Everything else passed: other macOS tests (8 of 9 in that file), `cargo test -p mouser-app` (203), `cargo clippy --workspace --all-targets`, `cargo fmt --check`.
+
+## Status after the build (Phase 6, 2026-11-17)
+
+Built from these findings: the guard re-reads visibility first (S5), then position (S1), re-asserts association periodically, counts Mouser's hides (S3 partly confirmed), and filters foreign motion by source state (S2 not run, so UNVERIFIED). Still open: S2 (does a game's motion reach the tap, and with which source state; T035 picks the filter), S4 (does Mouser's arrival break a capture, and does the app undo it; decides the 1 s settle window), the S3 clamp question, and whether the cursor-visible-flip reproduces the symptom for association. R1 resolved toward visibility; R2, R3, R4 remain open. The owner-batch checks are rows 17 to 21 of `specs/002-mouser-v2/owner-confirmations.md`.

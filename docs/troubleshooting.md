@@ -110,6 +110,8 @@ These are the five limitations the owner accepted for v1, the two added for v2 (
 
 Why: macOS only lets an unentitled app post events with `CGEventPost`; apps that read hardware-level input (some games, remote-desktop clients) never see them.
 
+Another app taking over the cursor while the pointer is on another computer (feature 003): while Mouser holds the pointer remote, a game or other app on this Mac may show the cursor, move it or capture it. Mouser now watches the cursor every 20 ms while the pointer is remote, hides it again and puts it back, and does not forward the other app's cursor moves to the other computer. Each change it undoes is logged as `cursor.foreign_change` (one record per kind of change per second, with a count). When the pointer comes back to this Mac, Mouser holds the cursor visible for one second against an app that grabs it again, then leaves it to the app (so a game on this Mac stays playable). Nothing is configurable. If the cursor is still stuck, QuickJump or Escape twice returns it. The fix was built before the cause was fully confirmed: the cursor becoming visible when a game starts was observed, the game's cursor moves reaching Mouser and the one-second window are not yet confirmed on real hardware.
+
 ### Linux (all sessions)
 
 - file drag: Dragging files between computers isn't available on Linux; use copy and paste
@@ -140,6 +142,7 @@ No extra limitations are listed. Behaviour to know: Mouser cannot take the point
 
 ### Windows
 
+- Another app taking over the cursor while the pointer is on another computer is not handled on Windows (or on Linux). The feature 003 cursor watch is macOS only; whether a capturing game fights Mouser there has not been observed. Documentation only, no in-app note: it becomes a listed limitation only if the bug is seen there.
 - every Windows computer: Some games and remote-desktop apps ignore Mouser's input on this PC.
 - every Windows computer: Windows warns that Mouser comes from an unknown publisher when it is installed or first run.
 - portable, not elevated: Portable Mouser can't control the login screen, permission prompts, Ctrl-Alt-Del, or applications running as administrator.

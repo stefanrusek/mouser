@@ -141,3 +141,14 @@ Decisions V1 to V20 are in `specs/002-mouser-v2/research.md`; the code is author
 - P3 `spike_elevate`: a `runas` relaunch with `--wait-for` hands over the single-instance mutex cleanly; injection from a medium process into an elevated app is silently dropped; injection from an elevated process into an elevated app is delivered; a medium second launch does see an elevated first instance's mutex (no duplicate instance), but its `WM_COPYDATA` hand-off is blocked by UIPI, hence the `elevated.pid` check in V19. Declining the UAC prompt (`ERROR_CANCELLED`) was not run because the VM auto-elevates.
 - P2 `spike_service` (cold boot, login screen, UAC, user switching, `SendSAS` policy values, clipboard and drag as SYSTEM, NSIS per-machine): not run. The service was built to the research and these items are unverified on real hardware (owner confirmations rows 4 to 8).
 - P4 `spike_tray_click` (left versus right tray click): not run. The tray code was written from the tray-icon 0.25.1 documentation; owner confirmation rows 1, 2 and 14 check it. Linux's appindicator emits no click events, so Linux states a limitation.
+
+## As built in feature 003 (foreign cursor capture, macOS)
+
+Decisions D1 to D6 are in `specs/003-foreign-cursor-capture/research.md`; the code (`crates/mouser-platform-macos/src/cursor_guard.rs`, `capture.rs`) is authoritative.
+
+- The watch is not set once: while the pointer is remote, a guard thread wakes every 20 ms (`TICK`), reads cursor visibility and position and corrects any deviation. Association cannot be read, so it is re-asserted every 250 ms (`REASSOCIATE`) and whenever something deviated.
+- Settle window: on arrival at the Mac the guard keeps re-applying show and associate for 1000 ms (`SETTLE`), then stops and the foreign app wins. Needs the owner's confirmation (D3, R4).
+- Hide counting: Mouser counts its own hides; a correction shows that many times then hides once, and the release shows exactly that many times, so the count never stays above one and the cursor cannot get stuck hidden.
+- Foreign motion while grabbed is dropped, not forwarded. The filter is `FILTERS[FILTER_IN_FORCE]` in `capture.rs` (source state by default, plausibility fallback); the choice rests on the unobserved probe S2 (owner batch T035).
+- Logging: the macOS backend takes the shared diagnostics sink and writes the `cursor.foreign_change` catalog event, coalesced per aspect over 1 s; no platform-trait change.
+- Windows and Linux: not changed, documented as a limitation (D6, FR-009).

@@ -7,11 +7,25 @@ Probe evidence is in `spikes/FINDINGS.md`. External dependency here: the macOS w
 | Claim in the spec | Status | Evidence |
 |---|---|---|
 | Mouser sets state once and never looks again | Confirmed | FINDINGS S0a |
-| Another app can undo it (visible, associated, position) | Not yet observed | FINDINGS S1 not run; the diagnosis rests on recollection of SDL/GLFW |
+| Another app can undo it (visible, associated, position) | Visibility confirmed with the real game (S5: cursor became visible, Mouser unaware); position moved only in the S1 emulation; association not readable | FINDINGS S1, S5 |
 | The game's windowing library captures the way recalled | Unchecked | The recalled calls (`CGAssociateMouseAndMouseCursorPosition(false)`, a hide, warp to window centre) are what `spike_foreign_capture.c` emulates; confirming needs the owner |
 | Timing points at the game side | Confirmed | FINDINGS S0d |
 | The Mac is the controller in the owner's setup | Confirmed from the log | `control.changed` shows `how: crossing` with the Mac as `from` and `app: Warp` on return; the Mac hides on `crossing_out`, so it is the controller |
 | Recovery key is default QuickJump | Confirmed by owner | spec Background; `config.toml` has `quickjump = "Ctrl+Alt+Shift+J"` and `panic = "Escape*2"` |
+
+### Status after the build (Phase 6, 2026-11-17)
+
+Built: the 20 ms watch with visibility, position and periodic association re-assert (D1), hide counting (D4), foreign-motion filter with a one-line switch (D2, source state in force), the 1000 ms arrival settle window (D3), the `cursor.foreign_change` log event (D5). Windows and Linux are documentation only (D6). Verified by scripted-actor unit tests only; the full gate and real-hardware checks are in the owner batch (tasks.md OD-1; owner-confirmations rows 17 to 21).
+
+Open risks: R1 resolved toward visibility (S5), other aspects still unobserved; R2 open (S2 not run, filter choice is T035); R3 open (S3 partly confirmed, extra-show clamping untested); R4 open (S4 not run).
+
+### Docs check (T036)
+
+`docs/product-requirements.md` checked against the delivered behaviour (bounded 1 s hold, no new settings, Windows/Linux limitation): no change needed. It states no per-feature cursor-hold behaviour that this contradicts, and the "Delivered" bullet for pointer visibility (pointer shown again on link loss, capture loss, quit, fault) is still true; no setting was added, so `configuration.md` and `cli.md` need no change. The limitation and guard design are in `docs/troubleshooting.md` and `docs/technical-decisions.md` (T027).
+
+### Latency check (T031)
+
+The guard does not share its lock with the tap callback. `Guard` sits behind `Arc<Mutex<Guard>>` owned by `MacCapture`; the callback body (`capture::handle`, `tap.rs`) receives only `State` (`grabbed` atomic, `tx`, `modifiers`, `echo`) and never takes the guard mutex. The one shared lock is `Echo.last` (pre-existing; held for one assignment or comparison, no I/O), which the guard takes via `is_echo`/`record` while it holds its own mutex. No forwarding benchmark or forwarding test was changed.
 
 ## Decisions
 
