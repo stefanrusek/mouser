@@ -75,7 +75,8 @@ impl Cursor for FakeCursor {
         self.attempt("show", "show".into())
     }
     fn visible(&self) -> bool {
-        true
+        // As a grab leaves it; the guard has nothing to correct.
+        false
     }
 }
 
@@ -239,6 +240,8 @@ fn grabbed_events_are_delivered_and_dropped_including_undelivered_classes() {
     );
     let m = mouse(CGEventType::MouseMoved, 5.0, 6.0);
     m.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, 3);
+    // Hardware motion carries the HID system state.
+    m.set_integer_value_field(EventField::EVENT_SOURCE_STATE_ID, 1);
     assert_eq!(handle(&state, 5, &m), Verdict::Drop);
     assert_eq!(
         rx.try_recv().unwrap(),
@@ -392,6 +395,8 @@ fn with_flags(ev: CGEvent, flags: u64) -> CGEvent {
 fn moved(flags: u64) -> CGEvent {
     let ev = mouse(CGEventType::MouseMoved, 10.0, 10.0);
     ev.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, 1);
+    // Hardware motion carries the HID system state.
+    ev.set_integer_value_field(EventField::EVENT_SOURCE_STATE_ID, 1);
     with_flags(ev, flags)
 }
 

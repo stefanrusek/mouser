@@ -16,6 +16,7 @@
 
 use crate::activity::Activity;
 use crate::cursor::{Cursor, SystemCursor};
+use crate::cursor_guard::{Guard, Watcher};
 use crate::echo::Echo;
 use crate::keymap;
 use crate::tap::{self, Create, Tap, Verdict};
@@ -153,6 +154,38 @@ pub(crate) fn translate(ty: u32, ev: &CGEvent) -> Option<LocalInput> {
     }
 }
 
+/// `kCGEventSourceStateHIDSystemState`: events from real hardware.
+const HID_SYSTEM_STATE: i64 = 1;
+
+/// Decides whether a motion event came from another app rather than the user.
+type ForeignFilter = fn(&State, &CGEvent, &LocalInput) -> bool;
+
+/// Research D2 (default): hardware motion carries the HID system state; an
+/// app's synthesised or warped motion does not. UNVERIFIED on a real game
+/// (probe S2 unobserved).
+fn by_source_state(_: &State, ev: &CGEvent, _: &LocalInput) -> bool {
+    ev.get_integer_value_field(EventField::EVENT_SOURCE_STATE_ID) != HID_SYSTEM_STATE
+}
+
+/// Research D2 fallback: motion located where Mouser or the guard last put
+/// the pointer (the park point and foreign corrections are recorded in the
+/// echo ring) is not the user's.
+pub(crate) fn by_plausibility(state: &State, _: &CGEvent, input: &LocalInput) -> bool {
+    is_own_echo(state, input)
+}
+
+/// The filters, and which one is in force: switching after the S2 result
+/// (T035) is changing `FILTER_IN_FORCE` to 1.
+const FILTERS: [ForeignFilter; 2] = [by_source_state, by_plausibility];
+const FILTER_IN_FORCE: usize = 0;
+
+/// Motion that, while grabbed, another app produced (FR-002, FR-003).
+fn is_foreign_motion(state: &State, ev: &CGEvent, input: &LocalInput) -> bool {
+    matches!(input, LocalInput::Motion { .. })
+        && state.grabbed.load(Ordering::SeqCst)
+        && FILTERS[FILTER_IN_FORCE](state, ev, input)
+}
+
 /// A motion event at a position Mouser itself just set.
 fn is_own_echo(state: &State, input: &LocalInput) -> bool {
     match input {
@@ -206,6 +239,7 @@ pub(crate) fn handle(state: &State, ty: u32, ev: &CGEvent) -> Verdict {
     }
     if let Some(input) = translate(ty, ev)
         && !is_own_echo(state, &input)
+        && !is_foreign_motion(state, ev, &input)
     {
         let inputs = with_missed_releases(state, ty, ev, input);
         if let Some(tx) = state.tx.lock().unwrap().as_ref() {
@@ -226,6 +260,10 @@ pub(crate) struct MacCapture {
     cursor: Arc<dyn Cursor>,
     create: Create,
     pub(crate) state: Arc<State>,
+    /// What the cursor should be; shared with the watcher thread only.
+    pub(crate) guard: Arc<Mutex<Guard>>,
+    /// Runs from grab to release.
+    pub(crate) watcher: Option<Watcher>,
     tap: Option<Tap>,
     /// Held while capturing so App Nap cannot throttle the event tap.
     pub(crate) activity: Option<Activity>,
@@ -234,6 +272,8 @@ pub(crate) struct MacCapture {
 impl MacCapture {
     pub(crate) fn new(cursor: Arc<dyn Cursor>, create: Create, echo: Arc<Echo>) -> Self {
         MacCapture {
+            guard: Arc::new(Mutex::new(Guard::new(cursor.clone(), echo.clone()))),
+            watcher: None,
             cursor,
             create,
             state: Arc::new(State::new(echo)),
@@ -271,24 +311,40 @@ impl InputCapture for MacCapture {
         }
         self.state.grabbed.store(grabbed, Ordering::SeqCst);
         if grabbed {
-            let grab = || {
+            let grab = || -> Result<(f64, f64)> {
                 let (x, y) = self.cursor.position();
                 self.cursor.warp(x, y)?;
                 self.cursor.associate(false)?;
-                self.cursor.hide()
+                self.cursor.hide()?;
+                Ok((x, y))
             };
-            if let Err(refused) = grab() {
-                // Not grabbed after all: put the pointer back as far as the
-                // OS lets us, and let the caller see the refusal.
-                self.state.grabbed.store(false, Ordering::SeqCst);
-                let _ = self.cursor.associate(true);
-                return Err(refused);
-            }
+            let park = match grab() {
+                Ok(park) => park,
+                Err(refused) => {
+                    // Not grabbed after all: put the pointer back as far as the
+                    // OS lets us, and let the caller see the refusal.
+                    self.state.grabbed.store(false, Ordering::SeqCst);
+                    let _ = self.cursor.associate(true);
+                    return Err(refused);
+                }
+            };
+            self.state.echo.record(park.0, park.1);
+            self.guard
+                .lock()
+                .unwrap()
+                .begin_remote(park, Instant::now());
+            self.watcher = Some(Watcher::spawn(self.guard.clone()));
             Ok(())
         } else {
-            // Both are tried, so one refusal does not leave the other undone.
+            // The guard stops first, so it cannot undo the release.
+            self.watcher = None;
+            let hides = self.guard.lock().unwrap().end();
+            // All are tried, so one refusal does not leave the others undone.
             let associated = self.cursor.associate(true);
-            let shown = self.cursor.show();
+            let mut shown = Ok(());
+            for _ in 0..hides {
+                shown = shown.and(self.cursor.show());
+            }
             associated.and(shown)
         }
     }

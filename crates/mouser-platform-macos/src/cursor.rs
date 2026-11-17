@@ -17,13 +17,6 @@ pub(crate) trait Cursor: Send + Sync {
     fn hide(&self) -> Result<()>;
     fn show(&self) -> Result<()>;
     /// Whether the cursor is visible right now (`CGCursorIsVisible`).
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "first production caller is the cursor guard (T013-T015)"
-        )
-    )]
     fn visible(&self) -> bool;
 }
 

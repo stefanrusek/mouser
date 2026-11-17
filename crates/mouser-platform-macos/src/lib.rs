@@ -10,6 +10,7 @@ mod autostart;
 mod capture;
 mod clipboard;
 mod cursor;
+mod cursor_guard;
 mod diag;
 mod displays;
 mod drag;
@@ -188,9 +189,13 @@ mod activity_tests;
 #[cfg(test)]
 mod autostart_tests;
 #[cfg(test)]
+mod capture_guard_tests;
+#[cfg(test)]
 mod capture_tests;
 #[cfg(test)]
 mod clipboard_tests;
+#[cfg(test)]
+mod cursor_guard_tests;
 #[cfg(test)]
 mod cursor_tests;
 #[cfg(test)]

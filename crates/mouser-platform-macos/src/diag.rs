@@ -16,13 +16,6 @@ pub fn set_diagnostics(sink: Option<Diagnostics>) {
 
 /// Writes one line, if anyone listens. The cursor guard is its first caller
 /// (the `cursor.foreign_change` event).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "first production caller is the cursor guard (T015)"
-    )
-)]
 pub(crate) fn emit(level: DiagLevel, name: &str, fields: Vec<(&'static str, DiagValue)>) {
     if let Some(sink) = SINK.read().unwrap().as_ref() {
         sink(level, name, fields);
