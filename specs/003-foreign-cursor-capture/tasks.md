@@ -107,3 +107,11 @@ Paths: `M` = `crates/mouser-platform-macos/src`, `A` = `apps/mouser-app/src`, `S
 ## Implementation strategy
 
 MVP is Phase 1-3 (Story 1, including T032-T034): fixes the owner's daily symptom (cursor visible on the Mac while the pointer is remote) and the leaked input. Then Story 2 (arrival), then Story 3 (log and recovery proof), then Polish. Commit after each phase.
+
+## Operator decisions (recorded by the orchestrator, 2026-11-17)
+
+- **OD-1: the full gate is deferred to the owner's batch.** The baseline `cargo xtask gate --all` failed twice for environmental reasons (the owner's running Mouser.app interferes with the macOS input tests, and a Lima VM process collides with random test ports). The branch changes only `specs/`, so neither failure is a regression. The owner chose to run implement now and run the full gate (including the 100% line-coverage check) in their confirmation batch after the run, with Mouser.app quit. During implement:
+  - Do NOT run `cargo xtask gate`, `cargo clean`, or anything that starts the Parallels VM or Mouser.app. Run only per-crate tests (`cargo test -p <crate> [--test <name>]`) plus `cargo fmt --check` and `cargo clippy` for the crates touched.
+  - Known pre-existing environmental failures, NOT defects of this feature and NOT to be fixed here: `contract_platform_macos_us2::a_grab_swallows_local_keys_and_reports_pointer_motion_until_released`, intermittent `rule_7_no_self_capture`, and `UDP socket can be bound … Address already in use` flakes. New guard tests use a scripted actor and must not depend on live input events.
+  - Watch `target/` (about 28 GB now): stop and report if it passes 40 GB.
+  - Coverage cannot be confirmed without the gate; write the tests for every new line anyway (T016's thin thread wrapper is the one documented exception) and say in the phase report which new lines you believe are uncovered.
