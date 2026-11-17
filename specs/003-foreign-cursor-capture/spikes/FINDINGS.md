@@ -23,3 +23,16 @@ Probe: `spike_foreign_capture.c` (emulates the calls SDL and GLFW make; needs a 
 | S4 | Mode `hold`: with the pointer moved onto the Mac, does Mouser's show+associate break the capture, and does the probe's next call undo it? | NOT RUN | Decides the settle window in Story 2 (D3). |
 
 Until S1-S4 are run the plan holds R1-R4 open as risks (plan.md "Risks"). The design below is built so that every outcome of S1-S4 is handled by a constant or a one-line branch, not a redesign.
+
+## S5 Real game (cobolcraft) while the pointer is remote (orchestrator-run, owner away, 2026-11-17)
+
+Setup: Mouser's log showed `control.changed` to the other computer at 17:57:39.641Z; the pointer stayed remote for the whole run (no `pointer.shown`, no `control.changed` back). A read-only sampler (`sample_cursor`, 250 ms) started 2 s before the game. The game was launched with the owner's exact command (`cobolcraft --name Stefan --gamedir /tmp/cc-test`), left running 25 s, then killed. Samples: `cobolcraft_real_game.samples.out`.
+
+| Observation | Result |
+|---|---|
+| Cursor visibility | `visible=0` before launch, flipped to `visible=1` between t=3750 ms and t=5750 ms (about 2-4 s after the game started) and stayed 1 to the end of the 30 s sampling, including after the game was killed. |
+| Cursor position | Unchanged at `(0,792)` the whole run. No warp to the screen centre, unlike the S1 emulation. |
+| Mouser's log | Nothing: no `pointer.shown`, no `control.changed`. Mouser still believed the pointer was remote while the Mac cursor was visible. |
+| Game output | `language: 2 lang files, no problem`, then only the kill signal. Not observed: whether a window opened, or whether the game captured the mouse. |
+
+Verdict: **CONFIRMED** that launching the real game while the pointer is remote makes the Mac cursor visible with Mouser unaware, which is the owner's "visible on both screens" symptom. The cause is the game launching or activating (a visibility change), NOT a capture warp: position never moved. This corrects S1 (visibility, not position, is the aspect the guard must re-read first) and means R1 resolves toward visibility. The cursor was left visible after the run (Mouser still believed remote); QuickJump or double-Escape recovers.
