@@ -224,3 +224,52 @@ fn the_guard_thread_ends_by_itself_after_the_settle_window() {
     });
     let _ = heard;
 }
+
+/// FR-008, Story 3 sc.2: the panic key stops capture while a game keeps
+/// re-capturing the mouse; the cursor ends visible and the hides balanced.
+#[test]
+fn panic_with_a_foreign_capture_active_ends_visible_and_balanced() {
+    let heard = heard_during(|| {
+        let cursor = Scripted::untouched();
+        let mut capture = capture_over(&cursor);
+        capture.set_grabbed(true).unwrap();
+        cursor.foreign_release();
+        cursor.foreign_disassociate();
+        wait_until("a correction", || {
+            !cursor.is_visible() && !cursor.is_associated()
+        });
+        capture.stop();
+        assert!(cursor.is_visible());
+        assert!(cursor.is_associated());
+        assert_eq!(cursor.depth(), 0);
+        // Nothing fights back afterwards.
+        std::thread::sleep(TICK * 3);
+        assert!(cursor.is_visible());
+    });
+    assert!(!heard.is_empty(), "the disagreement is in the log");
+}
+
+/// QuickJump onto this computer releases the grab (cursor visible where the
+/// pointer is); a jump away grabs again and the cursor is hidden only then.
+#[test]
+fn quickjump_with_a_foreign_capture_active_shows_the_cursor_only_where_the_pointer_is() {
+    let heard = heard_during(|| {
+        let cursor = Scripted::untouched();
+        let mut capture = capture_over(&cursor);
+        capture.set_grabbed(true).unwrap();
+        cursor.foreign_release();
+        cursor.foreign_warp(960.0, 540.0);
+        wait_until("a correction", || !cursor.is_visible());
+        capture.set_grabbed(false).unwrap();
+        assert!(cursor.is_visible(), "the pointer is here");
+        assert_eq!(cursor.depth(), 0);
+        capture.set_grabbed(true).unwrap();
+        assert!(!cursor.is_visible(), "the pointer is remote");
+        capture.set_grabbed(false).unwrap();
+        assert!(cursor.is_visible());
+        drop(capture);
+        assert!(cursor.is_visible());
+        assert_eq!(cursor.depth(), 0);
+    });
+    assert!(!heard.is_empty());
+}

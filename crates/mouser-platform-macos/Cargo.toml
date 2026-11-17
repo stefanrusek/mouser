@@ -35,6 +35,8 @@ system-configuration = "=0.7.0"
 
 [dev-dependencies]
 mouser-platform = { path = "../mouser-platform", features = ["conformance"] }
+jsonschema = "0.59"
+serde_json = "1"
 
 [features]
 # Opt-in: the real file-drag test. Hosted macOS 15/26 runners never deliver

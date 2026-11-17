@@ -614,3 +614,62 @@ fn crossing_back_and_forth_quickly_ends_up_in_the_latest_phase() {
     });
     assert!(!heard.is_empty());
 }
+
+/// T026: the records the guard really emits, wrapped as the app writes them,
+/// pass the closed catalog and carry nothing beyond the four fields.
+#[test]
+fn every_record_the_guard_emits_passes_the_log_catalog() {
+    use serde_json::{Value, json};
+    let record: Value = serde_json::from_str(include_str!(
+        "../../mouser-proto/schemas/log-record.schema.json"
+    ))
+    .unwrap();
+    let events: Value = serde_json::from_str(include_str!(
+        "../../mouser-proto/schemas/log-events.schema.json"
+    ))
+    .unwrap();
+    let registry = jsonschema::Registry::new()
+        .add("https://mouser.local/schemas/log-record.v1.json", record)
+        .unwrap()
+        .prepare()
+        .unwrap();
+    let validator = jsonschema::options()
+        .with_registry(&registry)
+        .build(&events)
+        .unwrap();
+    let heard = heard_during(|| {
+        let mut rig = Rig::new();
+        rig.cursor.foreign_release();
+        rig.cursor.foreign_warp(960.0, 540.0);
+        rig.tick_at(20);
+        rig.guard.end();
+        let mut rig = arrived_rig();
+        rig.cursor.foreign_hide();
+        rig.tick_at(20);
+        rig.guard.end();
+    });
+    assert!(heard.len() >= 4, "{heard:?}");
+    for (level, event, fields) in heard {
+        assert_eq!(level, DiagLevel::Warn);
+        let map: serde_json::Map<String, Value> = fields
+            .into_iter()
+            .map(|(k, v)| {
+                let v = match v {
+                    DiagValue::Str(s) => json!(s),
+                    DiagValue::Bool(b) => json!(b),
+                    DiagValue::Int(n) => json!(n),
+                };
+                (k.to_string(), v)
+            })
+            .collect();
+        assert_eq!(map.len(), 4, "closed field set: {map:?}");
+        let line = json!({
+            "ts": "2026-11-17T12:00:00Z",
+            "level": "warn",
+            "computer": { "id": "0123456789abcdef0123456789abcdef", "name": "Mac" },
+            "event": event,
+            "fields": map,
+        });
+        assert!(validator.is_valid(&line), "{line}");
+    }
+}

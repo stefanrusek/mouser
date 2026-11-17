@@ -64,3 +64,53 @@ fn diagnostics_become_lines_in_the_log_at_their_level_with_typed_fields() {
     assert_eq!(line["fields"]["corrected"], true);
     assert_eq!(line["fields"]["count"], 3);
 }
+
+/// The catalog of log events, with the record schema it refers to.
+fn events_validator() -> jsonschema::Validator {
+    let record: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../crates/mouser-proto/schemas/log-record.schema.json"
+    ))
+    .unwrap();
+    let events: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../crates/mouser-proto/schemas/log-events.schema.json"
+    ))
+    .unwrap();
+    let registry = jsonschema::Registry::new()
+        .add("https://mouser.local/schemas/log-record.v1.json", record)
+        .unwrap()
+        .prepare()
+        .unwrap();
+    jsonschema::options()
+        .with_registry(&registry)
+        .build(&events)
+        .unwrap()
+}
+
+#[test]
+fn a_cursor_foreign_change_reaches_the_log_with_the_closed_field_set_and_passes_the_catalog() {
+    let dir = tempfile::tempdir().unwrap();
+    let me = "00".repeat(16).parse().unwrap();
+    let log = Arc::new(Log::new(dir.path(), me, "Alpha".into(), true, 1));
+    let sink = debug_to(log);
+    sink(
+        DiagLevel::Warn,
+        "cursor.foreign_change",
+        vec![
+            ("aspect", DiagValue::Str("position".into())),
+            ("phase", DiagValue::Str("arrived".into())),
+            ("corrected", DiagValue::Bool(false)),
+            ("count", DiagValue::Int(50)),
+        ],
+    );
+    let line = last_line(dir.path());
+    let mut fields: Vec<&str> = line["fields"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    fields.sort_unstable();
+    assert_eq!(fields, ["aspect", "corrected", "count", "phase"]);
+    let validator = events_validator();
+    assert!(validator.is_valid(&line), "{line}");
+}
