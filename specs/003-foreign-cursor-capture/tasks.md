@@ -1,0 +1,102 @@
+# Tasks: Coexist With Apps That Capture the Mouse
+
+**Input**: `specs/003-foreign-cursor-capture/` (plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md, spikes/FINDINGS.md)
+
+**Tests**: Required. FR-011 demands regression tests for capture-while-remote and move-onto-the-Mac; the repo gate is 100% line coverage (cargo-llvm-cov), so every new production line has a test task in the same phase.
+
+**Execution mode**: Standard (plan.md). One lane of real work, so no [P] across packages is claimed beyond independent files.
+
+**Format**: `- [ ] Txxx [P?] [Story?] Description with file path`
+
+Paths: `M` = `crates/mouser-platform-macos/src`, `A` = `apps/mouser-app/src`, `S` = `specs/002-mouser-v2/contracts`.
+
+**Evidence note**: FINDINGS S5 shows the real symptom is visibility flipping to visible with Mouser unaware (position did not move). The guard MUST therefore re-read visibility first; position and association follow the plan. S2 and S4 are unobserved: D2 has a fallback (T014) and D3 is a constant.
+
+## Phase 1: Setup
+
+- [ ] T001 Confirm baseline is green before any change: run `cargo test -p mouser-platform-macos`, `cargo test -p mouser-app`, `cargo clippy --workspace --all-targets`, `cargo fmt --check`; record failures (if any) in `specs/003-foreign-cursor-capture/spikes/FINDINGS.md` as pre-existing.
+- [ ] T002 Add the `cursor.foreign_change` event to the log catalog: new row in `S/log-events.md` and a schema entry in `S/log-events.schema.json` (fields `aspect` enum `visible|associated|position`, `phase` enum `remote|arrived`, `corrected` bool, `count` integer; level `warn`; no peer; `additionalProperties: false`), exactly per `contracts/log-events-delta.md`.
+- [ ] T003 Extend `contract_log_events` and `contract_log_privacy` tests (locate with `grep -rn contract_log_events crates apps`) to cover the new row, including that no field can carry an app name or window title.
+
+## Phase 2: Foundational (blocks all stories)
+
+**Debt items from plan.md survey; behaviour-preserving except where noted.**
+
+- [ ] T004 Create `M/cursor.rs`: move the `Cursor` trait and `SystemCursor` (including the private SkyLight call) out of `M/capture.rs`; declare `mod cursor;` in `M/lib.rs`; no behaviour change. Existing tests must still pass unchanged.
+- [ ] T005 Change the `Cursor` trait in `M/cursor.rs` per `contracts/macos-cursor-guard.md`: `associate`, `hide`, `show` return `Result<()>` (remove their `expect`s), add `fn visible(&self) -> bool` backed by `CGCursorIsVisible`; make `allow_hiding_in_background` return an error instead of `assert_eq!`. Update every `Cursor` implementor and test double (`M/capture_tests.rs` and any other `impl Cursor`) and callers in `M/capture.rs`.
+- [ ] T006 In `M/capture.rs`, replace `stop()`'s `.unwrap()` on `set_grabbed(false)` with a logged ignore (cannot return an error from `Drop`); add a test in `M/capture_tests.rs` where the scripted cursor refuses and `stop()`/drop does not panic.
+- [ ] T007 In `M/capture.rs`, delete the duplicate `MacCapture.grabbed` field and use the single `AtomicBool` in `State`; keep `set_grabbed` with an unchanged value a no-op (add a test if none exists).
+- [ ] T008 Move the diagnostics sink types (`DiagLevel`, `DiagValue`, `Diagnostics` alias, sink registration) from `crates/mouser-platform-windows/src/diag.rs` to `crates/mouser-platform` as types only, re-export from the Windows crate so its call sites compile unchanged. Fallback per plan debt item 3: if this touches the frozen trait surface, instead add a small duplicate type in a new `M/diag.rs`, and record the choice in `specs/003-foreign-cursor-capture/research.md`.
+- [ ] T009 Add `M/diag.rs` (macOS sink holder: `set_diagnostics(Option<Diagnostics>)` and an internal `emit(level, name, fields)`), mirroring the Windows pattern; test in `M/diag_tests.rs` that a set sink receives events and an unset sink drops them silently.
+- [ ] T010 Wire the macOS sink in `A/diagnostics.rs` so it forwards any catalog name with typed fields to `log.write`, as for Windows; replace the Windows-typed coupling at line 8 with the shared type; update `A/diagnostics_tests.rs`.
+- [ ] T011 Verify the foundation: `cargo test -p mouser-platform-macos --test contract_platform_macos_v2` (rule 10) and `cargo test -p mouser-app` pass with no test loosened (SC-006).
+
+**Checkpoint**: trait fallible and visible-aware, sink reachable, catalog row present.
+
+## Phase 3: User Story 1 - Pointer on the other computer while a game captures the Mac mouse (P1)
+
+**Goal**: while grabbed, Mac cursor stays hidden and still; foreign changes are corrected within 100 ms; foreign motion is not forwarded.
+
+**Independent test**: scripted foreign actor on the `Cursor` seam captures and releases while grabbed; cursor ends hidden, parked, and no `LocalInput::Motion` is emitted for the foreign move.
+
+- [ ] T012 [US1] Create `M/cursor_guard.rs` with the timing constants `TICK = 20 ms`, `REASSOCIATE = 250 ms`, `SETTLE = 1000 ms`, `COALESCE = 1 s` in one place, and the types `Phase { Remote, Arrived, Idle }`, `Expectation { phase, park, hides, arrived_at }`, `Observation { visible, position, at }`, `Correction` per `data-model.md`; declare `mod cursor_guard;` in `M/lib.rs`.
+- [ ] T013 [US1] In `M/cursor_guard.rs`, implement pure `decide(&Expectation, &Observation, own_echo) -> Vec<Correction>` for the `Remote` rows of the data-model table: visible -> show `hides` times, then hide once, then associate(false); position differs from `park` by more than 1 point and not own echo -> warp to `park`, associate(false); no deviation -> empty. Unit tests in `M/cursor_guard_tests.rs` for each row, including FR-004 (own echo is not foreign) and visibility-first ordering.
+- [ ] T014 [US1] In `M/capture.rs` `handle()`, while grabbed, drop motion whose `kCGEventSourceStateID` is not the HID system state (research D2) so foreign moves are not forwarded (FR-002, FR-003, contract rule 6). Add the plausibility fallback (drop motion whose absolute position equals the guard's last park or foreign correction, reusing `Echo` in `M/echo.rs`) behind one function so R2 is a one-line switch. Tests in `M/capture_tests.rs`/`M/tap_tests.rs`: foreign-source motion while grabbed yields no `LocalInput::Motion`; HID motion still does; ungrabbed behaviour unchanged.
+- [ ] T015 [US1] In `M/cursor_guard.rs`, implement `tick(&mut Guard, &dyn Cursor, now)` applying `decide` corrections through the `Cursor` seam: record every applied warp in the `Echo` ring; re-assert `associate(false)` every `REASSOCIATE` and on any deviation; a refused OS call is logged and retried next tick, never panics, never unbalances `hides` (contract rule 4, D4). Tests with a scripted foreign actor: capture (hide+warp to centre), release (show), repeated re-capture, refused call then success; assert end state hidden, parked, `hides == 1`.
+- [ ] T016 [US1] In `M/cursor_guard.rs`, implement the guard thread wrapper (spawn on `Remote`, sleeps `TICK`, no lock shared with the tap callback, stoppable and joined by `stop()` and `Drop`; contract rules 1 and 2). Keep the wrapper to a few lines around `tick` so coverage stays at 100%; add start/stop/join tests including drop while running.
+- [ ] T017 [US1] In `M/capture.rs` `set_grabbed(true)`: after warp/associate(false)/hide, set `Expectation{Remote, park, hides: 1}` and start the guard; `set_grabbed(false)` and `stop()` end it. Test with the scripted cursor that a foreign visible flip right after grab is corrected within one tick (FR-001, SC-002) and that a later `set_grabbed(false)` leaves visible, associated, `hides == 0` (rule 10, contract rule 5, Story 1 sc.4).
+- [ ] T018 [US1] Regression test for Story 1 end to end on the seam in `crates/mouser-platform-macos/tests/contract_platform_macos_us1.rs` (or a new `contract_platform_macos_003.rs`): the S5 sequence (visible flips to 1 while grabbed, position unchanged) and the S1 sequence (position jumps to centre), both restored, then ungrab lands normally (FR-011).
+
+**Checkpoint**: Story 1 works and is independently testable (MVP).
+
+## Phase 4: User Story 2 - Bringing the pointer onto the Mac while a game holds the mouse (P2)
+
+**Goal**: on arrival, Mouser takes the cursor back completely and holds it through the 1 s settle window, then yields.
+
+**Independent test**: scripted game re-hides/disassociates right after ungrab; within the window the cursor is shown and associated again, with no flicker; after `SETTLE` the app wins.
+
+- [ ] T019 [US2] In `M/cursor_guard.rs`, extend `decide` for the `Arrived` rows: not visible -> show, associate(true); position differs from `park` -> no correction; `Idle` -> none. Unit tests for each row in `M/cursor_guard_tests.rs`.
+- [ ] T020 [US2] In `M/cursor_guard.rs`, add the `Remote -> Arrived -> Idle` transitions: `set_grabbed(false)` sets `Arrived` with `arrived_at = now`; `tick` moves to `Idle` once `now - arrived_at >= SETTLE` and the thread then stops; `set_grabbed(true)` during `Arrived` returns to `Remote`. Tests with a fake clock: game re-hides at 100 ms (corrected), game re-hides at 1200 ms (not corrected, FR-006), crossing back and forth quickly.
+- [ ] T021 [US2] In `M/capture.rs` `set_grabbed(false)`: land at the landing point, associate(true), show `hides` times, then hand `Arrived` to the guard (replacing today's partial take-back). Test: after ungrab with a game that re-captures on the focus change, cursor is visible and associated within one tick (SC-004, Story 2 sc.1).
+- [ ] T022 [US2] Regression test for Story 2 in `crates/mouser-platform-macos/tests/contract_platform_macos_us2.rs` (or the new 003 file): game holds capture, pointer arrives, capture broken; game releases afterwards and cursor behaves normally with no action (Story 2 sc.2); recovery key during the window leaves a usable state (sc.3). Re-run rule 10.
+
+**Checkpoint**: Stories 1 and 2 both pass.
+
+## Phase 5: User Story 3 - Recovery keys always work and Mouser never fights silently (P3)
+
+**Goal**: every foreign change and correction is in the log; panic and QuickJump work with a capture active.
+
+**Independent test**: cause a disagreement, assert one coalesced `cursor.foreign_change` record and that the recovery path ends with the cursor visible only on the pointer-owning computer.
+
+- [ ] T023 [US3] In `M/cursor_guard.rs`, record deviations per aspect (`visible`, `associated`, `position`) with phase and corrected flag, and emit one `cursor.foreign_change` (warn; fields `aspect`, `phase`, `corrected`, `count`) per aspect when the `COALESCE` window closes or on ungrab/stop, via the T009 sink. `associated` is reported only when a re-assert follows a visible/position deviation in the same tick; Mouser's own corrections never produce a record; empty correction lists are not logged; no app or window names. Tests in `M/cursor_guard_tests.rs`: a game re-capturing every tick yields one record per second with the right `count`; own echo yields none; flush on stop.
+- [ ] T024 [US3] Pass the sink into the guard from `MacCapture` (via `M/diag.rs`) and confirm the app wiring from T010 reaches `log.write`: add an app-level test in `A/diagnostics_tests.rs` that a macOS-sink `cursor.foreign_change` lands in the log with the closed field set and passes the catalog schema.
+- [ ] T025 [US3] Recovery tests in `crates/mouser-platform-macos/tests/contract_platform_macos_us6.rs` (or the new 003 file): with a foreign capture active, panic (`Escape` x2) and QuickJump (`Ctrl+Alt+Shift+J`) paths end with the cursor visible only where the pointer is (`set_grabbed(false)` or `(true)` per target) and `hides` balanced (FR-008, Story 3 sc.2).
+- [ ] T026 [US3] Run `contract_log_events` and `contract_log_privacy` (T003) against the real emitted record shape; fix any drift between emitter and catalog.
+
+**Checkpoint**: all three stories independently functional and observable.
+
+## Phase 6: Polish and cross-cutting
+
+- [ ] T027 [P] Document the Windows/Linux limitation (research D6, FR-009) in `docs/troubleshooting.md`, and the guard design (watch not set, settle window, hide counting) in `docs/technical-decisions.md`.
+- [ ] T028 [P] Record the open items in `specs/002-mouser-v2/owner-confirmations.md`: D3 settle window, D6 Windows/Linux, and the unrun probes S2 and S4 (R2, R4) with the quickstart section 3 steps for the owner batch.
+- [ ] T029 Update `specs/003-foreign-cursor-capture/spikes/FINDINGS.md` and `research.md` Diagnosis status to reflect what was built and which risks (R1-R4) remain open.
+- [ ] T030 Full gate: `cargo test --workspace`, `cargo llvm-cov` at 100% lines for `mouser-platform-macos` and `mouser-app` with no coverage-ignore, `cargo clippy --workspace --all-targets`, `cargo fmt --check`; confirm no existing test was loosened (SC-006).
+- [ ] T031 Latency check: confirm the guard shares no lock with the tap callback (read `M/tap.rs` and `M/capture.rs` for any shared `Mutex`/`RwLock` the guard takes) and that forwarding benchmarks or tests are unchanged (FR-010).
+
+## Dependencies and order
+
+- Phase 1 -> Phase 2 -> Phases 3, 4, 5 in order -> Phase 6.
+- T004 -> T005 -> T006/T007; T008 -> T009 -> T010; T002 -> T003.
+- US2 (T019-T022) builds on the guard from US1 (T012-T017). US3 (T023-T026) builds on the guard and on T009/T010.
+- Real-hardware validation (quickstart section 3, SC-001's 100 cycles) is the owner batch after the unattended run, not a task gate.
+
+## Parallel opportunities
+
+- T002/T003 (catalog) alongside T004-T007 (trait refactor): different files.
+- T008-T010 (sink) alongside T004-T007 once T001 is done.
+- T014 (foreign-motion filter) alongside T013 within US1 (different files: `capture.rs`/`tap.rs` vs `cursor_guard.rs`).
+- T027 and T028 in Polish.
+
+## Implementation strategy
+
+MVP is Phase 1-3 (Story 1): fixes the owner's daily symptom (cursor visible on the Mac while the pointer is remote) and the leaked input. Then Story 2 (arrival), then Story 3 (log and recovery proof), then Polish. Commit after each phase.
